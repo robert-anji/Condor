@@ -1,0 +1,76 @@
+#-------------------------------------------------------------------------------
+# $RCSfile: makefile.defines,v $
+# $Revision: 1.5 $
+#-------------------------------------------------------------------------------
+# README
+#
+# The project makefiles are organised into a set of 3 makefiles called:
+# - makefile.defines     This file.
+# - makefile             Project specific makefile.
+# - makefile.tools       Common tools useful for all projects.
+#
+# This makefile defines global make variables that are used by makefile and
+# makefile.tools .
+#-------------------------------------------------------------------------------
+# Makefile variables default values (listed alphabetically).
+# Values of XXX are not known here and must be set in the project makefile .
+#
+ADMIN_DIR     = ${AUX}/${PROJs}
+ADMIN_FILES   = notes.txt tbd.txt
+BACKUP        = ${HOME}/Backup
+BACKUP_COMMENT=
+BACKUP_NETWORK= XXX
+BIN           = bin
+BKP_HISTORY   = History
+CC            = gcc
+COUNT         = 1
+CSCOPE_DB_FILE   = ${PROJ_DIR}/.cscope_out
+CSCOPE_FILE_LIST = ${PROJ_DIR}/.cscope_files
+DBG           = -g
+ENV_DIR       = ${HOME}/Unix/env
+HTML          = HTML
+INC           = inc
+MAKE_DIR      = make
+MAKEFILE_PROJECT  = makefile
+MAKEFILE_TOOLS    = makefile.tools
+MAKEFILE_DEFINES  = makefile.defines
+MAKEFILE_DEPEND   = makefile.depend
+OBJ           = bin/obj
+PATCHES       = None
+PLATFORM      = Linux
+PLAYFILE      = default
+PLAYDIR       = dbg
+PROJECT       = XXX
+PROJECTs      = xxx
+RCSPATH       = ${HOME}/Projects/RCS
+RCS           = RCS
+REL_HISTORY   = release_history
+RELEASE       = Latest
+SRC           = src
+SYNC_DIR      = /mnt/hgfs/Syncd/${PROJECT}
+SYNC_FLGS     =
+TARGET        = ${PROJECT}
+TARGET_SRC    = ${SRC}
+TEMP          = release
+TEST          = test
+TOOLS         = tools
+#-------------------------------------------------------------------------------
+# More Makefile variables
+#
+CODE_SIZE_LOG = ${AUX}/project.log
+DIR           = ${BIN} ${OBJ} ${INC} ${SRC}
+BKP_LIST      = ${INC} ${SRC} makefile* ${ADMIN_FILES}
+BKP_WEEKDAYS  = Tue Wed Fri
+BKP_MONTHDAYS = 3 7 12 18 23 28 30
+PROJ_BKP_DIR  = ${BACKUP}/${PROJECTs}
+STR           = "Provide value for STR"
+# Note: BKP_LIST avoids backing up executable bin/${TARGET}.sun
+#       Change BKP_WEEKDAYS and BKP_MONTHDAYS according to your backup schedule
+#       BKP_WEEKDAYS  => keeps backups for some of the previous 7 days
+#       BKP_MONTHDAYS => keeps backups for some of the previous 31 days
+#
+#-------------------------------------------------------------------------------
+# TBD
+# Split defines into common and non-common ones.
+#
+# End

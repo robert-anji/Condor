@@ -1,0 +1,344 @@
+head	1.3;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.3
+date	2007.07.14.14.43.29;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.02.03.49;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@1. Mainly reflect database API changes including using Attribute objects
+   in record value access instead of 'short attr_pos' or 'const char* attr_name'.
+@
+text
+@// $RCSfile: Main.cc,v $
+// $Revision: 1.2 $
+
+#include "MyString.h"
+#include "Attribute.h"
+#include "Bit.h"
+#include "ClockMgr.h"
+#include "Condition.h"
+#include "Database.h"
+#include "Process.h"
+#include "Record.h"
+#include "Table.h"
+#include "Query.h"
+#include "Value.h"
+#include "View.h"
+
+#define zMatch(str) (*(new CONDITION(str)))
+#define CONDITION(str) Condition(#str)
+
+class P1 : public Process
+{
+public:
+  P1() {}
+  ~P1() {}
+
+  void ClockedProcess() { printf("1\n"); }
+  static void ReceiveProcess(Process* p) { printf("RcvProcess\n"); }
+};
+
+class P2 : public Process
+{
+public:
+  P2()  {}
+  ~P2() {}
+
+  void ClockedProcess() { printf("2\n"); }
+};
+
+enum eAttrPersonInfoTable {
+  eAttrPersonInfoTableFirstName,
+  eAttrPersonInfoTableLastName,
+  eAttrPersonInfoTableAge,
+  eAttrPersonInfoTableStreetAddress,
+  eAttrPersonInfoTableCity,
+  eAttrPersonInfoTableZip,
+  eAttrPersonInfoTablePhone,
+  eAttrPersonInfoTableBits
+};
+
+int main(int argc, char* argv[])
+{
+  int    i;
+  Value  v;
+  String str;
+  Table  *tblPersonInfo;
+  P1     p1;
+  Process p;
+  
+  ClockMgr *gClkMgr = new ClockMgr("ClkMgrTest");
+
+  gClkMgr->ClockAdd("Clk1", 1, "ns");
+  gClkMgr->ClockAdd("Clk2", 1, "ns");
+
+  gClkMgr->ClockedProcessAddF(p, &Process::ClockedProcess);
+  gClkMgr->AddProcessToClock((Process*)&p1, &P1::ReceiveProcess);
+  if (1) return 1;
+
+  gClkMgr->ClockedProcessAdd("Clk1", &p1, eClockEdgePos);
+
+  gClkMgr->ClockMgrStart("Clk1", 10);
+
+  if (1) return 1;
+
+//v.Set(eValueUnsigned, "-123");
+
+  // Database
+  Database *db = new Database("./", "FirstVerifyRightDB");
+
+  // Table.
+  tblPersonInfo = db->TableOpen("Person Basic Info", eTableOpenFlagBit_New);
+
+  // Attributes.
+  Attribute *person_first_name     = tblPersonInfo->AttributeAdd("FIRST_NAME"    , eValueCharPtr);
+  Attribute *person_last_name      = tblPersonInfo->AttributeAdd("LAST_NAME"     , eValueCharPtr);
+  Attribute *person_age            = tblPersonInfo->AttributeAdd("AGE"           , eValueUnsigned);
+  Attribute *person_address_street = tblPersonInfo->AttributeAdd("STREET_ADDRESS", eValueCharPtr);
+  Attribute *person_address_city   = tblPersonInfo->AttributeAdd("CITY"          , eValueCharPtr);
+  Attribute *person_address_zip    = tblPersonInfo->AttributeAdd("ZIP"           , eValueUnsigned);
+  Attribute *person_phone          = tblPersonInfo->AttributeAdd("PHONE"         , eValueCharPtr);
+  Attribute *person_bits           = tblPersonInfo->AttributeAdd("BITS"          , eValueBit);
+
+  View* view = tblPersonInfo->ViewCreate("MyView", eRecPerm_All);
+  view->TableRecordsSelect((Query*)0);
+  view->TableRecordsSelect((Query*)0);
+
+  view->TableRecordsImportSelected();
+
+  Bit    bits(31, 0);
+  
+  bits["5:0"] = (short)31;
+  Value vb; // Value vb = bits; doesnt work
+
+  Record* rec = new Record(view);
+
+//for (i=0; i<32000; i++)
+  for (i=0; i<1; i++)
+  {
+    (*rec)[person_first_name]     = vb="Robert";
+    (*rec)[person_last_name]      = vb="Anji";
+    (*rec)[person_age]            = vb=40;
+    (*rec)[person_address_street] = vb="4789 Canberra Ct";
+    (*rec)[person_address_city]   = vb="San Jose";
+    (*rec)[person_address_zip]    = vb=95124;
+    (*rec)[person_phone]          = vb="4089789999";
+    (*rec)[person_bits]           = vb=bits;
+
+    view->RecordAdd(rec);
+  }
+
+  bits["5:0"] = (short)63;
+
+  (*rec)[person_first_name]       = vb="Moki";
+  (*rec)[person_last_name]        = vb="Anji";
+  (*rec)[person_age]              = vb=35;
+  (*rec)[person_address_street]   = vb="4789 Canberra Ct";
+  (*rec)[person_address_city]     = vb="San Jose";
+  (*rec)[person_address_zip]      = vb=95124;
+  (*rec)[person_phone]            = vb="4089789999";
+  (*rec)[person_bits]             = vb=bits;
+
+  view->RecordAdd(rec);
+
+  db->DBTransactionsCommit();
+
+  Condition c_age          (person_age);
+  Condition c_firstname    (person_first_name);
+  Condition c_bits         (person_bits);
+
+//if (tblPersonInfo->Exists(zMatch(DWORD0)==5 || zMatch(FIRST_NAME)=="Tom")
+//                          &&    (zMatch(DWORD0)==6 || zMatch(FIRST_NAME)=="Tooom"))
+//if (tblPersonInfo->Exists(zMatch(FIRST_NAME)=="Moki" || zMatch(FIRST_NAME)=="Tom"))
+  Bit find_bit(31,0);
+  find_bit = 3U;
+  Value find_val(find_bit);
+
+  Query q("my search");
+  q = c_bits["2:1"]==find_val;
+
+//if (tblPersonInfo->Exists(q))
+//  printf("Exists!\n");
+//else
+//  printf("Does not exist!\n");
+
+//tblPersonInfo->Show();
+}
+
+// End
+@
+
+
+1.2
+log
+@1. Modified to be able to compile the numerous changes made.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d55 1
+a55 1
+  Table  *tablePersonBasicInfo;
+d80 1
+a80 1
+  tablePersonBasicInfo = db->TableOpen("Person Basic Info", eTableOpenFlagBit_New);
+d83 8
+a90 17
+  Attribute person_first_name(      "FIRST_NAME"    , eValueCharPtr);
+  Attribute person_last_name(       "LAST_NAME"     , eValueCharPtr);
+  Attribute person_age(             "AGE"           , eValueUnsigned);
+  Attribute person_address_street(  "STREET_ADDRESS", eValueCharPtr);
+  Attribute person_address_city(    "CITY"          , eValueCharPtr);
+  Attribute person_address_zip(     "ZIP"           , eValueUnsigned);
+  Attribute person_phone(           "PHONE"         , eValueCharPtr);
+  Attribute person_bits(            "BITS"          , eValueBit);
+
+  tablePersonBasicInfo->AttributeAdd(&person_first_name    );
+  tablePersonBasicInfo->AttributeAdd(&person_last_name     );
+  tablePersonBasicInfo->AttributeAdd(&person_age           );
+  tablePersonBasicInfo->AttributeAdd(&person_address_street);
+  tablePersonBasicInfo->AttributeAdd(&person_address_city  );
+  tablePersonBasicInfo->AttributeAdd(&person_address_zip   );
+  tablePersonBasicInfo->AttributeAdd(&person_phone         );
+  tablePersonBasicInfo->AttributeAdd(&person_bits          );
+d92 1
+a92 1
+  View* view = tablePersonBasicInfo->ViewCreate("MyView");
+d96 1
+a96 2
+  eRecordPermissionBits perm = eRecPermAll;
+  view->TableRecordsImportSelected(perm);
+d108 8
+a115 8
+    (*rec)[eAttrPersonInfoTableFirstName]     = vb="Robert";
+    (*rec)[eAttrPersonInfoTableLastName]      = vb="Anji";
+    (*rec)[eAttrPersonInfoTableAge]           = vb=40;
+    (*rec)[eAttrPersonInfoTableStreetAddress] = vb="4789 Canberra Ct";
+    (*rec)[eAttrPersonInfoTableCity]          = vb="San Jose";
+    (*rec)[eAttrPersonInfoTableZip]           = vb=95124;
+    (*rec)[eAttrPersonInfoTablePhone]         = vb="4089789999";
+    (*rec)[eAttrPersonInfoTableBits]          = vb=bits;
+d122 8
+a129 8
+  (*rec)[(short)0] = vb="Moki";
+  (*rec)[(short)1] = vb="Anji";
+  (*rec)[(short)2] = vb=35;
+  (*rec)[(short)3] = vb="4789 Canberra Ct";
+  (*rec)[(short)4] = vb="San Jose";
+  (*rec)[(short)5] = vb=95124;
+  (*rec)[(short)6] = vb="4089789999";
+  (*rec)[(short)7] = vb=bits;
+d135 3
+a137 3
+  Condition c_age("AGE");
+  Condition c_firstname("FIRST_NAME");
+  Condition c_bits("BITS");
+d139 1
+a139 1
+//if (tablePersonBasicInfo->Exists(zMatch(DWORD0)==5 || zMatch(FIRST_NAME)=="Tom")
+d141 1
+a141 1
+//if (tablePersonBasicInfo->Exists(zMatch(FIRST_NAME)=="Moki" || zMatch(FIRST_NAME)=="Tom"))
+d149 1
+a149 1
+//if (tablePersonBasicInfo->Exists(q))
+d154 1
+a154 1
+//tablePersonBasicInfo->Show();
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d5 9
+d15 14
+a28 2
+#include "Table.h"
+#include "Record.h"
+d30 19
+a48 2
+#define QRY(str) *(new QUERY(str))
+#define QUERY(str) Query(#str)
+d55 12
+a66 1
+  Table  *personBasicInfoTable;
+d68 10
+a77 1
+  v.Set(eValueUnsigned, "-123");
+d80 1
+a80 1
+  personBasicInfoTable = new Table("Person Basic Info");
+d90 1
+d92 20
+a111 7
+  *personBasicInfoTable << person_first_name
+                        << person_last_name
+                        << person_age
+                        << person_address_street
+                        << person_address_city
+                        << person_address_zip
+                        << person_phone;
+d113 1
+a113 1
+  Record rec(personBasicInfoTable);
+d118 8
+a125 2
+    rec << "Robert" << "Anji" << 40 << "4789 Canberra Ct" << "San Jose"
+        << 95124    << "4089789999";
+d127 1
+a127 1
+    *personBasicInfoTable << rec;
+d130 1
+a130 4
+  rec << "Moki" << "Anji" << 35 << "4789 Canberra Ct" << "San Jose"
+      << 95124     << "4089789999";
+
+  *personBasicInfoTable << rec;
+d132 31
+a162 12
+  Query q_age("AGE");
+  Query q_firstname("FIRST_NAME");
+
+//if (personBasicInfoTable->Exists((QRY(DWORD0))==5 || (QRY(FIRST_NAME))=="Tom"))
+//if (personBasicInfoTable->Exists((QRY(FIRST_NAME))=="Moki" || (QRY(FIRST_NAME))=="Tom"))
+  if (personBasicInfoTable->Exists(q_firstname["5:3"]=="Moki"))
+  {
+    printf("Exists!\n");
+  }
+  else {
+    printf("Does not exist!\n");
+  }
+d164 1
+a164 1
+//personBasicInfoTable->Show();
+@

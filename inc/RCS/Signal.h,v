@@ -1,0 +1,268 @@
+head	1.5;
+access;
+symbols;
+locks
+	robert:1.5; strict;
+comment	@ * @;
+
+
+1.5
+date	2011.04.22.21.02.06;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.01.30.07.07.23;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.22.18.22.56;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.45.55;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@1. Added member: mPropagateSignal.
+2. Removed: mIsStrapUpdated (was not being used anywhere).
+3. Added IsReceivingSignal() similar to IsDrivingSignal().
+4. Added PropagateSignalFrom(Signal*, ok), helps propagate value to sub-modules.
+@
+text
+@// $RCSfile: Signal.h,v $
+// $Revision: 1.4 $
+
+#ifndef SignalClass
+#define SignalClass
+
+#include <string.h>
+
+#include "Attribute.h"
+#include "Bit.h"
+#include "DBDefines.h"
+#include "List.h"
+#include "Simulator.h"
+#include "String.h"
+
+class Clock;
+class Interface;
+
+enum eSignalType {
+  eSignalType_Input,
+  eSignalType_Output,
+  eSignalType_InOut,
+  eSignalType_Strap,
+  eSignalType_None,
+//eSignalType_Wire, // determine if this could be useful
+  eSignalType_Invalid
+};
+
+// This class will probably just contain all Signal related information
+// without any significant operations. The important operations on Signals
+// are done by the friend class: Interface.
+class Signal
+{
+  friend class Interface;// does a lot of Signal processing
+  friend class Process;  // accesses mSensitiveEdgeList
+  friend class Scheduler;// accesses signal connection list to see if tied to clock
+  friend class Vcd;      // sometimes needs to access signal connection list
+
+public:
+  // Note: Constructor is private, accessible only to class Interface.
+
+  bool    Connect(Signal* signal);
+
+  bool    Update(unsigned u);
+  bool    Update(Bit&     bit);    // cannot use const, we reset bit state
+  bool    Update(Signal&  signal); // cannot use const, we reset bit state
+  //
+  bool    NameIs        (const char* name)       const;
+  bool    BelongsToGroup(const char* group_name) const;
+  //
+  bool IsDrivingSignal();
+  bool IsReceivingSignal();
+  void IsDrivenByClock(bool is_driven_by_clock);
+  //
+  bool operator==(Bit& bit)   { return mBit == bit; }
+  bool operator==(unsigned u) { return mBit == u;   }
+  //
+  void PropagateSignalFrom(Signal* signal, bool& all_ok);
+  //
+  short   Width() const { return mBit.BitWidth(); }
+  //
+  bool  ScheduleAnySensitiveProcesses();
+  //
+  void  VcdIdentifierSet(char* code) { strcpy(mpVcdIdentifier, code); }
+  char* VcdIdentifierGet()           { return mpVcdIdentifier;        }
+
+  void MarkAsInputIfReversed();      // sometimes clk input gets reversed, fix
+
+  // Query functions:
+  eSignalType SignalType()   const { return mSignalType; }
+  Attribute*  AttributeGet() const { return mpAttribute; }
+  bool        IsUpdated()    const { return mIsStrapUpdated;  }
+  const char* Name()         const { return (const char*)mName; }
+
+
+private:
+  Bit               mBit;
+  String            mName;
+  String            mGroupName;
+  eSignalType       mSignalType;
+  Attribute*        mpAttribute;
+  Interface*        mpInterface;
+  SimulationTime    mLastModifiedAt;
+  bool              mIsModified;
+  bool              mIsStrapUpdated;
+  bool              mIsDrivenByClock;
+  bool              mPropagateSignal;
+  char              mpVcdIdentifier[4];
+  short             mUpdateFailCount;
+
+  List<Signal>            mConnectedSignalsList; // signal list that this signal connects to/from.
+  List<SensitiveEdgeInfo> mSensitiveEdgeList;    // processes that are sensitive to this signal.
+
+  short               mMultipleUpdatesCount;  // track times a signal is updated during same tick.
+  static const short  cMultipleUpdatesCountMax = 100;
+
+  // Private member functions:
+  Signal(const char* name, short width, eSignalType type, const char* group, Attribute *attr, Interface* intf, Bit* init_val=0);
+  ~Signal();
+};
+
+#endif
+
+// End
+@
+
+
+1.4
+log
+@Changed return type from short to bool for ScheduleAnySensitiveProcesses().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d52 1
+d58 2
+d75 1
+a85 1
+  bool              mIsNonStrapUpdated;
+d87 1
+@
+
+
+1.3
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d59 1
+a59 1
+  short ScheduleAnySensitiveProcesses();
+@
+
+
+1.2
+log
+@1.  Removed eSignalType_Clock.
+2.  Moved friend declarations to the top of the class.
+3.  Added IsDrivenByClock() and IsDrivingSignal() functions.
+4.  Added operator==() for Bit and unsigned.
+5.  Added ScheduleAnySensitiveProcesses().
+6.  Added MarkAsInputIfReversed(), helps un-reverse a clock input in some cases.
+7.  Renamed mSignalConnectsToList with mConnectedSignalsList.
+8.  Removed AllowUpdate() function.
+9.  Added SensitiveEdgeInfo list.
+10. Replaced mLastUpdatedAt with mLastModifiedAt.
+11. Replaced mIsUpdated     with mIsModified.
+12. Added mIsNonStrapUpdated.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a9 1
+#include "DefinesAndEnum.h"
+d11 1
+d13 1
+a14 1
+#include "Simulator.h"
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d13 1
+a13 1
+#include "MyString.h"
+d16 1
+a22 1
+  eSignalType_Clock,
+d34 5
+d40 1
+a40 3
+  friend class Interface;
+
+  // Constructor is private, accessible only to class Interface.
+d42 1
+a42 1
+  bool    ConnectTo(Signal* signal);
+d45 5
+a49 2
+  bool    Update(Bit&     bit);
+  bool    Update(Signal&  signal);
+d51 5
+a55 2
+  bool    NameIs     (const char* name)       const;
+  bool    GroupNameIs(const char* group_name) const;
+d59 6
+a64 1
+  void VcdIdentifierSet(char* code) { strcpy(mpVcdIdentifier, code); }
+d69 1
+a69 1
+  bool        IsUpdated()    const { return mIsUpdated;  }
+d77 8
+a84 3
+  Attribute        *mpAttribute;
+  Interface        *mpInterface;
+  SimulationTime    mLastUpdatedAt;
+a85 3
+  bool              mIsUpdated;     // is signal upd. during current sim. time?
+  bool              mIsStrapSignal;
+  char              mpVcdIdentifier[4];
+d87 2
+a88 2
+  // List of Signals that this Signal 'fans-out' to if it is an 'output' signal.
+  List<Signal>      mSignalConnectsToList;
+d90 1
+a90 2
+  // Track how many times we allow a signal to be updated at the same timestamp.
+  short               mMultipleUpdatesCount;
+a95 2
+  //
+  bool AllowUpdate();
+@

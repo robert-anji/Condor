@@ -1,0 +1,2255 @@
+head	1.8;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.8; strict;
+comment	@// @;
+
+
+1.8
+date	2011.12.03.18.05.50;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.08.16.02.58.36;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.24.23.55.17;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.03.23.28.37;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.46.15;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.01.40.06;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.8
+log
+@Fixed bug where ValueGet(attr) was using mpAttribute instead of attr.
+@
+text
+@// $RCSfile: Record.cc,v $
+// $Revision: 1.7 $
+
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+
+#include "Record.h"
+//
+#include "Attribute.h"
+#include "Bit.h"
+#include "BucketList.h"
+#include "Condition.h"
+#include "DBDefines.h"
+#include "Enum.h"
+#include "Global.h"
+#include "Query.h"
+#include "TableRecord.h"
+#include "Value.h"
+
+extern int gDbg;
+
+enum eAttrPosition { eAttrPositionInvalid = SHRT_MAX };
+
+extern NameVal OperatorNV[];
+M_ExternConstructDestructCountInt;
+
+Record::Record(short total_attr, bool auto_commit) :
+  mpView                   (0),
+  mpAttribute              (0),
+  mpTableRecord            (0),
+  mAllowValUpdBeforeCommit (auto_commit)
+{
+  mpTableRecord = new TableRecord(total_attr);
+
+  assert(mpTableRecord);
+
+  M_UpdConstructCount(eType_Record);
+}
+
+Record::Record(TableRecord* tbl_rec) :
+  mpView                   (0),
+  mpAttribute              (0),
+  mpTableRecord            (tbl_rec),
+  mAllowValUpdBeforeCommit (TRUE)
+{
+  assert(mpTableRecord);
+
+  mpTableRecord->ReferenceCountIncrement();
+
+  M_UpdConstructCount(eType_Record);
+}
+
+Record::~Record()
+{
+  mpTableRecord->ReferenceCountDecrement();
+
+  M_UpdDestructCount(eType_Record);
+}
+
+bool Record::ValueSet(const Attribute* attr, Value &val)
+{
+  short p = attr->PositionGet();
+
+  // Value assignment will check for legality of assignment.
+
+  if (p == eMaxAttributes) return FALSE;
+
+  mpTableRecord->mpValues[p] = val;
+
+  return TRUE;
+}
+
+const Value* Record::ValueGet(const Attribute* attr)
+{
+  return &(mpTableRecord->mpValues[attr->PositionGet()]);
+}
+
+Record& Record::operator[](const Attribute* attr)
+{
+  assert(attr);
+
+  mpAttribute = attr;
+
+  return *this;
+}
+
+Record& Record::Set(unsigned u)
+{
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] = u;
+  
+  return *this;
+}
+
+// TBD: Revisit this once we have sorted records logic back again.
+//eCompare Record::Compare(Record& rec)
+//{
+//  short pos = mpView->sortAttributePos;
+//
+//  // If the sort pos is invalid return eCompareEqual
+//  if (pos == eMaxAttributes) {
+//    assert(0);
+//    return eCompareNotEqual;
+//  }
+//
+//  return (mpValues[pos].Compare(rec.mpValues[pos]));
+//}
+
+Record& Record::operator=(const Record& rec)
+{
+  // We only allow Record assignment if the records belong to the same view
+  // or if the record doesnt yet have a view (happens for new records).
+  assert(mpView==0 || mpView==rec.mpView);
+
+//if (mpView == 0) mpView = rec.mpView;
+  short total;
+  if (mpView == 0) total = rec.mpView->AttributesTotal();
+  else             total =     mpView->AttributesTotal();
+
+  short i;
+
+  // TBD: Maybe change 'record[attr] = value;' to not use a db transaction.
+  for (i=0; i<total; i++) {
+  //const Attribute* attr = mpView->AttributeFind(i);
+  //(*this)[attr]         = rec.mpTableRecord->mpValues[i];
+    this->mpTableRecord->mpValues[i] = rec.mpTableRecord->mpValues[i];
+  }
+
+  return *this;
+}
+
+bool Record::operator==(const Record& rec) const
+{
+  short total = mpView->AttributesTotal();
+
+  for (short i=0; i<total; i++)
+  {
+    if (mpTableRecord->mpValues[i] != rec.mpTableRecord->mpValues[i])
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+bool Record::operator!=(const Record& rec) const
+{
+  if (*this == rec) return FALSE;
+  else              return TRUE;
+}
+
+bool Record::operator==(Record& rec)
+{
+  if (this == &rec) return TRUE;
+
+  bool result = (*this == rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator!=(Record& rec)
+{
+  if (this == &rec) return FALSE;
+
+  bool result = (*this != rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator>=(Record& rec)
+{
+  if (this == &rec) return TRUE;
+
+  bool result = (*this >= rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator>(Record& rec)
+{
+  if (this == &rec) return TRUE;
+
+  bool result = (*this > rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator<=(Record& rec)
+{
+  if (this == &rec) return TRUE;
+
+  bool result = (*this <= rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator<(Record& rec)
+{
+  if (this == &rec) return TRUE;
+
+  bool result = (*this < rec.mpTableRecord->mpValues[rec.mpAttribute->PositionGet()]);
+
+  rec.mpAttribute = 0;
+
+  return result;
+}
+
+bool Record::operator==(const Value& val)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(const Value& val)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(const Value& val)
+{
+  bool compare;
+
+  assert(mpAttribute);
+  
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(const Value& val)
+{
+  bool compare;
+
+  assert (mpAttribute);
+  
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(const Value& val)
+{
+  bool compare;
+
+  assert (mpAttribute);
+  
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(const Value& val)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < val);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator+=(const Value& val)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] += val;
+
+  mpAttribute = 0;
+
+  return TRUE; // TBD: Maybe return overflow instead
+}
+
+bool Record::operator-=(const Value& val)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] -= val;
+
+  mpAttribute = 0;
+
+  return TRUE; // TBD: Maybe return underflow instead
+}
+
+bool Record::operator==(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(int i)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < i);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator+=(int i)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] += i;
+
+  mpAttribute = 0;
+
+  return TRUE;
+}
+
+bool Record::operator-=(int i)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] -= i;
+
+  mpAttribute = 0;
+
+  return TRUE;
+}
+
+bool Record::operator==(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(unsigned u)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < u);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator+=(unsigned u)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] += u;
+
+  mpAttribute = 0;
+
+  return TRUE; // TBD: maybe return overflow instead
+}
+
+bool Record::operator-=(unsigned u)
+{
+  assert(mpAttribute);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()] -= u;
+
+  mpAttribute = 0;
+
+  return TRUE; // TBD: maybe return underflow instead
+}
+
+bool Record::operator==(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator==(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(const char* s)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < s);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator==(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] != b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>=(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] >= b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator>(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] > b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<=(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] <= b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator<(const Bit& b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] < b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator==(void* ptr)
+{
+  bool compare;
+
+  assert(mpAttribute);
+  
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == ptr);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(void* ptr)
+{
+  if (*this == ptr) return FALSE;
+  else              return TRUE;
+}
+
+bool Record::operator==(bool b)
+{
+  bool compare;
+
+  assert(mpAttribute);
+  
+  compare = (mpTableRecord->mpValues[mpAttribute->PositionGet()] == b);
+
+  mpAttribute = 0;
+
+  return compare;
+}
+
+bool Record::operator!=(bool b)
+{
+  if (*this == b) return FALSE;
+  else            return TRUE;
+}
+
+bool Record::operator!()
+{
+  bool flag;
+
+  flag = ! mpTableRecord->mpValues[mpAttribute->PositionGet()];
+
+  mpAttribute = 0;
+
+  return flag;
+}
+
+bool Record::operator=(const Value& val)
+{
+  bool ret = TRUE;
+
+  assert (mpAttribute);
+
+  // If the record belongs to a view then changing an attribute is done as a
+  // transaction, otherwise, if it is a brand new record we can immediately
+  // set the values.
+  if (mAllowValUpdBeforeCommit
+  ||  (mpView==0 || (mpView->mRecPermission|eRecPerm_OwnerAll)==eRecPerm_OwnerAll))
+  {
+    mpTableRecord->mpValues[mpAttribute->PositionGet()] = val;
+    ret = TRUE;
+  }
+  else
+    ret = mpView->TranRecordModify(this, mpAttribute, val);
+
+  mpAttribute = 0;
+
+  return ret;
+}
+
+bool Record::operator=(const char* str)
+{
+  Value v; M_Constructed(Value);
+
+  v = str;
+
+  return (*this) = v;
+}
+
+bool Record::operator=(void* vd)
+{
+  bool ret = TRUE;
+
+  assert (mpAttribute);
+
+  if (mAllowValUpdBeforeCommit || mpView==0) {
+    mpTableRecord->mpValues[mpAttribute->PositionGet()] = vd;
+
+    ret = TRUE;
+  }
+  else {
+    Value val(vd); M_Constructed(Value);
+
+    ret = mpView->TranRecordModify(this, mpAttribute, val);
+  }
+
+  mpAttribute = 0;
+
+  return ret;
+}
+
+bool Record::operator=(unsigned u)
+{
+  bool ret = TRUE;
+
+  assert (mpAttribute);
+
+  if (mAllowValUpdBeforeCommit || mpView==0) {
+    mpTableRecord->mpValues[mpAttribute->PositionGet()] = u;
+
+    ret = TRUE;
+  }
+  else {
+    Value val(u); M_Constructed(Value);
+
+    ret = mpView->TranRecordModify(this, mpAttribute, val);
+  }
+
+  mpAttribute = 0;
+
+  return ret;
+}
+
+bool Record::operator=(Bit& bit)
+{
+  bool ret = TRUE;
+
+  assert (mpAttribute);
+
+  if (mAllowValUpdBeforeCommit || mpView==0) {
+    mpTableRecord->mpValues[mpAttribute->PositionGet()] = bit;
+
+    ret = TRUE;
+  }
+  else {
+    Value val(bit); M_Constructed(Value);
+
+    ret = mpView->TranRecordModify(this, mpAttribute, val);
+  }
+
+  mpAttribute = 0;
+
+  return ret;
+}
+
+void Record::Print()
+{
+  short total = mpView->AttributesTotal();
+
+  return Print(total);
+}
+
+void Record::Print(short total)
+{
+  for (short i=0; i<total; i++)
+  {
+    if (i==0) printf("< ");
+    
+    mpTableRecord->mpValues[i].Print();
+
+  //if      (i <  total-1) printf("%s", mpView->ValueSeparatorGet());
+    if      (i <  total-1) printf("%s", ">|<");
+    else if (i == total-1) printf(" >");
+  }
+
+  printf("\n");
+}
+
+void Record::SetMsbLsb(short msb, short lsb)
+{
+  assert(mpAttribute->ValueType() == eValueBit);
+
+  mpTableRecord->mpValues[mpAttribute->PositionGet()].SetMsbLsb(msb, lsb);
+
+  // Do not clear mpAttribute as this is an intermediate
+  // function before mpAttribute is consumed.
+}
+
+void Record::ValueCopyGet(const Attribute* attr, Value &value)
+{
+  value = mpTableRecord->mpValues[attr->PositionGet()];
+}
+
+void Record::ValueCopyGet(short pos, Value &value)
+{
+  value = mpTableRecord->mpValues[pos];
+}
+
+void Record::ValueCopyGet(const Attribute* attr, Bit &bit)
+{
+  mpTableRecord->mpValues[attr->PositionGet()].ValueCopyGet(bit);
+}
+
+void Record::ValueCopyGet(short pos, Bit &bit)
+{
+  mpTableRecord->mpValues[pos].ValueCopyGet(bit);
+}
+
+void* Record::GetValueAsPointer(const Attribute* attr)
+{
+  assert (attr->ValueType() == eValueVoidPtr);
+
+  return (void*)(mpTableRecord->mpValues[attr->PositionGet()]);
+}
+
+unsigned Record::GetValueAsUnsigned(const Attribute* attr)
+{
+  assert (attr->ValueType() == eValueUnsigned);
+
+  return (unsigned)(mpTableRecord->mpValues[attr->PositionGet()]);
+}
+
+// Gived problems in Interface class.
+//Record::operator unsigned()
+//{
+//  assert(mpAttribute);
+//
+//  return (unsigned)(mpTableRecord->mpValues[mpAttribute->PositionGet()]);
+//}
+
+bool Record::ViewSet(View* v)
+{
+  if (mpView == 0) { mpView = v; return TRUE;  }
+  else             {             return FALSE; } // view already set
+}
+
+
+// End
+@
+
+
+1.7
+log
+@1. Removed Match(query) and Match(condition), this is all hanlded by
+   Query now.
+2. Added ValueGet(const Attribute*).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d76 1
+a76 1
+  return &(mpTableRecord->mpValues[mpAttribute->PositionGet()]);
+@
+
+
+1.6
+log
+@1. The reference count update for mpTableRecord needs to be in Record
+   constructor/destructor.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+a60 55
+bool Record::Match(Query* q)
+{
+  if (q == 0) return TRUE;
+
+  BucketList<Condition> & cbl = q->mConditionBktList;
+
+  if (!cbl.BktSetPosition(ePositionFirst)) {
+    // If query is empty then there are no conditions
+    // and the record is defined to always match.
+    return TRUE;
+  }
+
+  // We have a match IF the conditions within ANY bucket are ALL true
+  for (cbl.BktSetPosition(ePositionFirst); !cbl.BktDone(); cbl.BktSetPosition(ePositionNext))
+  {
+    // Process the 'and' condition, break as soon as there is no match.
+    for (cbl.SetLinkPosition(ePositionFirst); !cbl.LinkDone(); cbl.SetLinkPosition(ePositionNext))
+    {
+      Condition* c = cbl.Get();
+
+      // TBD: Will check for RecordReference here and find the referred to record.
+
+      if (Match(*c)) continue;
+      else           break;
+    }
+
+    // Check how we broke out of the previous loop.
+    // If all conditions in the 'and' term matched then we are done,
+    // else, move on to the next bucket to check for 'or' condititions.
+    if (cbl.LinkDone()) return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool Record::Match(Condition &c)
+{
+  if (gDbg) {
+    char buf1[MAX_RECORD_LINE_LENGTH+1];
+    char buf2[MAX_RECORD_LINE_LENGTH+1];
+
+    (mpTableRecord->mpValues[(c.AttributeGet()).PositionGet()]).Save(buf1);
+    (c.ValueGet()).Save(buf2);
+
+  //Print();
+  //printf("Checking %s %s %s\n", buf1, Enum2Str(OperatorNV, c.Operator()), buf2);
+  }
+
+  if (c.AttributeGet().ValueType()==eValueBit && c.BitWidthSet()) {
+    SetMsbLsb(c.GetMsb(), c.GetLsb());
+  }
+
+  return c.Evaluate(this);
+}
+
+d74 5
+@
+
+
+1.5
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d49 2
+d56 1
+a56 2
+//if (mpTableRecord->ReferenceCountDecrement() == 0)
+//  delete mpTableRecord;
+@
+
+
+1.4
+log
+@1.  Add prefix 'Tran' for those record related functions that use transactions.
+2.  Removed member mAttributePosition since we have mpAttribute which includes
+    that info.
+3.  Added 'negation operator, !'.
+4.  Removed Save() and Load(), this functionality is better suited in Table.
+5.  Replaced eBoolean with bool.
+6.  Renamed mView to correct name mpView.
+7.  Split Record into Record and TableRecord. Each Record refers to a
+    TableRecord and that keeps the actual content and maintains the reference
+    count.
+8.  Removed 'view' as a constructor argument, can now create Records without a
+    view and set it later.
+    TableRecord by Tables.
+9.  Fixed Match(Query&), had extra 'next bucket' in the search loop.
+10. Added 'const' wherever possible to functions and args.
+11. Removed Reference Counting, that is now done in TableRecord.
+12. Implemented comparison operators for int, unsigned, char*, const char*
+    and Bit..
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d14 1
+a14 1
+#include "DefinesAndEnum.h"
+d54 2
+a55 2
+  // CONT: Currently mpTableRecord is deleted in the Table class as
+  //       one TableRecord can be shared across multiple Records.
+d171 1
+a171 1
+  // CONT: Check if record[attr] = value; should always use db transaction.
+d1014 1
+@
+
+
+1.3
+log
+@1. Values in Record are now indexed by an Attribute object (instead of
+   short position, or const char* attribute_name.2. Implemented ValueGetCopy(Attribute *const attr, Value &val).
+3. Moved Condition evaluation to Condition::Evaluate() instead of checking
+   it here (in Match() ).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d11 1
+a11 2
+#include "Global.h"
+#include "DefinesAndEnum.h"
+a12 1
+#include "Query.h"
+d14 1
+d16 3
+d21 1
+a21 1
+static int gDbg = TRUE;
+d26 1
+d28 5
+a32 6
+Record::Record(View* view) :
+  mValues              (0),
+  mView                (view),
+  mAttributePosition   (eAttrPositionInvalid),
+  mAttribute           (0),
+  mReferenceCount      (0)
+d34 1
+a34 1
+  assert(mView);
+d36 1
+a36 2
+  if (view) {
+    short total_attr = mView->AttributesTotal();
+d38 1
+a38 2
+    if (total_attr) mValues = new Value [total_attr];
+  }
+d41 5
+a45 6
+Record::Record(Record& rec) :
+  mValues            (0),
+  mView              (rec.mView),
+  mAttributePosition (rec.mAttributePosition),
+  mAttribute         (rec.mAttribute),
+  mReferenceCount    (0)
+d47 1
+a47 2
+  if (rec.mValues) {
+    short total_attr = mView->AttributesTotal();
+d49 1
+a49 8
+    if (total_attr) {
+      mValues = new Value [total_attr];
+
+      for (short i=0; i<total_attr; i++) {
+        mValues[i] = rec.mValues[i];
+      }
+    }
+  }
+d54 4
+a57 3
+  if (mValues) {
+    delete [] mValues; mValues = 0;
+  }
+d60 1
+a60 1
+eBoolean Record::Match(Query* q)
+d68 1
+a68 1
+    // and the record is defined to  always match.
+d80 2
+d87 3
+a89 4
+    // If all conditions in the 'and' term matched then we are done
+    // Else, check for any 'or' condititions (in next bucket).
+    if (cbl.LinkDone())                    return TRUE;
+    if (cbl.BktSetPosition(ePositionNext)) continue;
+d95 1
+a95 1
+eBoolean Record::Match(Condition &c)
+d97 3
+a99 1
+  Value& rec_value = (*this)[c.mAttribute].ValueGet();
+d101 2
+a102 4
+  if (gDbg)
+  {
+    printf("Comparing Record::Query value, Operand value for operator '%s'\n",
+     "TBD"/*Enum2Str(OperatorNV, c.Operator())*/);
+d104 2
+a105 4
+    c.ValueGet() >> stdout;
+    printf("\n");
+    rec_value    >> stdout;
+    printf("\n");
+d108 3
+a110 2
+  if (rec_value.Type()==eValueBit && c.BitWidthSet())
+    rec_value.SetMsbLsb(c.GetMsb(), c.GetLsb());
+d112 1
+a112 1
+  return c.Evaluate(rec_value);
+d115 1
+a115 1
+eBoolean Record::ValueSet(Attribute *const attr, Value &val)
+d123 1
+a123 1
+  mValues[p] = val;
+d128 1
+a128 1
+Record& Record::operator[](Attribute *const attr)
+d132 1
+a132 2
+  mAttributePosition = attr->PositionGet();
+  mAttribute         = attr;
+d137 1
+a137 1
+eBoolean Record::Read(FILE* fp)
+d139 4
+a142 1
+  char buf[MAX_RECORD_LENGTH+1];
+d144 13
+a156 2
+/*
+  if (fp == 0) return FALSE;
+d158 19
+a176 2
+  char* s = fgets(buf, MAX_RECORD_LENGTH, fp);
+  if (s == NULL) return FALSE;
+d178 2
+a179 2
+  char* ptr = buf;
+  char* nptr;
+d181 3
+a183 1
+  short total = mView->AttributesTotal();
+d187 134
+a320 3
+    nptr = strstr(ptr, mView->ValueSeparatorGet());
+    if (!nptr) return TRUE;
+    *nptr = '\0';
+d322 3
+a324 1
+    mValues[i].Set(mView->AttributeType(i), ptr);
+d326 75
+a400 4
+    if (i < total-1)
+      ptr = nptr + strlen(mView->ValueSeparatorGet());
+  }
+*/
+d402 1
+a402 1
+  return FALSE;
+d405 1
+a405 1
+eBoolean Record::Save(FILE* fp)
+d407 3
+a409 1
+  short total_attr = mView->AttributesTotal();
+d411 1
+a411 3
+  if (fp) {
+    for (short i=0; i<total_attr; i++) {
+      mValues[i] >> fp;
+d413 1
+a413 5
+      if (i < total_attr-1) fprintf(fp, "%s", mView->ValueSeparatorGet());
+    }
+  }
+  else
+    return FALSE;
+d415 1
+a415 1
+  return TRUE;
+d418 12
+a429 13
+// TBD: Revisit this once we have sorted records logic back again.
+//eCompare Record::Compare(Record& rec)
+//{
+//  short pos = mView->sortAttributePos;
+//
+//  // If the sort pos is invalid return eCompareEqual
+//  if (pos == eMaxAttributes) {
+//    assert(0);
+//    return eCompareNotEqual;
+//  }
+//
+//  return (mValues[pos].Compare(rec.mValues[pos]));
+//}
+d431 1
+a431 1
+Record& Record::operator=(Record& rec)
+d433 1
+a433 1
+  if (mValues) { delete [] mValues; mValues = 0; }
+d435 1
+a435 2
+  mView                = rec.mView;
+  mAttributePosition   = rec.mAttributePosition;
+d437 1
+a437 2
+  if (rec.mValues) {
+    short total_attr = mView->AttributesTotal();
+d439 1
+a439 2
+    if (total_attr) {
+      mValues = new Value [total_attr];
+d441 1
+a441 5
+      for (short i=0; i<total_attr; i++) {
+        mValues[i] = rec.mValues[i];
+      }
+    }
+  }
+d444 1
+a444 1
+eBoolean Record::operator==(Record& rec)
+d446 3
+a448 1
+  short total = mView->AttributesTotal();
+d450 1
+a450 5
+  for (short i=0; i<total; i++)
+  {
+    if (mValues[i] != rec.mValues[i])
+      return FALSE;
+  }
+d455 1
+a455 1
+eBoolean Record::operator!=(Record& rec)
+d457 5
+a461 2
+  if (*this == rec)
+    return FALSE;
+d466 66
+a531 1
+eBoolean Record::operator==(Value& val)
+d533 1
+a533 1
+  eBoolean compare;
+d535 1
+a535 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d537 1
+a537 1
+  compare = (mValues[mAttributePosition] == val);
+d539 1
+a539 1
+  mAttributePosition = eAttrPositionInvalid;
+d544 23
+a566 1
+eBoolean Record::operator!=(Value& val)
+d568 1
+a568 1
+  eBoolean compare;
+d570 1
+a570 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d572 1
+a572 1
+  compare = (mValues[mAttributePosition] != val);
+d574 1
+a574 1
+  mAttributePosition = eAttrPositionInvalid;
+d579 1
+a579 1
+eBoolean Record::operator>=(Value& val)
+d581 1
+a581 1
+  eBoolean compare;
+d583 1
+a583 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d585 1
+a585 1
+  compare = (mValues[mAttributePosition] >= val);
+d587 1
+a587 1
+  mAttributePosition = eAttrPositionInvalid;
+d592 1
+a592 1
+eBoolean Record::operator>(Value& val)
+d594 1
+a594 1
+  eBoolean compare;
+d596 1
+a596 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d598 1
+a598 1
+  compare = (mValues[mAttributePosition] > val);
+d600 1
+a600 1
+  mAttributePosition = eAttrPositionInvalid;
+d605 1
+a605 1
+eBoolean Record::operator<=(Value& val)
+d607 1
+a607 1
+  eBoolean compare;
+d609 1
+a609 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d611 1
+a611 1
+  compare = (mValues[mAttributePosition] <= val);
+d613 1
+a613 1
+  mAttributePosition = eAttrPositionInvalid;
+d618 1
+a618 1
+eBoolean Record::operator<(Value& val)
+d620 1
+a620 1
+  eBoolean compare;
+d622 1
+a622 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d624 1
+a624 1
+  compare = (mValues[mAttributePosition] < val);
+d626 1
+a626 1
+  mAttributePosition = eAttrPositionInvalid;
+d631 1
+a631 1
+eBoolean Record::operator=(Value& val)
+d633 1
+a633 1
+  eBoolean ret = FALSE;
+d635 1
+a635 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d637 296
+a932 2
+  // If the record does not belong to a view it is updated
+  // immediately, otherwise, it is updated once it is committed.
+a933 2
+  if (!mView) {
+    mValues[mAttributePosition] = val;
+d937 3
+a939 1
+    ret = mView->RecordModify(this, mAttribute, val);
+d942 1
+a942 1
+  mAttributePosition = eAttrPositionInvalid;
+d949 1
+a949 1
+  short total = mView->AttributesTotal();
+d951 5
+d960 1
+a960 1
+    mValues[i] >> stdout;
+d962 2
+a963 1
+    if      (i <  total-1) printf("%s", mView->ValueSeparatorGet());
+d970 1
+a970 1
+short Record::ReferenceCountGet()
+d972 6
+a977 1
+  return mReferenceCount;
+d980 1
+a980 1
+short Record::ReferenceCountIncrement()
+d982 2
+a983 5
+  // Reference counting only makes sense if record belongs to a view.
+  if (mView) {
+    if (mReferenceCount != SHRT_MAX) mReferenceCount++;
+    else                             assert(0);
+  }
+d985 3
+a987 1
+  return mReferenceCount;
+d990 1
+a990 1
+short Record::ReferenceCountDecrement()
+d992 2
+a993 5
+  // Reference counting only makes sense if record belongs to a view.
+  if (mView) {
+    if (mReferenceCount != 0) mReferenceCount--;
+    else                      assert(0);
+  }
+d995 3
+a997 1
+  return mReferenceCount;
+d1000 1
+a1000 1
+void Record::ValueCopyGet(Attribute *const attr, Value &value)
+d1002 1
+a1002 1
+  value = mValues[attr->PositionGet()];
+d1004 1
+a1004 1
+  mAttributePosition = eAttrPositionInvalid;
+d1007 1
+a1007 1
+Value& Record::ValueGet()
+d1009 1
+a1009 1
+  assert(mAttributePosition != eAttrPositionInvalid);
+d1011 2
+a1012 1
+  mAttributePosition = eAttrPositionInvalid;
+d1014 6
+a1019 2
+  return mValues[mAttributePosition];
+}
+d1021 1
+a1021 1
+eBoolean Record::ViewSet(View* v)
+d1023 2
+a1024 2
+  if (mView == 0) { mView = v; return TRUE;  }
+  else            { assert(0); return FALSE; } // view already set
+@
+
+
+1.2
+log
+@1. Record constructor now using View instead of Table.
+2. Record class now using Condition instead of Query.
+3. Removed operator<<(Value), values are now set using database transactions.
+4. Can no longer retrieve Value references (record permission now implemented),
+   instead, separate functions have been added to modify the Record values or
+   compare them (GetValue() is now private).
+5. Can no longer set Record values directly using the overload assignment
+   operators for ushort, int etc. For now only Value assignment is allowed
+   and is implemented via a database transaction.
+6. Added function ViewSet(View*).
+7. Implemented Reference counting.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d8 3
+a15 1
+//#include "Table.h"
+a17 1
+#include "Record.h"
+d19 1
+a19 2
+const  char* gValueSeparator = " >|< ";
+static int   gDbg            = TRUE;
+d26 5
+a30 5
+  mValues         (0),
+  mView           (view),
+  mAttrPosition   (eAttrPositionInvalid),
+  mReferenceCount (0),
+  mRecordMarkedForDeletion(FALSE)
+d32 1
+a32 1
+  assert(view);
+d35 1
+a35 1
+    short total_attr = view->AttributesTotal();
+d42 5
+a46 5
+  mValues         (0),
+  mView           (rec.mView),
+  mAttrPosition   (rec.mAttrPosition),
+  mReferenceCount (0),
+  mRecordMarkedForDeletion(FALSE)
+d74 5
+a78 3
+  // If query is empty then there are not conditions
+  // and the record is defined to  always match.
+  if (!cbl.BktSetPosition(ePositionFirst)) return TRUE;
+d104 1
+a104 1
+  Value& rec_value = (*this)[c.Attribute()].GetValue();
+d111 1
+a111 1
+    c.GetValue() >> stdout;
+d120 1
+a120 21
+  switch (c.Operator())
+  {
+  case eNoOperator:
+    return FALSE;
+  case eLessThan:
+    return (rec_value < c.GetValue());
+  case eGreaterThan:
+    return (rec_value > c.GetValue());
+  case eEqualTo:
+    return (rec_value == c.GetValue());
+  case eNotEqualTo:
+    return (rec_value != c.GetValue());
+  case eGreaterThanOrEqualTo:
+    return (rec_value >= c.GetValue());
+  case eLessThanOrEqualTo:
+    return (rec_value <= c.GetValue());
+  default:
+    return FALSE;
+  }
+
+  return FALSE;
+d123 1
+a123 1
+eBoolean Record::Set(const char* attrib, Value& val)
+d125 1
+a125 1
+  short p = mView->AttributesPosition(attrib);
+d136 1
+a136 1
+Record& Record::operator[](short index)
+d138 1
+a138 2
+  if (index < mView->AttributesTotal()) mAttrPosition = index;
+  else                                  assert(0);
+d140 2
+a141 9
+  return *this;
+}
+
+Record& Record::operator[](const char* attr)
+{
+  short p = mView->AttributesPosition(attr);
+
+  if (p < mView->AttributesTotal()) mAttrPosition = p;
+  else                              assert(0);
+d163 1
+a163 1
+    nptr = strstr(ptr, gValueSeparator);
+d170 1
+a170 1
+      ptr = nptr + strlen(gValueSeparator);
+d185 1
+a185 1
+      if (i < total_attr-1) fprintf(fp, "%s", gValueSeparator);
+d212 2
+a213 2
+  mView           = rec.mView;
+  mAttrPosition   = rec.mAttrPosition;
+d253 1
+a253 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d255 1
+a255 1
+  compare = (mValues[mAttrPosition] == val);
+d257 1
+a257 1
+  mAttrPosition = eAttrPositionInvalid;
+d266 1
+a266 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d268 1
+a268 1
+  compare = (mValues[mAttrPosition] != val);
+d270 1
+a270 1
+  mAttrPosition = eAttrPositionInvalid;
+d279 1
+a279 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d281 1
+a281 1
+  compare = (mValues[mAttrPosition] >= val);
+d283 1
+a283 1
+  mAttrPosition = eAttrPositionInvalid;
+d292 1
+a292 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d294 1
+a294 1
+  compare = (mValues[mAttrPosition] > val);
+d296 1
+a296 1
+  mAttrPosition = eAttrPositionInvalid;
+d305 1
+a305 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d307 1
+a307 1
+  compare = (mValues[mAttrPosition] <= val);
+d309 1
+a309 1
+  mAttrPosition = eAttrPositionInvalid;
+d318 1
+a318 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d320 1
+a320 1
+  compare = (mValues[mAttrPosition] < val);
+d322 1
+a322 1
+  mAttrPosition = eAttrPositionInvalid;
+d331 1
+a331 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d337 1
+a337 1
+    mValues[mAttrPosition] = val;
+d341 1
+a341 1
+    ret = mView->RecordModify(this, mAttrPosition, val);
+d344 1
+a344 1
+  mAttrPosition = eAttrPositionInvalid;
+d359 1
+a359 1
+    if      (i <  total-1) printf("%s", gValueSeparator);
+d393 1
+a393 1
+Value& Record::GetValue()
+d395 10
+a404 1
+  assert(mAttrPosition != eAttrPositionInvalid);
+d406 1
+a406 1
+  return mValues[mAttrPosition];
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d4 1
+d6 1
+d9 1
+a9 1
+#include "Database.h"
+d12 2
+a13 1
+#include "Table.h"
+d18 4
+a21 2
+const char* gValueSeparator = " >|< ";
+static int gDbg = FALSE;
+d25 6
+a30 8
+Value ErrorValue;
+
+Record::Record(Table* tt) :
+  valid(TRUE),
+  table(tt),
+  values(0),
+  size(0),
+  current(0)
+d32 1
+a32 1
+  if (table == 0) return;
+d34 2
+a35 2
+  size   = table->TotalAttributes();
+  values = new Value [size];
+d37 2
+a38 2
+  for (short i=0; i<size; i++)
+    values[i].Set(table->AttributeType(i), "");
+d41 6
+a46 1
+Record::Record(Record& rec)
+d48 2
+a49 4
+  valid   = rec.valid;
+  table   = rec.table;
+  size    = rec.size;
+  current = rec.current;
+d51 2
+a52 1
+  values = new Value [size];
+d54 5
+a58 2
+  for (short i=0; i<size; i++)
+    values[i] = rec.values[i];
+d63 3
+a65 2
+  if (values)
+    delete [] values;
+d68 1
+a68 1
+eBoolean Record::Match(Query& q)
+d70 3
+a72 1
+  BucketList<Query> & ql = q.qBucketList;
+d74 6
+a79 2
+  // ql size=0 for leaf queries, ql size=1 for single queries.
+  if (ql.TotalElems()==0 || ql.TotalElems()==1)
+d81 2
+a82 2
+    eBoolean bb =  Evaluate(q);
+    if (gDbg)
+d84 4
+a87 2
+      if (bb) printf("Evaluate==TRUE\n");
+      else printf("Evalute==FALSE\n");
+a88 10
+    return bb;
+  }
+  else
+  {
+    for (ql.BktSetPosition(ePositionFirst); !ql.BktDone(); ql.BktSetPosition(ePositionNext))
+    {
+      // Process the 'and' condition, break as soon as there is no match.
+      for (ql.SetLinkPosition(ePositionFirst); !ql.LinkDone(); ql.SetLinkPosition(ePositionNext))
+      {
+        Query* q = ql.Get();
+d90 5
+a94 13
+        if (Match(*q)) continue;
+        else           break;
+      }
+
+      // Check how we broke out of the previous loop
+      if (ql.LinkDone())
+        return TRUE;  // 'AND' condition true, no need to check OR condition
+      else {
+        // Check for any 'or' conditions
+        if (ql.BktSetPosition(ePositionNext))
+          return Match(*ql.Get());
+      }
+    }
+d100 1
+a100 1
+eBoolean Record::Evaluate(Query &q)
+d102 1
+a102 1
+  Value& rec_value = (*this)[q.Attribute()];
+d106 7
+a112 2
+    printf("Comparing %s '%s' %s\n", (char*)rec_value,
+    Enum2Str(OperatorNV, q.Operator()), (char*)q.GetValue());
+d115 4
+a118 1
+  switch (q.Operator())
+d123 1
+a123 1
+    return (rec_value < q.GetValue());
+d125 1
+a125 1
+    return (rec_value > q.GetValue());
+d127 1
+a127 1
+    return (rec_value == q.GetValue());
+d129 1
+a129 1
+    return (rec_value != q.GetValue());
+d131 1
+a131 1
+    return (rec_value >= q.GetValue());
+d133 1
+a133 1
+    return (rec_value <= q.GetValue());
+d143 5
+a147 1
+  if (table == 0) return FALSE;
+d149 1
+a149 5
+  short p = table->Position(attrib);
+  if (val.Type() != table->AttributeType(p))
+    return valid = FALSE;
+  else
+    values[p] = val;
+d151 1
+a151 1
+  return FALSE;
+d154 1
+a154 2
+// Allows (easy to read code) insertion of Values
+Record& Record::operator<<(Value& val)
+d156 2
+a157 1
+  if (table == 0) return *this;
+d159 6
+a164 7
+  if (val.Type() != table->AttributeType(current))
+  {
+    valid = FALSE;
+    return *this;
+  }
+  else
+    values[current++] = val;
+d166 2
+a167 3
+  // Error if adding more values than size
+  if (current >= size)
+    current = 0;
+d172 1
+a172 1
+Value&  Record::operator[](short index) const
+d174 14
+a187 1
+  if (table == 0)
+d189 5
+a193 3
+    printf("Record initialized with Null table\n");
+    return ErrorValue;
+  }
+d195 2
+a196 6
+  if (index < size)
+    return values[index];
+  else
+  {
+    printf("Invalid Attribute Index %d for table %s\n",
+    index, table->Name());
+d198 1
+d200 1
+a200 1
+  return ErrorValue;
+d203 1
+a203 1
+Value& Record::operator[](const char* attrib) const
+d205 1
+a205 5
+  if (table == 0)
+  {
+    printf("Record initialized with Null table\n");
+    return ErrorValue;
+  }
+d207 3
+a209 1
+  short p = table->Position(attrib);
+d211 3
+a213 2
+  if (p < size)
+    return values[p];
+d215 1
+a215 4
+  {
+    printf("Invalid Attribute Name %s for table %s\n",
+    attrib, table->Name());
+  }
+d217 1
+a217 1
+  return ErrorValue;
+d220 15
+a234 1
+Record& Record::operator<<(short r)
+d236 4
+a239 1
+  Value v(r);
+d241 2
+a242 1
+  *this << v;
+d244 8
+a251 1
+  return *this;
+d254 1
+a254 1
+Record& Record::operator<<(unsigned short r)
+d256 1
+a256 1
+  Value v(r);
+d258 5
+a262 1
+  *this << v;
+d264 1
+a264 1
+  return *this;
+d267 1
+a267 1
+Record& Record::operator<<(int r)
+d269 2
+a270 1
+  Value v(r);
+d272 1
+a272 3
+  *this << v;
+
+  return *this;
+d275 1
+a275 1
+Record& Record::operator<<(unsigned int r)
+d277 5
+a281 1
+  Value v(r);
+d283 1
+a283 1
+  *this << v;
+d285 1
+a285 1
+  return *this;
+d288 1
+a288 1
+Record& Record::operator<<(char r)
+d290 3
+a292 1
+  Value v(r);
+d294 1
+a294 1
+  *this << v;
+d296 3
+a298 1
+  return *this;
+d301 1
+a301 1
+Record& Record::operator<<(char* r)
+d303 3
+a305 1
+  Value v(r);
+d307 1
+a307 1
+  *this << v;
+d309 3
+a311 1
+  return *this;
+d314 1
+a314 1
+Record& Record::operator<<(const char* r)
+d316 1
+a316 1
+  Value v(r);
+d318 1
+a318 1
+  *this << v;
+d320 5
+a324 1
+  return *this;
+d327 1
+a327 1
+eBoolean Record::Read(FILE* fp)
+d329 1
+a329 1
+  if (table == 0) return FALSE;
+d331 3
+a333 1
+  char buf[MAX_RECORD_LENGTH+1];
+d335 1
+a335 1
+  if (fp == 0) return FALSE;
+d337 2
+a338 2
+  char* s = fgets(buf, MAX_RECORD_LENGTH, fp);
+  if (s == NULL) return FALSE;
+d340 3
+a342 2
+  char* ptr = buf;
+  char* nptr;
+d344 1
+a344 5
+  for (short i=0; i<size; i++)
+  {
+    nptr = strstr(ptr, gValueSeparator);
+    if (!nptr) return TRUE;
+    *nptr = '\0';
+d346 1
+a346 1
+    values[i].Set(table->AttributeType(i), ptr);
+d348 1
+a348 3
+    if (i < size-1)
+      ptr = nptr + strlen(gValueSeparator);
+  }
+d350 1
+a350 1
+  return FALSE;
+d353 1
+a353 1
+eBoolean Record::Save(FILE* fp)
+d355 13
+a367 8
+  if (fp)
+  {
+    for (short i=0; i<size; i++)
+    {
+      values[i] >> fp;
+      if (i < size-1)
+        fprintf(fp, "%s", gValueSeparator);
+    }
+a368 2
+  else
+    return FALSE;
+d370 3
+a372 1
+  return TRUE;
+d375 1
+a375 1
+eCompare Record::Compare(Record& rec)
+d377 3
+a379 2
+  // Handle the case where 'table' is 0
+  if (table == 0 || rec.table == 0)
+d381 6
+a386 6
+    if (table==0 && rec.table==0)
+      return eCompareEqual;
+    else if (table==0 && rec.table!=0)
+      return eCompareLess;
+    else
+      return eCompareGreater;
+d389 2
+a390 1
+  short pos = table->sortAttributePos;
+d392 3
+a394 5
+  // If the sort pos is invalid return eCompareEqual
+  if (pos == eMaxAttributes)
+    return eCompareEqual;
+
+  return (values[pos].Compare(rec.values[pos]));
+d397 1
+a397 1
+Record& Record::operator=(Record& rec)
+d399 5
+a403 8
+  // If the records have a size 
+  // mismatch then do not assign
+  if (size != rec.size)
+    return *this;
+
+  current = rec.current;
+  valid = rec.valid;
+  table = rec.table;
+d405 1
+a405 4
+  for (short i=0; i<size; i++)
+    values[i] = rec.values[i];
+
+  return *this;
+d408 1
+a408 1
+eBoolean Record::operator==(Record& rec)
+d410 4
+a413 7
+  if (size != rec.size)
+    return FALSE;
+
+  for (short i=0; i<size; i++)
+  {
+    if (values[i] != rec.values[i])
+      return FALSE;
+d416 1
+a416 1
+  return TRUE;
+d419 1
+a419 1
+eBoolean Record::operator!=(Record& rec)
+d421 1
+a421 2
+  if (*this == rec)
+    return FALSE;
+d423 1
+a423 1
+  return TRUE;
+d426 1
+a426 1
+void Record::Print()
+d428 2
+a429 10
+  for (short i=0; i<size; i++)
+  {
+    if (i==0) printf("< ");
+    printf("%s", (char*)values[i]);
+    if (i < size-1)
+      printf("%s", gValueSeparator);
+    else if (i == size-1)
+      printf(" >");
+  }
+  printf("\n");
+d432 1
+@

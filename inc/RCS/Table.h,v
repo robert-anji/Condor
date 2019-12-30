@@ -1,0 +1,597 @@
+head	1.10;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.10; strict;
+comment	@ * @;
+
+
+1.10
+date	2011.12.20.17.28.33;	author robert;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.12.03.18.08.07;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.05.25.13.22.05;	author ranji;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.22.00.22.03;	author ranji;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.01.30.07.11.09;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.22.00.43.42;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.13.23.40;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.16.14.55.36;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.10
+log
+@Added Meta-Attributes to help track number of records and record pointer.
+@
+text
+@// $RCSfile: Table.h,v $
+// $Revision: 1.9 $
+
+#ifndef TableClass
+#define TableClass
+
+#include "List.h"
+#include "Database.h"
+#include "DBTables.h"
+#include "Value.h"    // needed for eValueType
+
+class Aggregate;
+class Attribute;
+class Query;
+class Process;
+class Record;
+class TableRecord;
+class Trigger;
+class View;
+
+// TBD: Move these structs to Table::private ?
+struct RecordsSelectedByView {
+  const View*        mpView;
+  List<Record>*      mpRecordList;
+};
+//
+struct ViewInfo {
+  ViewInfo(View* view, eRecordPermissionBits perm) : mpView(view), mViewRecPerm(perm) {}
+
+  View*                    mpView;
+  eRecordPermissionBits    mViewRecPerm;
+};
+
+// Remove these?
+#define MacroTableAttributesStart(TableName) TableAttributes Attributes##TableName[]
+#define MacroTableAttributes(TableName)      Attributes##TableName
+#define MacroTableAttributesEnd              { "",  eValueUnknown }
+
+class Table
+{
+  friend class Database;
+
+public:
+  // Constructors/Destructor:
+  // These are private, access is only by friend class Database.
+
+  // Add attributes, each table should have at least one attribute.
+  Attribute* AttributeAdd  (const char* attr_name, eValueType val_type, Value *null_val=0, short width=0);
+  bool       AttributesAdd (TableAttributes* attr);
+
+  // Utilities:
+  bool        Save  (const char* filename=0);
+  void        Print (char* attrib_name=0);
+  const char* Name  () const { return mpName; }
+
+  // The remaining functions are used from classes like Database and View,
+  // and the user should not normally invoke these directly.
+
+  // The most (and maybe only) important feature of a table
+  // is the concept and the usage of Views. These are defined
+  // in the functions below (all have a prefix of 'View').
+  //
+  View*    ViewCreate    (const char* view_name, eRecordPermissionBits perm);
+  bool     ViewEnable    (View* view, bool is_owner);
+  bool     ViewDelete    (View* view);
+  bool     ViewGroupAdd  (View* view_for_group, View* owner_view);
+  View*    ViewCreateCopy(const char* name, View* view) { return view; } // TBD
+
+  // Views can select records, obtain ownership/permission, then release them.
+  // The 'select' & 'permission' operations are kept separate for flexibility.
+  unsigned RecordsSelect     (const View* v, unsigned start, unsigned end);
+  unsigned RecordsSelect     (const View* v, Query* q);
+  // TBD: (next line)\
+  unsigned RecordsSelect     (const View* v, Regex* r); // upcoming feature
+  bool     RecordsUnselect   (View* v, Record* rec);
+  //
+  bool     RecordsImportSelected    (View *v);
+  bool     RecordImportFromTrigger  (Trigger *trigger);
+  //
+  bool     RecordAdd   (View* v, Record *rec);
+//bool     RecordDelete(View* v, Record *rec);
+//bool     RecordModify(View* v, Record *rec, const Attribute* attr, const Value &v);
+  //
+  bool     TranRecordAdd   (View* v, Record *rec);
+  bool     TranRecordDelete(View* v, Record *rec);
+  bool     TranRecordModify(View* v, Record *rec, const Attribute* attr, const Value &val);
+
+  const char* ValueSeparatorGet() { return ">|<"; }
+
+  // Attribute information.
+  const Attribute*   AttributeFind    (const char* attr_name);
+  const Attribute*   AttributeFind    (short index);
+  short              AttributesTotal  () const;
+  eValueType         AttributeType    (short position);
+
+  // Aggregate update needed when a record is shared by multiple views.
+  bool AggregatesUpdate(View* view, eAggregateUpdateReasonType rsn_type, Record *rec, const Attribute* mdfy_attr, Value *old_val);
+
+  // Triggers for Table records.
+  Trigger* TriggerNew(const char* trg_name, eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, View *v, Query *q, Record *rec);
+  // Triggers for Table aggregates.
+  Trigger* TriggerNew(eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, View *v, Aggregate *aggr, Query *q);
+  //
+  bool     TriggerActivate (Trigger* trg, TriggerActionFnPtr fn);
+  bool     TriggerActivate (Trigger* trg, Process* process);
+  bool     TriggerDelete   (Trigger *trg);
+
+  // Meta attributes that each table has.
+  Attribute* mpAttr_RecordPtr;
+  Attribute* mpAttr_RecordCount;
+
+  void PrintAttributeNames();
+private:
+  // Data
+  const char*            mpName;
+  Database*              mpDatabase;
+  int                    mTableOpenFlags;
+  eTableCommitMode       mTableCommitMode;
+  //
+  List<Attribute>        mAttributeList;
+  List<TableRecord>      mTableRecordList;
+  View*                  mpViewOwner; // only one owner, no list needed
+  List<View>             mViewListGroup;
+  eRecordPermissionBits  mViewOwnerRecPermission;
+  List<Trigger>          mTriggerNewList;
+  List<Trigger>          mTriggerRecordAddList;
+  List<Trigger>          mTriggerRecordDeleteList;
+  List<Trigger>          mTriggerRecordModifyList;
+  List<Trigger>          mTriggerAggregateList;
+
+  List<RecordsSelectedByView> mRecordListSelectedByViewList;
+  List<ViewInfo>              mViewInfoList;
+
+  // Functions:
+  Table(Database* db, const char* tbname, int flags=eTableOpenFlags_Default);
+  Table(Table& table);
+  ~Table();
+  //
+  bool     RecordsImportCheckPermission(View* view, eRecordPermissionBits perm);
+  //
+  bool     Read(int flags);
+  //
+  inline bool     IsOwnerView(const View* v) { if (mpViewOwner==v) return TRUE;
+                                               else                return FALSE; }
+  inline bool     IsGroupView(View* v) { if (mViewListGroup.Exists(v)) return TRUE;
+                                         else                          return FALSE; }
+};
+
+#endif
+
+// End
+@
+
+
+1.9
+log
+@Added PrintAttributeNames().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.8 $
+d108 4
+@
+
+
+1.8
+log
+@Added trigger name arg to TriggerNew(...).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d108 1
+@
+
+
+1.7
+log
+@1. Removed const from View* in ViewInfo as we needed to call non-const
+   function using mpView in ViewInfo.
+2. Added function to updated aggregates in other Views if common record
+   was modified.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d100 1
+a100 1
+  Trigger* TriggerNew(eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, View *v, Query *q, Record *rec);
+@
+
+
+1.6
+log
+@Added arg TriggerActionFnPtr arg to TriggerNew().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d28 1
+a28 1
+  ViewInfo(const View* view, eRecordPermissionBits perm) : mpView(view), mViewRecPerm(perm) {}
+d30 1
+a30 1
+  const View*              mpView;
+d96 3
+@
+
+
+1.5
+log
+@1. Moved friend declarations to the top of the class.
+2. Removed default arg value for is_owner in ViewEnable(), user must specify it.
+3. Renamed mRecordList to mTableRecordList.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d97 1
+a97 1
+  Trigger* TriggerNew(eTriggerType type, void *trg_owner_obj, View *v, Query *q, Record *rec);
+d99 1
+a99 1
+  Trigger* TriggerNew(eTriggerType type, void *trg_owner_obj, View *v, Aggregate *aggr, Query *q);
+@
+
+
+1.4
+log
+@1. Added AttributesAdd(), to permit multiple attributes to be added at once.
+2. Modified implementation to use TableRecord.
+3. Fixed member prefix (ie added 'mp' and 'm').
+4. Added functions: bool RecordsUnselect(View* v, Record* rec),
+                    const Attribute* AttributeFind(const char* attr_name),
+5. Table class now manages Triggers allocation, delete (for View class).
+6. Fixed member prefix (ie added 'mp' and 'm').
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d15 1
+a40 1
+public:
+d43 1
+d64 1
+a64 1
+  bool     ViewEnable    (View* view, bool is_owner=FALSE);
+d86 1
+a86 1
+  bool     TranRecordModify(View* v, Record *rec, const Attribute* attr, const Value &v);
+d96 1
+a96 2
+  /// Triggers for Table records.
+  /// Triggers for Table records.
+d113 1
+a113 1
+  List<TableRecord>      mRecordList;
+a138 1
+
+@
+
+
+1.3
+log
+@1. The Table class is now responsible to create Attribute objects using
+   new function: Attribute* AttributeAdd(name, value_type, null_value=0).
+   Therefore removed function: eBoolean AttributeAdd(Attribute *attr).
+2. View permissions are now set when the view is created instead of during
+   Import. This simplified and improved some logic. Also, if a view only
+   adds records it would never import and permissions would have to be set
+   some other way. Also, it allows us not to create a View in the first
+   place if it doesnt have the right permissions.
+3. To support the 'record add' trigger, added import via trigger using
+   function: eBoolean RecordsImportFromTrigger (Trigger *trigger).
+4. Need to use Attribute object wherever 'short attr_pos' was used.
+5. Added function: const char* ValueSeparatorGet().
+6. Added Trigger API: TriggerAdd(...), TriggerDelete(...).
+7. Removed mViewListOther and mViewListNew, they were not very useful.
+8. Added List<ViewInfo> to track view information.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d9 1
+d16 1
+d22 2
+a23 2
+  View          *mView;
+  List<Record>  *mRecordList;
+d27 1
+a27 1
+  ViewInfo(View *view, eRecordPermissionBits perm) : mView(view), mViewRecPerm(perm) {}
+d29 1
+a29 1
+  View                    *mView;
+d33 5
+d47 2
+a48 1
+  Attribute* AttributeAdd    (const char* attr_name, eValueType val_type, Value *null_val=0);
+d51 3
+a53 3
+  eBoolean    Save    (FILE* fp=0);
+  void        Print   (char* attrib_name=0);
+  const char* Name    () { return mName; }
+d61 1
+d63 4
+a66 5
+  eBoolean ViewEnable    (View* view, eBoolean is_owner=FALSE);
+  eBoolean ViewDelete    (View* view);
+  eBoolean ViewGroupAdd  (View* view_for_group, View* owner_view);
+  // TBD (next line)\
+  View*    ViewCreateCopy(const char* name, View* view);
+d70 2
+a71 2
+  unsigned RecordsSelect     (View* v, unsigned start, unsigned end);
+  unsigned RecordsSelect     (View* v, Query* q);
+d73 5
+a77 1
+  unsigned RecordsSelect     (View* v, Regex* r); // upcoming feature
+d79 3
+a81 2
+  eBoolean RecordsImportSelected    (View *v);
+  eBoolean RecordsImportFromTrigger (Trigger *trigger);
+d83 3
+a85 5
+  eBoolean TranRecordAdd         (View* v, Record *rec);
+  eBoolean TranRecordDelete      (View* v, Record *rec);
+  eBoolean TranRecordModify      (View* v, Record *rec, Attribute *const attr, Value &v);
+  // TBD (next line)\
+  eBoolean RecordsDynamicUpdate (View* v, Query* q, eRecordPermissionBits perm);
+d90 14
+a103 6
+  short        AttributesTotal();
+  eValueType   AttributeType(short position);
+
+  Trigger* TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, View *v, Query *q, Record *rec);
+  Trigger* TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, View *v, Aggregate *aggr, Query *q);
+  eBoolean TriggerDelete(Trigger *trg);
+d106 5
+a110 8
+  // Functions:
+  Table(Database* db, const char* tbname, eTableOpenFlags flags);
+  Table(Table& table);
+  ~Table();
+  //
+  eBoolean RecordsImportCheckPermission(View* view, eRecordPermissionBits perm);
+  //
+  eBoolean Read(eTableOpenFlags flags);
+a111 7
+  inline eBoolean IsOwnerView(View* v) { if (mViewOwner==v) return TRUE; else return FALSE; }
+  inline eBoolean IsGroupView(View* v) { if (mViewListGroup.Exists(v)) return TRUE; else return FALSE; }
+
+  // Data
+  const char            *mName;
+  Database              *mDatabase;
+  eTableOpenFlags        mTableOpenFlags;
+d113 2
+a114 2
+  List<Record>           mRecordList;
+  View                  *mViewOwner; // only one owner, no list needed
+d117 1
+d125 15
+@
+
+
+1.2
+log
+@Major changes made in this revision.
+1. Incorporated View functionality (~10 member functions).
+2. Made Table a friend of new class 'Database'.
+3. Table constructor requires 'Database' object.
+4. Removed 'query' functionality, this is moved to View.
+5. Replaced inclusion of header files with class declaration.
+6. Changed private members to use prefix 'm'.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d11 1
+d15 1
+d18 1
+d23 7
+d36 10
+a45 1
+  // Constructors/Destructor are private, access is by friend class Database.
+d47 2
+a48 3
+  // Add/Delete: attributes, records, entire table.
+  eBoolean AttributeAdd    (Attribute *attr);
+  eBoolean AttributeDelete (Attribute *attr);
+d53 2
+a54 1
+  View*    ViewCreate    (const char* view_name);
+d67 2
+a68 1
+  eBoolean RecordsImportSelected    (View* v, eRecordPermissionBits perm);
+d72 1
+a72 1
+  eBoolean TranRecordModify      (View* v, Record *rec, short attr_pos, Value &v);
+d76 1
+a76 3
+  eBoolean    Save    (FILE* fp=0);
+  void        Print   (char* attrib_name=0);
+  const char* Name    () { return mName; }
+a78 1
+  short        AttributesPosition(const char* attrib_name);
+d82 4
+d92 2
+d105 1
+a105 2
+  List<View>             mViewListNew;
+  List<View>             mViewListOther;
+a106 1
+  View                  *mViewOwner;
+d108 4
+d114 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+a6 4
+#include "Record.h"
+#include "Query.h"
+#include "Value.h"
+#include "Attribute.h"
+d8 12
+d24 1
+a24 4
+  /* All tables to have a name */
+  Table(const char* tbname);
+  Table(Table& table);
+  ~Table();
+d26 1
+a26 1
+  void DeleteRecords();
+d28 36
+a63 2
+  /* Delete the last retrieved record */
+  eBoolean DeleteRecord();
+d65 22
+a86 15
+  const char* Name() { return tableName; }
+
+  /* Add attributes to the table */
+  Table& operator<<(Attribute &val);
+
+  /* Add a records to the table */
+  Table& operator<<(Record &rec);
+  Table& operator<<(Table& tbl);
+
+  /* Copy contents from another table */
+  Table& operator=(Table& tbl);
+
+  /* Compare two tables */
+  eBoolean operator==(Table& tbl);
+  eBoolean operator!=(Table& tbl);
+d88 1
+a88 50
+  /* Record positioning */
+  eBoolean GoToRecord(short index);
+  short CurrentRecord() { return currentRecord; }
+
+  /* Retrieve records */
+  Record* NextRecord();
+  Record* GetRecord(short index);
+
+  /* Query operations */
+  short Size() { return records.Size(); }
+  Record* Search(Query &q, eSearchDirection sdir=eForward);
+  short Count(Query &q);
+  eBoolean Exists(Query& q);
+  short UniqueCount(const char* attrib_name);
+  void SubTable(Table& tbl, Query& q);
+  int Sum(const char* attrib_name);
+  int Max(const char* attrib_name);
+  int Min(const char* attrib_name);
+
+  /* Structure operations */
+  void Sort(const char* attrib_name);
+
+  /* Change operations */
+  eBoolean Reset(const char* attrib_name, Value& reset_val);
+
+  short Position(const char* attrib_name);
+  short TotalAttributes() { return attributes.Size(); }
+  eValueType AttributeType(short position);
+
+  eBoolean Save();
+  eBoolean Save(FILE* fp);
+
+  short sortAttributePos;
+
+  void Show();
+  void Print(char* attrib_name);
+
+private:
+  eBoolean IsValidIndex(short index);
+  eBoolean SaveDetails(FILE* fp);
+  eBoolean Read();
+
+  eBoolean modified;
+  eBoolean atFirstRecord;
+  eBoolean atLastRecord;
+
+  short currentRecord;
+  const char* tableName;
+  List<Attribute> attributes;
+  List<Record> records;
+@

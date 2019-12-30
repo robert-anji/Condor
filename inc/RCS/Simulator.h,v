@@ -1,0 +1,171 @@
+head	1.4;
+access;
+symbols;
+locks
+	robert:1.4; strict;
+comment	@ * @;
+
+
+1.4
+date	2011.12.20.17.27.33;	author robert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.21.23.19.09;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.36.16;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@Added seed that can be used for the Simulation.
+@
+text
+@// $RCSfile: Simulator.h,v $
+// $Revision: 1.3 $
+
+#ifndef SimulatorClass
+#define SimulatorClass
+
+#include "Global.h"
+#include "SimulatorDefines.h"
+#include "String.h"
+
+typedef unsigned SimulationTime;
+
+#include "List.h"
+#include "String.h"
+
+M_ExternConstructDestructCountInt;
+
+class Module;
+class Process;
+class Scheduler;
+
+struct SensitiveEdgeInfo {
+  SensitiveEdgeInfo() : mpProcess(0), mEdge(eSignalEdge_None)
+    { M_UpdConstructCount(eType_SensitiveEdgeInfo); }
+ ~SensitiveEdgeInfo()
+    { M_UpdDestructCount(eType_SensitiveEdgeInfo);  }
+
+  Process*    mpProcess;
+  String      mSignalName;
+  eSignalEdge mEdge;
+};
+
+class Simulator
+{
+public:
+  Simulator(unsigned seed=13);
+ ~Simulator();
+
+  unsigned SeedGet() { return mSeed; }
+
+  // Functions that simply pass-thru to the Scheduler:
+  void SimulationTimeMax(SimulationTime tm);
+  bool Start(Module* top_module);
+
+  // Query functions;
+  Module* ModuleTopGet() const { return mpModuleTop; }
+
+private:
+  String        mSimulatorVersion;
+  unsigned      mSeed;
+  Scheduler*    mpScheduler;
+  Module*       mpModuleTop;
+
+private:
+  bool ElaborateModule          (Module *top_module);
+  bool ElaborateModuleRecursive (Module *parent_module) const;
+};
+
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d36 1
+a36 1
+  Simulator();
+d39 2
+d50 1
+@
+
+
+1.2
+log
+@1. Moved SimulationTime and eTimeUnit (now eTimeScale) to DefinesAndEnum.h .
+2. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+3. Added structure SensitiveEdgeInfo.
+4. Moved Start() and SimulationTimeMax() from Scheduler to here.
+5. Scheduler is now a member of Simulator.
+6. Removed Build(), using ElaborateModule() instead.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a6 1
+#include "DefinesAndEnum.h"
+d8 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d7 4
+d13 2
+a14 7
+enum eTimeUnit {
+  eTimeUnit_s,
+  eTimeUnit_ms,
+  eTimeUnit_us,
+  eTimeUnit_ns,
+  eTimeUnit_ps
+};
+d16 1
+d18 3
+a20 2
+#include "List.h"
+#include "MyString.h"
+d22 10
+a31 1
+class Module;
+d37 1
+a37 1
+  ~Simulator();
+d39 3
+a41 1
+  bool Build();
+d48 1
+d50 4
+@

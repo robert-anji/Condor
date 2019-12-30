@@ -1,0 +1,110 @@
+head	1.2;
+access;
+symbols;
+locks
+	robert:1.2; strict;
+comment	@// @;
+
+
+1.2
+date	2011.12.20.17.33.05;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.39.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Use String.h instead of MyString.h .
+@
+text
+@// $RCSfile: Test.cc,v $
+// $Revision: 1.1 $
+
+#include <stdio.h>
+
+#include "String.h"
+#include "Attribute.h"
+#include "Bit.h"
+#include "Condition.h"
+#include "Database.h"
+#include "Process.h"
+#include "Record.h"
+#include "Table.h"
+#include "Query.h"
+#include "Value.h"
+#include "View.h"
+
+void test_bit_basic();
+
+int main(int argc, char* argv[])
+{
+  test_bit_basic();
+}
+
+void test_bit_basic()
+{
+  Bit    b1(7, 0);
+  Bit    b2(7, 0);
+  Bit    b3(7, 0);
+  Bit    b4(32, 0);
+  Bit    bb [10];
+  Bit    b;
+
+//Tested previously and copied from Condor.cc .
+//Bit b(9, 0);
+//b = 243;
+//b[0] = 0;
+//b[1] = 1;
+//if (b[0]) { printf("b[0] is set\n"); }
+//else      { printf("b[0] is not set\n"); }
+//b[0] = b[1].SelfCopy();
+//b.Print();
+
+  b = (unsigned)5;
+  b.Print(stdout);
+
+  b1 = 3;
+  b2 = 4;
+  b3 = 127;
+  b4[32][30] = 3;
+  b4.Print(stdout);
+  b4>>4;
+  b4.Print(stdout);
+  b4<<2;
+  b4.Print(stdout);
+
+  b1.Print(stdout);
+  b2.Print(stdout);
+  b3.Print(stdout);
+
+  b3[(short)7][(short)0] = b1 + b2;
+  b3.Print(stdout);
+  b3>>(short)2;
+  b3.Print(stdout);
+  b3<<(short)2;
+  b3.Print(stdout);
+}
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d6 1
+a6 1
+#include "MyString.h"
+d34 10
+@

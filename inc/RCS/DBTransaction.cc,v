@@ -1,0 +1,41 @@
+head	1.1;
+access;
+symbols
+	C1_80:1.1
+	C1_70:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2007.06.18.00.57.59;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@Base class for database transactions.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile$
+// $Revision$
+
+#include "DBTransaction.h"
+
+DBTransaction::DBTransaction(eDBTransactionOperation oper) :
+  mTransOper(oper)
+{
+}
+
+DBTransaction::~DBTransaction()
+{
+}
+
+// End
+@

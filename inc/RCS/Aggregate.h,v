@@ -1,0 +1,205 @@
+head	1.6;
+access;
+symbols
+	C1_80:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.6
+date	2011.08.21.22.43.35;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.06.26.15.30.03;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.05.19.11.46.04;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2009.07.19.15.58.26;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.07.14.12.49.01;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@1. Added friend function so that Condition can access the Aggregate Value.
+@
+text
+@// $RCSfile: Aggregate.h,v $
+// $Revision: 1.5 $
+
+#ifndef AggregateClass
+#define AggregateClass
+
+#include "Condition.h"
+#include "Global.h"
+#include "DBDefines.h"
+
+class Attribute;
+class Value;
+class View;
+
+class Aggregate
+{
+  friend Value* Condition::ValuePtrGet(const Aggregate* aggr) const;
+
+public:
+  Aggregate(View* view, eAggregateType type, const Attribute* attr);
+  ~Aggregate();
+
+  // Overloaded operators needed to convert Aggregates into queries on-the-fly.
+  #include "ConditionCreateOperators.h"
+
+  Value*   ValueGet()           const;
+  Value*   ValueRemainderGet()  const;
+  void     ValueReset();
+  void     ValueUpdate(eAggregateUpdateReasonType type, Value *changed_v, Value *old_v);
+
+  void     MakeSticky(bool sticky=TRUE) { mAggrIsSticky = sticky; }
+
+  const Attribute* AttributeGet() const { return mpAttribute; }
+
+private:
+  const Attribute*    mpAttribute;
+  eAggregateType      mAggregateType;
+  bool                mAggrIsSticky;
+  Value*              mpValue;
+  Value*              mpValueRemainder;// we use 'remainder' to avoid float
+  unsigned            mUpdateCount;    // number of values aggregate'd
+  View*               mpView;          // sometimes need access to view's recs.
+
+  // TBD: (next 2 lines) \
+  Query              *mpQuery; \
+  Regex              *mpRegex;
+};
+
+#endif
+
+// End
+@
+
+
+1.5
+log
+@Added ability to convert Aggregates into Conditions.
+For now just implemented on of the many overloaded functions to prove
+the concept.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d7 1
+a11 1
+class Condition;
+d17 2
+d26 1
+a26 2
+//Value*   ValueGet()           const;
+  const Value*   ValueGet()           const;
+@
+
+
+1.4
+log
+@Allow attributes to be sticky (no update on record delete).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d11 1
+d21 5
+a25 1
+  Value*   ValueGet()           const;
+@
+
+
+1.3
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d7 1
+d25 2
+d32 1
+@
+
+
+1.2
+log
+@1. Made some access functions const.
+2. Fixed incorrect variable prefix ('m' should be 'mp' for pointers).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 1
+a7 1
+#include "DefinesAndEnum.h"
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d16 1
+a16 1
+  Aggregate(View* view, Attribute *const attr, eAggregateType type);
+d19 2
+a20 2
+  Value*   ValueGet();
+  Value*   ValueRemainderGet();
+d22 1
+a22 1
+  void     ValueUpdate(eAggregateUpdateReasonType type, Value *changed_val, Value *old_val);
+d24 1
+a24 1
+  Attribute *const AttributeGet() { return mAttribute; }
+d27 1
+a27 1
+  Attribute *const    mAttribute;
+d29 2
+a30 2
+  Value              *mValue;
+  Value              *mValueRemainder; // we use 'remainder' to avoid float
+d32 2
+a33 1
+  View               *mView;           // sometimes need access to view's recs.
+d35 2
+a36 2
+  Query              *mQuery; \
+  Regex              *mRegex;
+@

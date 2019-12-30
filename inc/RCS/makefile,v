@@ -1,0 +1,453 @@
+head	1.9;
+access;
+symbols;
+locks
+	robert:1.9; strict;
+comment	@# @;
+
+
+1.9
+date	2011.12.20.17.31.22;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.12.07.16.49.57;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.12.04.02.04.19;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.09.19.16.36.46;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.02.06.18.46.22;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.30.18.24.25;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.22.20.35.38;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.22.20.17.43;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.04.23.00.34.44;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@This is the project specific makefile (formely makefile.proj).
+@
+
+
+1.9
+log
+@Added new objects to compile: PRNG.o and SeedHelper.o .
+@
+text
+@#-------------------------------------------------------------------------------
+# $RCSfile: makefile,v $
+# $Revision: 1.8 $
+#-------------------------------------------------------------------------------
+# README:
+# This is the project specific makefile.
+# It imports all common make variables from makefile.defines and redefines some
+# of them if necessary. Most importantly it builds all project specific targets.
+#
+#-------------------------------------------------------------------------------
+include make/makefile.defines
+#
+#-------------------------------------------------------------------------------
+# Project specific definitions that differ from default in makefile.defines .
+ADMIN_FILES      = notes.txt tbd.txt ideas.txt
+BACKUP_NETWORK   = /mnt/hgfs/Seagate_500/Backup/${PROJECT}
+CC               = g++
+PROJECT          = Condor
+PROJECTs         = condor
+#
+#-------------------------------------------------------------------------------
+# Additional compile flags and directives needed here.
+#
+# For profiling set PROF, recompile, execute ${TARGET} then do: gprof ${TARGET}
+#PROF       = -pg
+DEF        =  NoDef
+FLAGS      = -D${DEF} -D${PROJECT} -D${PLATFORM} ${PROF}
+MAIN_FLAGS = -DRELEASE=${RELEASE} -DPATCHES='${PATCHES}'
+#
+#-------------------------------------------------------------------------------
+# Include and Libraries:
+INCLUDE   = -I${INC} -I${SRC}
+LIBS      =
+#
+#-------------------------------------------------------------------------------
+# Object List:
+OBJS = \
+	$(OBJ)/Attribute.o \
+	$(OBJ)/Aggregate.o \
+	$(OBJ)/Bit.o       \
+	$(OBJ)/Condition.o \
+	$(OBJ)/Clock.o     \
+	$(OBJ)/Database.o  \
+	$(OBJ)/Event.o     \
+	$(OBJ)/EventFromTrigger.o      \
+	$(OBJ)/DBTables.o  \
+	$(OBJ)/DBTransaction.o         \
+	$(OBJ)/DBTransactionRec.o      \
+	$(OBJ)/DBTransactionRecValue.o \
+	$(OBJ)/Enum.o      \
+	$(OBJ)/Interface.o \
+	$(OBJ)/MailboxBase.o\
+	$(OBJ)/Module.o\
+	$(OBJ)/ModuleTop.o \
+	$(OBJ)/PRNG.o      \
+	$(OBJ)/Process.o   \
+	$(OBJ)/ProcessExecuteReason.o  \
+	$(OBJ)/Process_RW.o            \
+	$(OBJ)/Query.o     \
+	$(OBJ)/Record.o    \
+	$(OBJ)/Scheduler.o \
+	$(OBJ)/SeedHelper.o \
+	$(OBJ)/Semaphore.o \
+	$(OBJ)/Signal.o    \
+	$(OBJ)/Simulator.o \
+	$(OBJ)/String.o    \
+	$(OBJ)/Table.o     \
+	$(OBJ)/TableRecord.o           \
+	$(OBJ)/Timer.o     \
+	$(OBJ)/Trigger.o   \
+	$(OBJ)/Value.o     \
+	$(OBJ)/Vcd.o       \
+	$(OBJ)/ViewJoin.o  \
+	$(OBJ)/View.o
+#
+#-------------------------------------------------------------------------------
+# Convenience targets. First is ${TARGET} which 'make' will build by default.
+${TARGET}: ${BIN}/${TARGET}
+#
+#-------------------------------------------------------------------------------
+# Make Executable.
+${BIN}/${TARGET}: ${OBJS} ${TARGET_SRC}/${TARGET}.cc
+	$(CC) $(DBG) ${FLAGS} ${MAIN_FLAGS} -o ${BIN}/${TARGET} ${TARGET_SRC}/${TARGET}.cc \
+	${OBJS} $(INCLUDE) $(LIBS)
+#
+#-------------------------------------------------------------------------------
+# Other useful targets:
+#
+# Make objects up to date, do not create executable:
+objs: ${OBJS}
+#
+# Build a library useful for other projects import this projects functionality.
+Lib: ${BIN}/libvr.a
+#
+${BIN}/libvr.a: ${OBJS}
+	ar -rc ${BIN}/libvr.a ${OBJS}
+	ranlib ${BIN}/libvr.a
+#
+# Recreate the dependencies:
+depend:
+	@@ echo "Creating dependencies file ${MAKE_DIR}/${MAKEFILE_DEPEND}";
+	@@ \rm -f ${MAKE_DIR}/${MAKEFILE_DEPEND}
+	@@ echo "# This file is created automatically with: make depend" > ${MAKE_DIR}/${MAKEFILE_DEPEND}
+	@@ for file in `ls ${SRC}/*.cc`; \
+    do \
+      file_base=`echo $$file | sed -e "s/^.*\///" | sed -e "s/\..*//"`; \
+      gcc ${INCLUDE} -MT ${OBJ}/$$file_base.o -MM $$file >> ${MAKE_DIR}/${MAKEFILE_DEPEND}; \
+    done
+	@@ echo "Created ${MAKE_DIR}/${MAKEFILE_DEPEND}"
+#
+#-------------------------------------------------------------------------------
+# Rules for creating the .o targets.
+#
+$(OBJS): $(OBJ)/%.o: $(SRC)/%.cc
+	@@echo "$< $@@"
+	$(CC) $(DBG) ${FLAGS} -c $< -o $@@ $(INCLUDE)
+#
+#-------------------------------------------------------------------------------
+.PHONY: ${TARGET}
+#-------------------------------------------------------------------------------
+include ${MAKE_DIR}/${MAKEFILE_DEPEND}
+include ${MAKE_DIR}/${MAKEFILE_TOOLS}
+include tests/makefile.tests
+#
+#-------------------------------------------------------------------------------
+# End
+@
+
+
+1.8
+log
+@Renamed 'tests/makefile' to 'tests/makefile.tests'.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.7 $
+d55 1
+d62 1
+@
+
+
+1.7
+log
+@1. Added ${SRC} to INCLUDE path.
+2. Removed Mutex.o and added MailboxBase.o in OBJS.
+3. Moved test related rules to tests/makefile.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.6 $
+d121 1
+a121 1
+include tests/makefile
+@
+
+
+1.6
+log
+@1. Added objs: EventFromTrigger and ViewJoin.
+2. Removed separate String.o dependency for libvr, it is now part of OBJS.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.5 $
+d32 1
+a32 1
+INCLUDE   = -I${INC}
+d52 1
+a54 1
+	$(OBJ)/Mutex.o     \
+a73 4
+# Test list:
+TESTS = \
+        ${BIN}/TestBit
+#
+a96 3
+test_all: ${TESTS}
+	make TARGET=TestBit TARGET_SRC=tests
+#
+d121 1
+@
+
+
+1.5
+log
+@Added rule to compile tests.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.4 $
+d45 1
+d71 1
+d97 1
+a97 1
+${BIN}/libvr.a: ${OBJS} ${OBJ}/String.o
+@
+
+
+1.4
+log
+@1. Removed some obj's that were being compiled separately, no longer needed.
+2. Made cosmetic changes by adding/deleting # and adding trailing : for some
+   headings.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.3 $
+d72 4
+d99 3
+@
+
+
+1.3
+log
+@1. Needed to put ${TARGET} in the .PHONY list.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.2 $
+a5 1
+#
+d9 1
+d20 1
+d31 1
+a31 2
+# Include and Libraries
+#
+d36 1
+a36 2
+# Object List
+#
+d38 11
+a48 11
+    $(OBJ)/Attribute.o \
+    $(OBJ)/Aggregate.o \
+    $(OBJ)/Bit.o       \
+    $(OBJ)/Condition.o \
+    $(OBJ)/Clock.o     \
+    $(OBJ)/Database.o  \
+    $(OBJ)/Event.o     \
+    $(OBJ)/DBTables.o  \
+    $(OBJ)/DBTransaction.o         \
+    $(OBJ)/DBTransactionRec.o      \
+    $(OBJ)/DBTransactionRecValue.o \
+d52 6
+a57 6
+    $(OBJ)/ModuleTop.o \
+    $(OBJ)/Mutex.o     \
+    $(OBJ)/Process.o   \
+    $(OBJ)/ProcessExecuteReason.o   \
+    $(OBJ)/Process_RW.o    \
+    $(OBJ)/Query.o     \
+d59 9
+a67 9
+    $(OBJ)/Scheduler.o \
+    $(OBJ)/Semaphore.o \
+    $(OBJ)/Signal.o    \
+    $(OBJ)/Simulator.o \
+    $(OBJ)/String.o    \
+    $(OBJ)/Table.o     \
+	$(OBJ)/TableRecord.o    \
+    $(OBJ)/Timer.o     \
+    $(OBJ)/Trigger.o   \
+a73 1
+#
+a74 2
+
+Lib: ${BIN}/libvr.a
+d77 1
+a77 2
+# Make Executables.
+
+d81 5
+a85 8
+
+${BIN}/Test: ${OBJS} ${OBJ}/String.o ${SRC}/Test.cc \
+ ${INC}/List.h ${INC}/Global.h ${INC}/BucketList.h ${INC}/Database.h
+	$(CC) $(DBG) ${FLAGS} ${MAIN_FLAGS} -o ${BIN}/Test ${SRC}/Test.cc \
+	${OBJS} ${OBJ}/String.o $(INCLUDE) $(LIBS)
+
+# Other useful targets.
+# Make objects up to date, do not create executable
+d87 1
+a87 1
+
+d89 2
+d94 2
+a95 1
+
+d106 1
+d113 1
+a113 17
+# 
+# String.o needs to be handled specially because we were forced to use
+# MyString.h instead of String.h because Cygwin which runs on windows
+# is case insensitive and string.h is a system file which confuses $(CC).
+# Note: Removed MyString.h (using String.h) as we are mostly working on Linux.
+
+# Also put back String.o and Signal.o in the link step if using below.
+#${OBJ}/String.o: ${SRC}/String.cc ${INC}/MyString.h
+#	@@echo Compiling String
+#	$(CC) $(DBG) ${FLAGS} -c ${SRC}/String.cc -o ${OBJ}/String.o $(INCLUDE)
+#	@@echo
+#
+#${OBJ}/Signal.o: ${SRC}/Signal.cc ${INC}/Signal.h
+#	@@echo Compiling Signal
+#	$(CC) $(DBG) ${FLAGS} -c ${SRC}/Signal.cc -o ${OBJ}/Signal.o $(INCLUDE)
+#	@@echo
+
+a118 1
+#include ${MAKE_DIR}/${MAKEFILE_TESTS}
+@
+
+
+1.2
+log
+@1. Changed BACKUP_DIR.
+2. Added profiling option.
+3. Added new object files.
+4. Removed some source files that needed special compile handling.
+5. Allow changing the executable to make using TARGET and TARGET_SRC.
+@
+text
+@d3 1
+a3 1
+# $Revision: 1.1 $
+d78 2
+a79 2
+Lib:       ${BIN}/libvr.a
+
+d135 2
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d16 1
+a16 1
+BACKUP_NETWORK   = /mnt/hgfs/Robert_AnjiHome/Backup/${PROJECT}
+d23 2
+a24 1
+# For profiling add -G
+d26 1
+a26 1
+FLAGS      = -D${DEF} -D${PROJECT} -D${PLATFORM}
+d45 1
+d52 3
+a54 2
+	$(OBJ)/Mailbox.o   \
+	$(OBJ)/MailboxPtr.o\
+d56 1
+a56 1
+    $(OBJ)/ProcessTest.o   \
+d61 4
+a71 2
+
+#$(OBJ)/RW_Interface.o  \
+d77 1
+a77 1
+Test:      ${BIN}/Test
+d83 3
+a85 3
+${BIN}/${TARGET}: ${OBJS} ${SRC}/Main.cc ${OBJ}/String.o ${OBJ}/Signal.o
+	$(CC) $(DBG) ${FLAGS} ${MAIN_FLAGS} -o ${BIN}/${TARGET} ${SRC}/Main.cc \
+	${OBJS} ${OBJ}/String.o ${OBJ}/Signal.o $(INCLUDE) $(LIBS)
+d102 1
+d121 1
+d123 10
+a132 9
+${OBJ}/String.o: ${SRC}/String.cc ${INC}/MyString.h
+	@@echo Compiling String
+	$(CC) $(DBG) ${FLAGS} -c ${SRC}/String.cc -o ${OBJ}/String.o $(INCLUDE)
+	@@echo
+
+${OBJ}/Signal.o: ${SRC}/Signal.cc ${INC}/Signal.h
+	@@echo Compiling Signal
+	$(CC) $(DBG) ${FLAGS} -c ${SRC}/Signal.cc -o ${OBJ}/Signal.o $(INCLUDE)
+	@@echo
+d137 1
+@

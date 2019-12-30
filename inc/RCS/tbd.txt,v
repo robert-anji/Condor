@@ -1,0 +1,415 @@
+head	1.3;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks
+	robert:1.3; strict;
+comment	@# @;
+
+
+1.3
+date	2011.12.20.17.38.25;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.15.42.26;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.03.22.43;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@Long, overdue checkin of tbd items.
+@
+text
+@# $RCSfile: tbd.txt,v $
+# $Revision: 1.1 $
+#
+#  What:     TBD List for Condor
+#  Format:   #(comment) blank(tbd) +(done) >(deferred) !(deprecated) mmdd:
+#  Category: ' '=new, b=bug,  i=functional-improvement, s=side-effect, m=missing,
+#              v=investigate, d=design-improvement, e=enhancement
+#  Note:     Items are marked done after coding and compile (no testing).
+#
+## 2006
+## Nov:
++  00 Create initial Verification Engine (tables+query search).
++  01 Clean up String class (remove dependency on Global.h).
++  02 Clean up Value  class (remove dependencies).
++  03 Dont pre-allocate memory for default String constructor.
++  04 Debug Value::Set(), default case where 'str = mstr;' incorrect?
++  05 Clean up and import List class.
++  06 Clean up and import BucketList class.
++  07 Clean up and import Record class.
++  08 Clean up and import Attribute class.
++  09 Clean up and import Query class.
++  10 Clean up and import Table class.
++  11 Improve String::Append(const *char) when appending a 0 length string.
+!  12 Improve Record::operator<<(Value) give error when adding too many vals.
++  13 Fix Record::Match(Query) to not check for bucket list size 0 or 1.
+## Dec:
++  14 How to handle Record::Match(Query) when query is empty?
++  15 Move NameVal instances from Enum.cc to corresponding header files.
++  16 Test initial Verification Engine.
+!  17 Improve String constructors to have null string initially (dupl of 03)
++  18 Currently maximum table rows is limited to SHRT_MAX (32767), increase.
+!  19 Define API for clock, bfm, database in light of using pthreads.
+## 2007
+## Jan:
++  20 Need 'commit' operation for database.
+!  21 Allow obtaining direct references to database table cells. (No)
++  22 Create new class Bits based on Quadlet that allows unlimited bits.
++  23 Add Bits class to Values.
+!  24 Extend Value class to handle more than 'unsigned long' bits (like 'reg').
++  25 Develop Table Aggregates API.
++  26 Implement Aggregates API.
++  27 Need 'capture' Query class to be used for table searches (else mem leak).
++i 28 Check eSign logic in Value (remove?), maybe add signed 'int' to union.
+>i 29 Merge Value::newCalled into Value::type to save 2 bytes.
++  30 Add logic to permit queries that specify bit ranges.
++  31 Remove Value::Set(type, char*). Find appropriate replacement.
++  32 Need all comparison operators for Value if type is Bit.
++  33 Value class needs smarter comparisons (allow even if some types differ).
++  34 Add explicit support for 'const char*', treat different from 'char*'.
++  35 Change name of Query class to Conditional.
++  36 Add concatenate facility for Bit class.
++i 37 Improve Bit == when operand bits aligned (compare words instead of bits).
+!  38 Add Cursor class used to iterate over Tables (now handled in View)
++  39 Add Trigger support for Tables.
+   40 Add Regex support for Table searches.
++  41 Need ClockMgr class that can provide 'ticks' to drivers, bfms etc.
+## Feb:
+!  10 Add doxygen documentation tags to the code.
++i 10 Fix makefile for allowing project backups on local and network disk.
++r 13 Possibility to allow verif engine to work equally with/without threads.
++m 14 Query(now Condition) class compare operators not yet overloaded for Bit.
++  15 Figure out how to allow unary conditions in queries: q=!zMatch(Flag) ?
++i 15 Switch makefiles over from regular 'make' to 'gnu make'.
++  16 Add View class.
++  16 Add Database class to encapsulate all files/tables/global-operations etc.
++s 17 Remove functionality from Table that is now present in View.
++  17 Add Record operation permissions (Add,Rd,Mod,Del) to Table/View.
++i 20 Remove unneeded private Record members: mTable, mCurrent, mSize, mValid.
++  23 Add Null-value info (ie what should it be) to Attribute class.
+!  24 The List class to delete T element (if List allocated) when Link is freed.
+## Mar:
++  31 Add type 'reference' to Value to allow storing runtime references.
+## Apr:
++  17 Use 'smart Record references', record deleted iff all references released.
+## May:
++m 10 Query operators |=, ||, &&, &= not yet overloaded.
++  12 Only Value compare/assign (!reference) via Record, allows 'modify' commit.
++  14 Allow record deletion only when View is deleted (avoids user errors?). 
++  17 Need Transaction class(s) to perform the 'Commit' operation.
++  19 Modify Record to store uncommited values until they are comitted.
++  20 Need to add Transaction Class for View, Table and Database(?).
++  22 Move gValueSeparator from Record to Table.
+## Jun:
++  04 Provide $dumpvars like functionality to see signals on waveform tools.
++  10 Review C++ .h files whether #include "file.h" reqd, class decl is better.
++i 10 Replace enum type 'eBoolean' with 'bool'.
++i 10 Maybe eValueType should become eAttributeType and move to Attribute.h .
+!  11 View destructor needs specialised List to handle record reference count.
+>  13 Figure out 'constrained database' feature.
+>  13 Implement  'constrained database' feature.
++m 16 Value class missing incr/decr operators for Bit.
++  17 Bit class not yet using 'm' prefix convention for class data members.
++m 17 Record::operator=(Record) not yet using database transactions.
++  17 Improve makefile to also checkin the admin files.
++  17 Make not properly creating a release database.
++i 25 Record may not need 'view' instance, 'table' instance is better suited.
++m 28 Bit not yet supported in Value class for arithmetic operations.
+!  29 Value assignment operator from Value not checking assigned type.
+## Jul:
++  01 Add mPosition to Attribute class.
++  01 Define Database Trigger API.
+>  02 Ok to retrieve Value reference from Record in some cases (rec const etc.).
++  06 Review const usage, args must be const if function only needs read access.
++  06 Change code to use only Attribute objects to access Record values.
++m 13 Query copy constructor not yet implemented, needed for Trigger class.
+>i 16 Implement 'Attribute Permissions', permission are: Read, Modify(write).
+>i 16 If Table does not permit record add/delete then import records into array.
++  16 Need to design and implement a Timer class.
++m 19 Bit comparison operators returning 'short' instead of 'eBoolean'.
++  22 Allow 'unsized' Bit instance created with Bit:Bit() constructor, has uses.
++  28 Bit not yet supported in Value class for logic (~!^&|) operations.
+## Aug:
++  01 Improve logic for ClockedProcessAdd in ClockMgr (renamed as Scheduler).
+!  04 Need Clock class (put all logic within Scheduler instead).
++  20 Revisit Value, for pointer values better to allocate and make local copy?
+>  29 Change mechanism of setting Null-value, specify them in a rec and add it.
+## Sep:
++  06 View needs RecordUnselect() as RecordDelete() is not always appropriate.
++  07 Option for triggers to be executed at end of the time slot or immediately.
++  09 Possibility to use Attributes instead of Condition when composing queries.
++  10 Need option to commit transactions for a specific view (not only 'all').
++  10 Need operator overload for void* in Condition.
++  10 Need operator overload char*, unsigned, in Record (in addition to Value).
++  11 Due to Sep09, verify proper delete of Condition obj on query composition.
++  13 Maybe better to use prefix 'mp' for member pointers.
++  15 Flaw in View, View records need handle to each view, not just master view.
++  22 Fix and confirm logic for Table Save() and Load().
+## Oct:
+   04 Define/add our own documentation markers that can be converted to doxygen.
++  13 Complete Scheduler clocks/trigger scheduling logic.
++  23 Design/implement an Event class.
+## 2008
+## Jan:
++  19 Add 'polling' mode to triggers.
+## Feb:
++  10 Implement an Interface class.
+## Mar:
++  08 Implement a Signal class.
++  27 Database class allows anyone with handle to commit all views/tables, fix.
+!  27 Add Clock obj to Process constructor, modify Scheduler::ProcessActivate.
+## Apr:
++  01 Table class needs a 'Commit' policy (none, manual, clocked etc.).
++  02 Need new class: Clock.
++  28 Need sort feature for View records.
+## May:
++i 15 Execute processes from signal changes (now only works for clock signal).
+!  30 Need new SynchronizerFifo class when processes use different clock rates.
+## Jun:
++  08 Determine whether we need a Simulator class to manage Scheduler & Clocks.
+## Jul:
++  10 Signal values to only return committed values on read. Write is immediate.
++  28 Convert List.h from single linked list to double linked list.
+## Aug:
++  01 Add Iterator for List.
++  03 Add Iterator for View.
++  17 Clock & Interfaces not members of Process, but combined in Scheduler, ok?
++i 17 Clock needs member and logic to store current clock edge value.
+>  31 Add new attribute type: RecordReference and modify Search() accordingly.
+## Sep:
++  05 Need non-transactional Table where records can be directly added/inserted.
++  06 Add make depend to makefile mechanism using 'gcc -MM -I... filenames'.
++  14 Need debug utilities (prints) for List, Records, Tables, Query.
++  22 Utility to automatically connect signals by specifying the interfaces.
+   23 Add auto-delete when number of records in a view hits a certain limit.
+## Oct:
+## Nov:
+!  30 Develop a Connector class to connect Interfaces registered by Processes.
+## Dec:
+## 2009
+## Jan:
+>  30 Snapshot feature for Table (has copies of records instead of references).
+## Feb:
+ i 08 Incorporate ViewEnable() into ViewCreate() to avoid two function calls.
+   12 Create global 'Debug' class that can access/display info for all objects.
++e 23 Need sticky Aggregates (they dont get updated when a record is deleted).
+## Mar:
++b 08 Aggregate doesnt work if record is also in another view for modify.
++  08 Query on multiple tables using Join (very useful feature).
++b 08 Memory leak of Condition obj when query is assigned via attribute compare.
+!b 09 The 'trigger' lists need to be stored in View class (not the Table class).
++b 13 The Scheduler is not committing all tables in the database.
+!b 15 Db commit to first invoke all triggers before updating records/aggregates.
++i 27 Add Interface::operator=(unsigned).
+## Apr:
+## May:
++  15 Need Module class so that interfaces/processes can be 'scoped' for vcd.
++  18 Mailbox needs work (will use only refs, needs to sync with Scheduler).
+## Jun:
++  02 Need simple feature to edit a Query to avoid repeated create.
++  02 Need non-simple Query edit feature to avoid repeated create.
++i 08 Make clock a process and schedule it, remove ClockUpdate() & ClockGet().
++i 26 Allow triggers to block the calling process until it is activated.
++i 26 Allow process blocking using TimerStart(Process* p).
+## Jul:
++  24 Add logic to help track memory allocation/delete and help find leaks.
+## Aug:
++  01 Fix Interface class to use a fixed number of records.
++  29 Fix objects not getting deleted at the end of the program.
+## Sep:
+ d 02 Maybe rename Record to ViewRecord and check TableRecord use in Table.
++e 23 Need Stack<T> class (impl. using an array, more efficient than list).
+## 2010
+## Jan
++  01 All process creation should happen within a Module (not Main.cc).
++m 17 Clock should update all connected interfaces connected to it.
+## Feb
++i 01 Supply the 'reason' when a process is invoked by the scheduler.
+ e 08 Create 'Global Events' class, all processes will be able to access these.
++  13 In vcd dump, connected signals should share the same vcd identifier.
++  15 New g++ found that Mailbox usage wont work because Mailbox is a template.
+!  28 Need to add module hierarchy info after module instantiation.
+## Apr
++i 19 Run valgrind application on condor to check for memory leaks.
+ i 23 ListIteratorDelete() to not delete the iterator, save it for reuse!
+## Jun
+!i 16 Allow processes to have set time delay before next invokation (use Timer).
+ i 19 Re-check view permissions & allow multiple master views for unique recs.
+ i 20 Add pseudo-random clock drift to Clock class.
+!i 22 Put Process_RW into a module and instantiate two of them in TopModule.
+ i 27 Add timescales to Clocks.
+ i 27 Add feature to let Timer be specified in number of clocks.
+## Jul
+ i 07 Make Vcd dump initialize all signals to X?
+ i 20 If a clock is stopped & restarted then reschedule its connected processes.
+## Aug
++  19 Implement a Semaphore class.
+ i 20 Add support for notifying events in the future: event.Notify(time).
++i 21 Need support to connect inputs to inputs of instantiated modules.
++  30 Add mutex class (is similar to semaphore using one key).
+## Sep
+ e 13 Add 'Native Bit' mode if Bit width is less than 32 (or 64 on 64bit OS).
+ e 13 Modify Signal class to be used like verilog reg inside a process body. 
++  22 Separate DefinesAndEnum.h file for DB and Simulator.
+ b 22 Clean up Bit class (code looks buggy and support 64 bit).
++e 22 Allow Process to specify which signals and edges it is sensitive to.
++d 28 Implement Event's based on Trigger's in a new class: EventFromTrigger.
++e 28 Enhance Query to handle aggregate comparisons.
+## 2011
+   20 Allow Process to have >1 interface (eg local inter-process communication).
+## May
+   26 Implement hash version of View records (current they are linked list).
+## Aug
++  16 Need workaround for self-bit-select assignment: bit[m][l] = bit[m][l].
+## Sep
++b 26 Ensure fair unblocking of processes for Event, Mailbox, Semaphore.
+## Oct
+   11 Add delta-clock count to Scheduler to track time within current timestamp.
++  15 Create a HashTable class.
+#
+Main TBDs: auto-delete.
+#
+# End
+@
+
+
+1.2
+log
+@Changes for release: C1_80
+@
+text
+@d6 2
+a7 1
+#  Category: ' '=new, b=bug, i=improve, s=side-effect, o=other
+d10 2
+a11 1
+# Nov:
+d26 1
+a26 1
+# Dec:
+d33 2
+a34 1
+# Jan:
+d43 2
+a44 2
+   28 Check eSign logic in Value (remove?), maybe add signed 'int' to union.
+   29 Merge Value::newCalled into Value::type to save 2 bytes.
+d48 1
+a48 1
+   33 Value class needs smarter comparisons (allow even if some types differ).
+d51 2
+a52 2
+   36 Add concatenate facility for Bit class.
+   37 Improve Bit == when operand bits aligned (compare words instead of bits).
+d57 2
+a58 2
+# Feb:
+   10 Add doxygen documentation tags to the code.
+d61 2
+a62 2
+ o 14 Query class comparison operators not yet overloaded for Bit objects.
+   15 Figure out how to allow unary conditions in queries: q=!zMatch(Flag) ?
+d69 1
+a69 1
+   23 Add Null-value info (ie what should it be) to Attribute class.
+d71 3
+a73 3
+# Mar:
+   31 Add type 'reference' to Value to allow storing runtime references.
+# Apr:
+d75 2
+a76 2
+# May:
+   10 Query operators |=, ||, &&, &= not yet overloaded.
+d83 2
+a84 2
+# Jun:
+   04 Provide $dumpvars like functionality to see signals on waveform tools.
+d86 2
+a87 2
+   10 Replace enum type 'eBoolean' with 'bool'.
+   10 Maybe eValueType should become eAttributeType and move to Attribute.h .
+d89 3
+a91 3
+   13 Figure out 'constrained database' feature.
+   13 Implement  'constrained database' feature.
+   16 Value class missing incr/decr operators for Bit.
+d93 1
+a93 1
+   17 Record::operator=(Record) not yet using database transactions.
+d96 4
+a99 4
+   25 Record may not need 'view' instance, 'table' instance is better suited.
+   28 Bit not yet supported in Value class for arithmetic operations.
+   29 Value assignment operator from Value not checking assigned type.
+# Jul:
+d102 2
+a103 2
+   02 Ok to retrieve Value reference from Record in some cases (rec const etc.).
+   06 Review const usage, args must be const if function only needs read access.
+d105 146
+a250 3
+   13 Query copy constructor not yet implemented, needed for Trigger class.
+
+Main TBDs: Aggregates, Triggers, Regex.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d7 1
+d9 1
+a9 1
+Nov:
+d13 1
+a13 1
+   03 Dont pre-allocate memory for default String constructor.
+d24 1
+a24 1
+Dec:
+d31 1
+a31 1
+Jan:
+d37 2
+a38 2
+   25 Develop Table Aggregates API.
+   26 Implement Aggregates API.
+d51 1
+a51 1
+   39 Add Trigger support for Tables.
+d60 1
+a60 1
+ i 15 Switch makefiles over from regular 'make' to 'gnu make'.
+d79 1
+a79 1
+   22 Move gValueSeparator from Record to Table.
+d85 1
+a85 1
+   11 View destructor needs specialised List to handle record reference count.
+d89 1
+a89 1
+   17 Bit class not yet using 'm' prefix convention for class data members.
+d91 16
+a106 3
+   17 Improve makefile to also checkin the admin files.
+Summary: Aggregates, Triggers, Regex.
+End
+@

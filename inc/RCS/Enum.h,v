@@ -1,0 +1,121 @@
+head	1.4;
+access
+	Roberto;
+symbols
+	C1_80:1.2
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2010.09.14.18.14.05;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.16.14.11.06;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Changed type from const char* to char* for structure NameVal.
+2. Made EnumExists() return bool instead of short.
+3. Added NameVal externs for SignalEdgeNV and TypesNV.
+@
+text
+@// $RCSfile: Enum.h,v $
+// $Revision: 1.3 $
+
+#ifndef ToolsHeader
+#define ToolsHeader
+
+typedef struct _nameval NameVal;
+struct _nameval {
+  short val;
+  const char* name;
+};
+
+short       Str2Enum(  NameVal nv[], char* name);
+bool        EnumExists(NameVal nv[], short _enum);
+const char* Enum2Str(  NameVal nv[], short _enum);
+
+extern NameVal OperatorNV[];
+extern NameVal ValueTypeNV[];
+extern NameVal Process_RW_StateNV[];
+extern NameVal SignalEdgeNV[];
+extern NameVal TypesNV[];
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@1. Added extern NameVal Process_RW_StateNV[].
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d10 1
+a10 1
+  char* name;
+d14 1
+a14 1
+short       EnumExists(NameVal nv[], short _enum);
+d20 2
+@
+
+
+1.2
+log
+@1. Removed 'struct NameFn'
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d19 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d9 1
+a10 1
+  short val;
+a12 6
+//typedef struct _namefn NameFn;
+//struct _namefn {
+//  char* name;
+//  short (*fn)(FILE* fp, char* cmd);
+//};
+
+@

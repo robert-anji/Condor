@@ -1,0 +1,59 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.12.07.06.52.40;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@This base class is needed so that the Scheduler can refer to objects of
+any type (type T in Mailbox<T> class) as void so that the MailboxBase
+API used by the Scheduler can be independent of object type.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: MailboxBase.h,v $
+// $Revision: 1.1 $
+
+#ifndef MailboxBaseClass
+#define MailboxBaseClass
+
+#include <List.h>
+
+#include "Global.h"
+
+// Forward declaration.
+class Process;
+
+class MailboxBase
+{
+friend class Scheduler;
+
+public:
+  MailboxBase() { M_UpdConstructCount(eType_MailboxBase); }
+ ~MailboxBase() { M_UpdDestructCount (eType_MailboxBase); }
+
+  bool  FlushPuts(Process** put_proc, Process** get_proc, void** elm);
+
+protected:
+  List<Process> mProcessWaitingOnPutList;
+  List<Process> mProcessWaitingOnGetList;
+  List<void>    mMboxElmWaitingOnPutList;
+
+private:
+};
+
+#endif
+@

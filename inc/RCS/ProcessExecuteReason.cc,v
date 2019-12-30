@@ -1,0 +1,95 @@
+head	1.2;
+access;
+symbols;
+locks
+	robert:1.2; strict;
+comment	@// @;
+
+
+1.2
+date	2011.12.04.01.55.12;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.45.10;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Using the new expanded execute reason names.
+@
+text
+@// $RCSfile: ProcessExecuteReason.cc,v $
+// $Revision: 1.1 $
+
+#include <assert.h>
+#include <stdio.h>
+
+#include "ProcessExecuteReason.h"
+//
+#include "Global.h"
+
+M_ExternConstructDestructCountInt;
+
+ProcessExecuteReason::ProcessExecuteReason() :
+  mExecuteReason   (eExecuteReason_Invalid),
+  mpReasonObject   (0),
+  mExecutedOk      (FALSE)
+{
+  M_UpdConstructCount(eType_ProcessExecuteReason);
+}
+
+ProcessExecuteReason::~ProcessExecuteReason()
+{
+  M_UpdDestructCount(eType_ProcessExecuteReason);
+}
+
+void* ProcessExecuteReason::ReasonObjGet(eExecuteReasonObjType reason_obj_type)
+{
+  switch (reason_obj_type) {
+  case eExecuteReasonObj_Clock:     assert(mExecuteReason == eExecuteReason_ClockPosedge
+                                      ||   mExecuteReason == eExecuteReason_ClockNegedge);      break;
+  case eExecuteReasonObj_Event:     assert(mExecuteReason == eExecuteReason_Event);             break;
+  case eExecuteReasonObj_Interface: assert(mExecuteReason == eExecuteReason_InterfaceModified); break;
+  case eExecuteReasonObj_Mailbox:   assert(mExecuteReason == eExecuteReason_MailboxPut
+                                      ||   mExecuteReason == eExecuteReason_MailboxGet);        break;
+  case eExecuteReasonObj_Timer:     assert(mExecuteReason == eExecuteReason_TimerDone);         break;
+  case eExecuteReasonObj_Trigger:   assert(mExecuteReason == eExecuteReason_Trigger);           break;
+  default:                          assert(0);
+  //
+  // Note: No entry for: eExecuteReason_Scheduler, we avoid returning a Scheduler object.
+  }
+
+  return mpReasonObject;
+}
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d5 1
+d29 9
+a37 7
+  eExecuteReasonObj_Clock:     assert(mExecuteReason == eExecuteReason_Clock);             break;
+  eExecuteReasonObj_Event:     assert(mExecuteReason == eExecuteReason_Event);             break;
+  eExecuteReasonObj_Interface: assert(mExecuteReason == eExecuteReason_InterfaceModified); break;
+  eExecuteReasonObj_Mailbox:   assert(mExecuteReason == eExecuteReason_Mailbox);           break;
+  eExecuteReasonObj_Timer:     assert(mExecuteReason == eExecuteReason_Timer);             break;
+  eExecuteReasonObj_Trigger:   assert(mExecuteReason == eExecuteReason_Trigger);           break;
+  default:                     assert(0);
+@

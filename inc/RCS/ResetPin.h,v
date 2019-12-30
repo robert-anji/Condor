@@ -1,0 +1,83 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: ResetPin.h,v $
+// $Revision: 1.1 $
+
+#ifndef ResetPinClass
+#define ResetPinClass
+
+#include "Bit.h"
+#include "DefinesAndEnum.h"
+#include "String.h"
+#include "Process.h"
+#include "ProcessExecuteReason.h"
+#include "Simulator.h"
+
+class Interface;
+class Module;
+
+enum eResetPinPhase {
+  eResetPinPhase_JustBeforePositiveEdge,
+  eResetPinPhase_JustAfterPositiveEdge,
+  eResetPinPhase_JustBeforeNegativeEdge,
+  eResetPinPhase_JustAfterNegativeEdge,
+  eResetPinPhase_Default = eResetPinPhase_JustAfterNegativeEdge,
+  eResetPinPhase_Invalid
+};
+
+class ResetPin : public Process
+{
+  friend class Scheduler;
+
+public:
+  ResetPin(const char* name, Module* parent_module, SimulationTime start_tm, SimulationTime end_tm, eTimeScale scale, eSignalEdge active_reset_level);
+  ~ResetPin();
+
+  virtual eProcessType ProcessType() const;
+
+protected:
+  // Used by friend class Scheduler.
+  virtual void ProcessExecute(ProcessExecuteReason& exec_reason);
+  bool            Start();
+  bool            ProcessStateModify(eProcessState new_state);
+  SimulationTime  SimTimeForNextResetPinEdgeGet(eSignalEdge clk_edge);
+  //
+  unsigned        HalfPeriodGet()          const { return mHalfPeriod;              }
+  SimulationTime  NextTransitionTimeGet()  const { return mResetPinNextTransitionTime; }
+
+private:
+  SimulationTime  mResetPinStartTime;
+  SimulationTime  mResetPinNextTransitionTime;
+  unsigned        mHalfPeriod;
+  eTimeScale      mTimeScale;
+  eResetPinPhase     mResetPinPhaseStart;
+  eResetPinPhase     mResetPinPhaseCurrent;
+  Bit             mBit;
+  bool            mResetPinScheduleSuspend;
+};
+
+#endif
+
+// End
+@

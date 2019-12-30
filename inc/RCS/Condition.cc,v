@@ -1,0 +1,2214 @@
+head	1.9;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.9
+date	2011.12.20.17.24.16;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.12.03.10.19.58;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.09.19.16.28.39;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.09.05.03.30.51;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.06.26.15.45.38;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.01.30.07.57.31;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.13.23.04.03;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.14.35.08;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.01.42.48;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@Took out much of the Query logic and placed it in a separate (more accurately named
+class) class. Condition class is much like the earlier Query class. The Query class
+now represents a higher level concept allowing queries to be concatenated.
+@
+
+
+1.9
+log
+@Added == and != comparison of Attribute with Record pointer.
+@
+text
+@// $RCSfile: Condition.cc,v $
+// $Revision: 1.8 $
+
+#include <assert.h>
+
+#include "Condition.h"
+//
+#include "Aggregate.h"
+#include "Attribute.h"
+#include "BucketList.h"
+#include "Database.h"
+#include "Enum.h"
+#include "Global.h"
+#include "Record.h"
+#include "Value.h"
+#include "View.h"
+
+M_ExternConstructDestructCountInt;
+
+NameVal OperatorNV[] =
+{
+  eCondOper_None,            "none",
+  eCondOper_Less,            "<",
+  eCondOper_Greater,         ">",
+  eCondOper_Equal,           "==",
+  eCondOper_NotEqual,        "!=",
+  eCondOper_GreaterOrEqual,  ">=",
+  eCondOper_LessOrEqual,     "<=",
+  eCondOper_Like,            "like",
+  eCondOper_Negation,        "negation",
+  eCondOper_Invalid,         "invalid"
+};
+
+static bool gDbg = 0;
+
+Condition::Condition(const Attribute* attr) :
+  mTypeLHS             (eCondOperand_AttributePtr),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (attr),
+  mpAttributeRHS       (0),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (FALSE),
+  mValueIndex          (0)
+{
+  assert(mpAttributeLHS);
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Aggregate* aggr) :
+  mTypeLHS             (eCondOperand_Unknown),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (0),
+  mpAttributeRHS       (0),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (FALSE),
+  mValueIndex          (0)
+{
+  assert(aggr);
+
+  mpValueLHS = ValuePtrGet(aggr);
+
+  mTypeLHS   = eCondOperand_ValuePtr;
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Value val) :
+  mTypeLHS             (eCondOperand_Value),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (0),
+  mpAttributeRHS       (0),
+  mValueLHS            (val),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (FALSE),
+  mValueIndex          (0)
+{
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Value* pval) :
+  mTypeLHS             (eCondOperand_ValuePtr),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (0),
+  mpAttributeRHS       (0),
+  mpValueLHS           (pval),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (FALSE),
+  mValueIndex          (0)
+{
+  assert(mpValueLHS);
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Attribute* attr, bool alloc) :
+  mTypeLHS             (eCondOperand_AttributePtr),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (attr),
+  mpAttributeRHS       (0),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (alloc),
+  mValueIndex          (0)
+{
+  assert(mpAttributeLHS);
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Aggregate* aggr, bool alloc) :
+  mTypeLHS             (eCondOperand_Unknown),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (0),
+  mpAttributeRHS       (0),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (alloc),
+  mValueIndex          (0)
+{
+  assert(aggr);
+
+  mpValueLHS = ValuePtrGet(aggr);
+  mTypeLHS   = eCondOperand_ValuePtr;
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Value& val, bool alloc) :
+  mTypeLHS             (eCondOperand_Value),
+  mTypeRHS             (eCondOperand_Unknown),
+  mpAttributeLHS       (0),
+  mpAttributeRHS       (0),
+  mValueLHS            (val),
+  mpValueLHS           (0),
+  mpValueRHS           (0),
+  mpViewIteratorLHS    (0),
+  mpViewIteratorRHS    (0),
+  mCondOperator        (eCondOper_None),
+  mLsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit              (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet         (FALSE),
+  mIsAllocatedAuto     (alloc),
+  mValueIndex          (0)
+{
+  assert(mpAttributeLHS);
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::Condition(const Condition& c) :
+  mTypeLHS             (c.mTypeLHS),
+  mTypeRHS             (c.mTypeRHS),
+  mpAttributeLHS       (c.mpAttributeLHS),
+  mpAttributeRHS       (c.mpAttributeRHS),
+  mpValueLHS           (c.mpValueLHS),
+  mpValueRHS           (c.mpValueRHS),
+  mpViewIteratorLHS    (c.mpViewIteratorLHS),
+  mpViewIteratorRHS    (c.mpViewIteratorRHS),
+  mCondOperator        (c.mCondOperator),
+  mLsbBit              (c.mLsbBit),
+  mMsbBit              (c.mMsbBit),
+  mBitWidthSet         (c.mBitWidthSet),
+  mIsAllocatedAuto     (FALSE),
+  mValueIndex          (c.mValueIndex)
+{
+  mValueLHS = c.mValueLHS;
+  mValueRHS = c.mValueRHS;
+
+  M_UpdConstructCount(eType_Condition);
+}
+
+Condition::~Condition()
+{
+  M_UpdDestructCount(eType_Condition);
+}
+
+bool Condition::Match(Record* rec)
+{
+  // This Match handles non-join queries. All conditions are expected to contain
+  // just one Attribute which will be for the LHS. The RHS will be a value or a
+  // value pointer.
+
+  if (! rec) {
+    return Evaluate();
+  }
+  else {
+    if (gDbg) {
+      char buf1[MAX_RECORD_LINE_LENGTH+1];
+      char buf2[MAX_RECORD_LINE_LENGTH+1];
+
+      Value val;
+      rec->ValueCopyGet(&AttributeGet(), val);
+      val.Save(buf1);
+      ValueGet().Save(buf2);
+
+    //Print();
+    //printf("Checking %s %s %s\n", buf1, Enum2Str(OperatorNV, Operator()), buf2);
+    }
+
+    if (AttributeGet().ValueType()==eValueBit && BitWidthSet()) {
+      rec->SetMsbLsb(GetMsb(), GetLsb());
+    }
+
+    return Evaluate(rec);
+  }
+}
+
+// This Evaluate() requires no args which means it already has
+// the lhs and rhs operands available (else we assert an error).
+bool Condition::Evaluate()
+{
+  const Value* lhs;
+  const Value* rhs;
+
+  switch (mTypeLHS) {
+  case eCondOperand_Value:        lhs = &mValueLHS; break;
+  case eCondOperand_ValuePtr:     lhs = mpValueLHS; break;
+  case eCondOperand_AttributePtr: assert(mpViewIteratorLHS);
+                                  lhs =(mpViewIteratorLHS->RecordCurrentGet())->ValueGet(mpAttributeLHS);
+                                  assert(lhs);
+                                  break;
+  default:                        assert(0);
+  }
+
+  switch (mTypeRHS) {
+  case eCondOperand_Value:        rhs = &mValueRHS;
+  case eCondOperand_ValuePtr:     rhs = mpValueRHS;
+  case eCondOperand_AttributePtr: assert(mpViewIteratorRHS);
+                                  rhs =(mpViewIteratorRHS->RecordCurrentGet())->ValueGet(mpAttributeRHS);
+                                  assert(rhs); break;
+  default:                        assert(0);
+  }
+
+  return Evaluate(*lhs, *rhs);
+}
+
+bool Condition::Evaluate(Record* rec)
+{
+  MacroAssert1(rec);
+
+  // Only one attribute (lhs or rhs) should be set.
+  MacroAssert1(!mpAttributeLHS || !mpAttributeRHS);
+
+  const Value* lhs;
+  const Value* rhs;
+
+  switch (mTypeLHS) {
+  case eCondOperand_Value:        lhs = &mValueLHS; break;
+  case eCondOperand_ValuePtr:     lhs = mpValueLHS; break;
+  case eCondOperand_AttributePtr: lhs = rec->ValueGet(mpAttributeLHS); break;
+  default:                        assert(0);
+  }
+
+  switch (mTypeRHS) {
+  case eCondOperand_Value:        rhs = &mValueRHS; break;
+  case eCondOperand_ValuePtr:     rhs = mpValueRHS; break;
+  case eCondOperand_AttributePtr: rhs = rec->ValueGet(mpAttributeRHS); break;
+  //
+  case eCondOperand_RecordPtr:    if (mCondOperator==eCondOper_Equal)
+                                    return (Record*)mpValueRHS == rec;
+                                  if (mCondOperator==eCondOper_NotEqual)
+                                    return (Record*)mpValueRHS != rec;
+                                  assert(0); break;
+  //
+  default:                        assert(0);
+  }
+
+  return Evaluate(*lhs, *rhs);
+}
+
+bool Condition::Evaluate(const Value& lhs, const Value& rhs)
+{
+  switch (mCondOperator)
+  {
+  case eCondOper_None:             return TRUE;
+  case eCondOper_Less:             return (lhs <  rhs);
+  case eCondOper_Greater:          return (lhs >  rhs);
+  case eCondOper_Equal:            return (lhs == rhs);
+  case eCondOper_NotEqual:         return (lhs != rhs);
+  case eCondOper_GreaterOrEqual:   return (lhs >= rhs);
+  case eCondOper_LessOrEqual:      return (lhs <= rhs);
+  case eCondOper_Like:             assert (0); // until supported
+  case eCondOper_Negation:         return (    !  lhs);
+  default:                         assert (0);
+  }
+}
+
+Condition& Condition::operator&&(Condition& c)
+{
+  BucketList<Condition> &bl1 =   mConditionBktList;
+  BucketList<Condition> &bl2 = c.mConditionBktList;
+
+  OperationAnd(bl1, bl2);
+
+  // Now that all conditions in bl2 are added to bl1 using DeepCopy,
+  // we should free any automatically allocated conditions in bl2.
+  if (c.mIsAllocatedAuto) delete &c;
+
+  return *this;
+}
+
+Condition& Condition::operator||(Condition& c)
+{
+  BucketList<Condition> &bl1 =   mConditionBktList;
+  BucketList<Condition> &bl2 = c.mConditionBktList;
+
+  OperationOr(bl1, bl2);
+
+  // Now that all conditions in bl2 are added to bl1 using DeepCopy,
+  // we should free any automatically allocated conditions in bl2.
+  if (c.mIsAllocatedAuto) delete &c;
+
+  return *this;
+}
+
+void OperationOr(BucketList<Condition>& bl1, BucketList<Condition>& bl2)
+{
+  BucketList<Condition> qbl;
+
+  qbl.CopyDeep(bl2);
+  bl1.AttachDestroy(qbl, eSouth);
+}
+
+// Initializing Condition with Value's.
+Condition& Condition::operator<(const Value& val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(const Value& val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(const Value& val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(const Value& val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(const Value& val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(const Value& val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator%=(const Value& val)
+{
+  mCondOperator  = eCondOper_Like;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+// Initializing Condition with Value pointer's.
+Condition& Condition::operator<(const Value* pval)
+{
+  mCondOperator  = eCondOper_Less;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(const Value* pval)
+{
+  mCondOperator  = eCondOper_Greater;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(const Value* pval)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(const Value* pval)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(const Value* pval)
+{
+  mCondOperator  = eCondOper_Equal;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(const Value* pval)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator%=(const Value* pval)
+{
+  mCondOperator  = eCondOper_Like;
+  mpValueRHS     = pval;
+  mTypeRHS       = eCondOperand_ValuePtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+// Initializing Condition with int's.
+Condition& Condition::operator<(int val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(int val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(int val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(int val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(int val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(int val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+// Initializing Condition with unsigned int's.
+Condition& Condition::operator<(unsigned int val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(unsigned int val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(unsigned int val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(unsigned int val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(unsigned int val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(unsigned int val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+// Initializing Condition with short's.
+Condition& Condition::operator<(short val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(short val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(short val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(short val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(short val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(short val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+// Initializing Condition with unsigned short.
+Condition& Condition::operator<(unsigned short val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(unsigned short val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(unsigned short val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(unsigned short val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(unsigned short val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(unsigned short val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<(const Bit& b)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator>(const Bit& b)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator>=(const Bit& b)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator<=(const Bit& b)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator==(const Bit& b)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator!=(const Bit& b)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = b;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+// Initializing Condition with const char* .
+Condition& Condition::operator<(const char* val)
+{
+  mCondOperator  = eCondOper_Less;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>(const char* val)
+{
+  mCondOperator  = eCondOper_Greater;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator>=(const char* val)
+{
+  mCondOperator  = eCondOper_GreaterOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator<=(const char* val)
+{
+  mCondOperator  = eCondOper_LessOrEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator==(const char* val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(const char* val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(const Record* rec)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mpValueRHS     = (Value*)rec;
+  mTypeRHS       = eCondOperand_RecordPtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+Condition& Condition::operator==(const Record* rec)
+{
+  mCondOperator  = eCondOper_Equal;
+  mpValueRHS     = (Value*)rec;
+  mTypeRHS       = eCondOperand_RecordPtr;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+// Initializing Condition with Attributes
+Condition& Condition::operator<(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_Less;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+Condition& Condition::operator>(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_Greater;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+Condition& Condition::operator>=(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_GreaterOrEqual;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+Condition& Condition::operator<=(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_LessOrEqual;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+Condition& Condition::operator==(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_Equal;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+Condition& Condition::operator!=(const Attribute& attr)
+{
+  mCondOperator      = eCondOper_NotEqual;
+  mpAttributeRHS     = &attr;
+  mTypeRHS           = eCondOperand_AttributePtr;
+
+  return *this;
+}
+
+// Initializing with void's.
+Condition& Condition::operator==(void* val)
+{
+  mCondOperator  = eCondOper_Equal;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!=(void* val)
+{
+  mCondOperator  = eCondOper_NotEqual;
+  mValueRHS      = val;
+  mTypeRHS       = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+  return *this;
+}
+
+Condition& Condition::operator!()
+{
+  mCondOperator  = eCondOper_Negation;
+
+  Value val(eValueTypeDontCare); M_Constructed(Value);
+
+  mValueRHS = val;
+  mTypeRHS  = eCondOperand_Value;
+
+  mConditionBktList.Clean();
+  mConditionBktList.Add(this, eSouth);
+
+  return *this;
+}
+
+void Condition::Print(FILE* fp)
+{
+  fprintf(fp, "%s %s ", mpAttributeLHS->Name(), Enum2Str(OperatorNV, mCondOperator));
+  mValueRHS.Print(fp);
+}
+
+void Condition::Dump(FILE* fp)
+{
+  Condition* c;
+  short count = 0;
+
+  BucketList<Condition>& ql = mConditionBktList;
+
+  for (ql.BktSetPosition(ePositionFirst); !ql.BktDone(); )
+  {
+    fprintf(fp, "Bucket %d\n", ++count);
+
+    for (ql.SetLinkPosition(ePositionFirst); !ql.LinkDone(); )
+    {
+      if (c=ql.Get()) c->Print(fp);
+
+      ql.SetLinkPosition(ePositionNext);
+    }
+
+    ql.BktSetPosition(ePositionNext);
+  }
+}
+
+Condition& Condition::operator[](const char* width_str)
+{
+  short lsb, msb, temp;
+
+  if (width_str != 0) {
+
+    int ret = sscanf(width_str, "%hd:%hd", &msb, &lsb);
+
+    if (ret == 1) lsb = msb;
+
+    assert(ret);
+
+    if (ret==1 || ret==2) {
+      mLsbBit = lsb;
+      mMsbBit = msb;
+
+      mBitWidthSet = TRUE;
+    }
+
+    if (mLsbBit > mMsbBit) {
+      temp    = mLsbBit;
+      mLsbBit = mMsbBit;
+      mMsbBit = temp;
+    }
+  }
+
+  return *this;
+}
+
+void OperationAnd(BucketList<Condition>& bl1, BucketList<Condition>& bl2)
+{
+  // The && operation for conditions is essentially the multiply operation.
+  // Example: Cx=c0||c1, Cy=c2||c3&&c4, (Cx=2rows,2elems, Cy=2rows,3elems)
+  //          if we use . for && and use + for || we can rewrite this as:
+  //          Cx=c0+c1,  Cy=c2+c3.c4
+  // then     Cx&&Cy (ie Cx.Cy)
+  // equals = (c0+c1).(c2+c3.c4)
+  //        = (c0+c1).c2 + (c0+c1).c3.c4
+  //        = c0.c2 + c1.c2 + c0.c3.c4 + c1.c3.c4
+  // by simply expanding the terms, the resulting bucketlist has 4rows,10elems.
+  //
+  // We implement this by REPLICATING the rows of Cx N-1 times where N is the
+  // number of rows in Cy and APPEND each row of Cy to Cx.
+  // Note that if there is only one row in Cy then only append is needed.
+
+  bool need_to_replicate;
+
+  if (bl2.TotalBuckets() > 1) need_to_replicate = TRUE;
+  else                        need_to_replicate = FALSE;
+
+  bl1.BktSetPosition(ePositionFirst);
+
+  for (; !bl1.BktDone(); bl1.BktSetPosition(ePositionNext)) {
+    Bucket<Condition> *bkt_first;
+
+    bl2.BktSetPosition(ePositionFirst);
+
+    for (; !bl2.BktDone(); bl2.BktSetPosition(ePositionNext)) {
+      if (bl2.BktGetPosition() == ePositionFirst) {
+        // No replication.
+        // Check if we will need a copy of the first bucket for replication.
+        if (need_to_replicate) {
+          bkt_first  = new Bucket<Condition>;
+          // Note: Using deep copy allows a simpler 'delete' scheme, we simply
+          //       delete all objects in the BucketList.
+          //       This is not possible with shallow copy. However, shallow copy
+          //       would have been more efficient (using less memory).
+          //       Remember that the original Condition objects are
+          //       automatically added by the Attribute compare operators and so
+          //       we were anyway responsible for freeing the Condition objects
+          //       all along.
+          bkt_first->CopyDeep(*bl1.BktGet(ePositionCurrent));
+        }
+      }
+      else {
+        // Replicate.
+        // For the last iteration use up the 'bkt_first' copy we already have.
+        if (bl2.BktGetPosition() == ePositionLast && need_to_replicate) {
+          bl1.BktAdd(bkt_first, ePositionNext); // insert bucket
+        }
+        else {
+          Bucket<Condition> *bkt = new Bucket<Condition>;
+          // See note on deep copy above.
+          bkt->CopyDeep(*bkt_first);
+          bl1.BktAdd(bkt, ePositionNext); // insert bucket
+        }
+      }
+
+      // Append current bl bucket to this current bucket.
+      bl1.BktAppend(bl2);
+    }
+  }
+}
+
+Condition& Condition::EditIndex(short s)
+{
+  mValueIndex = s;
+
+  return *this;
+}
+
+// Friend function in Aggregate needed to access private: mpValue
+Value* Condition::ValuePtrGet(const Aggregate* aggr) const
+{
+  return aggr->mpValue;
+}
+
+// End
+@
+
+
+1.8
+log
+@Moved individual class NameVal structures out of Enum.cc and into the
+corresponding class implementation as otherwise inclusion of Enum class was
+pulling in all class header files.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d8 1
+a9 1
+#include "Aggregate.h"
+d298 7
+d926 24
+@
+
+
+1.7
+log
+@1. The Evaluate() function can now handle Joins (comparison type
+   is eCondOperand_AttributePtr).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d20 14
+@
+
+
+1.6
+log
+@1. Condition can now handle Value, Value* or Attribute for both LHS and RHS,
+   (previously it was implicitly Attribute on LHS and Value on RHS).
+2. Removed public: Evaluate(Value).
+3. Renamed public: Evaluate(Record) with Match(Record=0).
+4. Added private: Evaluate(), Evaluate(Record*), Evaluate(Value lhs, Value rhs).
+4. Added overloaded comparison functions for Value* and Attribute.
+5. Comparison type is now renamed and defined within Condition class, was in
+   Value class.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d16 1
+d242 7
+a248 3
+  case eCondOperand_Value:    lhs = &mValueLHS;
+  case eCondOperand_ValuePtr: lhs = mpValueLHS;
+  default:                    assert(0);
+d252 6
+a257 3
+  case eCondOperand_Value:    rhs = &mValueRHS;
+  case eCondOperand_ValuePtr: rhs = mpValueRHS;
+  default:                    assert(0);
+@
+
+
+1.5
+log
+@Added ability to handle Aggregates.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d19 2
+d22 9
+a30 3
+  mpAttribute          (attr),
+  mpAggregate          (0),
+  mValueOperator       (eValueOperatorNone),
+d37 1
+a37 1
+  assert(mpAttribute);
+d43 9
+a51 3
+  mpAttribute          (0),
+  mpAggregate          (aggr),
+  mValueOperator       (eValueOperatorNone),
+d58 46
+a103 1
+  assert(mpAttribute);
+d109 9
+a117 3
+  mpAttribute          (attr),
+  mpAggregate          (0),
+  mValueOperator       (eValueOperatorNone),
+d124 1
+a124 1
+  assert(mpAttribute);
+d130 9
+a138 3
+  mpAttribute          (0),
+  mpAggregate          (aggr),
+  mValueOperator       (eValueOperatorNone),
+d145 26
+a170 1
+  assert(mpAttribute);
+d176 9
+a184 3
+  mpAttribute          (c.mpAttribute),
+  mpAggregate          (c.mpAggregate),
+  mValueOperator       (c.mValueOperator),
+d191 2
+a192 1
+  mValue = c.mValue;
+d202 1
+a202 1
+bool Condition::Evaluate(Record* record)
+d204 16
+a219 1
+  assert(record);
+d221 59
+a279 2
+  if (mpAggregate) { return Evaluate(*mpAggregate->ValueGet()); }
+  else             { return Evaluate((*record)[mpAttribute->PositionGet()]); }
+d282 1
+a282 1
+bool Condition::Evaluate(const Value &val)
+d284 1
+a284 1
+  switch (mValueOperator)
+d286 10
+a295 9
+  case eValueOperatorNone:         return FALSE;
+  case eValueLessThan:             return (val <  mValue);
+  case eValueGreaterThan:          return (val >  mValue);
+  case eValueEqualTo:              return (val == mValue);
+  case eValueNotEqualTo:           return (val != mValue);
+  case eValueGreaterThanOrEqualTo: return (val >= mValue);
+  case eValueLessThanOrEqualTo:    return (val <= mValue);
+  case eValueNegation:             return (!val);
+  default:                         assert(0);
+d338 2
+a339 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d348 3
+a350 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d359 3
+a361 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d370 3
+a372 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d381 3
+a383 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d392 3
+a394 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d403 81
+a483 2
+  mValueOperator = eValueOperatorLike;
+  mValue         = val;
+d493 3
+a495 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d504 3
+a506 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d515 3
+a517 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d526 3
+a528 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d537 3
+a539 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d548 3
+a550 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d560 3
+a562 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d571 3
+a573 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d582 3
+a584 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d593 3
+a595 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d604 3
+a606 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d615 3
+a617 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d627 3
+a629 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d638 3
+a640 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d649 3
+a651 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d660 3
+a662 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d671 3
+a673 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d682 3
+a684 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d694 3
+a696 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d705 3
+a707 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d716 3
+a718 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d727 3
+a729 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d738 3
+a740 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d749 3
+a751 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d760 3
+a762 2
+  mValueOperator = eValueLessThan;
+  mValue         = b;
+d772 3
+a774 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = b;
+d784 3
+a786 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = b;
+d796 3
+a798 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = b;
+d808 3
+a810 2
+  mValueOperator = eValueEqualTo;
+  mValue         = b;
+d820 3
+a822 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = b;
+d833 3
+a835 2
+  mValueOperator = eValueLessThan;
+  mValue         = val;
+d844 3
+a846 2
+  mValueOperator = eValueGreaterThan;
+  mValue         = val;
+d855 3
+a857 2
+  mValueOperator = eValueGreaterThanOrEqualTo;
+  mValue         = val;
+d866 3
+a868 2
+  mValueOperator = eValueLessThanOrEqualTo;
+  mValue         = val;
+d877 3
+a879 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d888 3
+a890 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d897 56
+d955 3
+a957 2
+  mValueOperator = eValueEqualTo;
+  mValue         = val;
+d966 3
+a968 2
+  mValueOperator = eValueNotEqualTo;
+  mValue         = val;
+d977 1
+a977 1
+  mValueOperator = eValueNegation;
+d979 1
+a979 1
+  Value val(eValueDontCare); M_Constructed(Value);
+d981 2
+a982 1
+  mValue = val;
+d992 2
+a993 2
+  fprintf(fp, "%s %s ", mpAttribute->Name(), Enum2Str(OperatorNV, mValueOperator));
+  mValue.Print(fp);
+d1119 6
+@
+
+
+1.4
+log
+@Got rid of duplicate code in Evaluate(Record) & Evaluate(Value).
+@
+text
+@d2 1
+a2 4
+// $Revision: 1.3 $
+// 1. Modified Evaluate(...) to pass in Record and Attribute rather than Value
+//    as Value should stay safely private within Record. This removes the only
+//    requirement for Record::ValueGet() which we want to remove.
+d9 1
+d21 16
+d51 16
+d81 1
+d103 2
+a104 1
+  return Evaluate((*record)[mpAttribute->PositionGet()]);
+@
+
+
+1.3
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Added comparson operators for Bit.
+3. Refactored operators || and &&.
+4. Added Evaluate(Record&).
+5. Added Negation operation to Evaluate().
+6. Added 'const' to Value comparison operators.
+7. Addding Condiiton pointers to mConditionBktList (was actual objects).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d72 1
+a72 14
+  Record& rec = *record;
+
+  switch (mValueOperator)
+  {
+  case eValueOperatorNone:         return FALSE;
+  case eValueLessThan:             return (rec[mpAttribute] <  mValue);
+  case eValueGreaterThan:          return (rec[mpAttribute] >  mValue);
+  case eValueEqualTo:              return (rec[mpAttribute] == mValue);
+  case eValueNotEqualTo:           return (rec[mpAttribute] != mValue);
+  case eValueGreaterThanOrEqualTo: return (rec[mpAttribute] >= mValue);
+  case eValueLessThanOrEqualTo:    return (rec[mpAttribute] <= mValue);
+  case eValueNegation:             return (!rec[mpAttribute]);
+  default:                         assert(0);
+  }
+d75 1
+a75 2
+// TBD: It would be nice to have only one Evaluate() function.
+bool Condition::Evaluate(Value &val)
+@
+
+
+1.2
+log
+@1. Constructor now takes Attribute object instead of const char* .
+2. Added Evaluate(Value &val) to check the condition.
+3. Converted to using the 'm' prefix for data members.
+4. Using new eValueOperator enums (formely eOperator).
+@
+text
+@d2 4
+a5 1
+// $Revision: 1.1 $
+d9 2
+d15 33
+a47 1
+#include "Condition.h"
+d49 8
+a56 6
+Condition::Condition(Attribute *const attr) :
+  mAttribute       (attr),
+  mValueOperator   (eValueNoOperator),
+  mLsbBit          (SHRT_MAX), // set for max surprise, faster debug
+  mMsbBit          (SHRT_MAX), // set for max surprise, faster debug
+  mBitWidthSet     (FALSE)
+d58 3
+d65 1
+d68 1
+a68 7
+Condition::Condition(Condition& c) :
+  mAttribute      (c.mAttribute),
+  mValueOperator  (c.mValueOperator),
+  mValue          (c.mValue),
+  mLsbBit         (c.mLsbBit),
+  mMsbBit         (c.mMsbBit),
+  mBitWidthSet    (c.mBitWidthSet)
+d70 16
+d88 2
+a89 1
+eBoolean Condition::Evaluate(Value &value)
+d93 9
+a101 16
+  case eValueNoOperator:
+    return FALSE;
+  case eValueLessThan:
+    return (value < mValue);
+  case eValueGreaterThan:
+    return (value > mValue);
+  case eValueEqualTo:
+    return (value == mValue);
+  case eValueNotEqualTo:
+    return (value != mValue);
+  case eValueGreaterThanOrEqualTo:
+    return (value >= mValue);
+  case eValueLessThanOrEqualTo:
+    return (value <= mValue);
+  default:
+    assert(0);
+d107 1
+a107 17
+  // The && operation for queries is essentially the multiply operation.
+  // Example: Qx=q0||q1, Qy=q2||q3&&q4, (Qx=2rows,2elems, Qy=2rows,3elems)
+  //          if we use + for && and use . for || we can rewrite this as:
+  //          Qx=q0+q1,  Qy=q2+q3.q4
+  // then     Qx&&Qy (ie Qx.Qy)
+  // equals = (q0+q1).(q2+q3.q4)
+  //        = (q0+q1).q2 + (q0+q1).q3.q4
+  //        = q0.q2 + q1.q2 + q0.q3.q4 + q1.q3.q4
+  // by simply expanding the terms, the resulting bucketlist has 4rows,10elems.
+  //
+  // We implement this by REPLICATING the rows of Qx N-1 times where N is the
+  // number of rows in Qy and APPEND each row of Qy to Qx.
+  // Note that if there is only one row in Qy then only append is needed.
+
+  int need_to_replicate;
+
+  BucketList<Condition> &bl1 = mConditionBktList;
+d110 1
+a110 2
+  if (bl2.TotalBuckets() > 1) need_to_replicate = TRUE;
+  else                        need_to_replicate = FALSE;
+d112 3
+a114 1
+  bl1.BktSetPosition(ePositionFirst);
+d116 2
+a117 2
+  for (; !bl1.BktDone(); bl1.BktSetPosition(ePositionNext)) {
+    Bucket<Condition> *bkt_first;
+d119 4
+a122 1
+    bl2.BktSetPosition(ePositionFirst);
+d124 1
+a124 21
+    for (; !bl2.BktDone(); bl2.BktSetPosition(ePositionNext)) {
+      if (bl2.BktGetPosition() == ePositionFirst) {
+        // No replication.
+        // Check if we will need a copy of the first bucket for replication.
+        if (need_to_replicate) {
+          bkt_first  = new Bucket<Condition>;
+          *bkt_first = *(bl1.BktGet(ePositionCurrent));
+        }
+      }
+      else {
+        // Replicate.
+        // For the last iteration use up the 'bkt_first' copy we already have.
+        if (bl2.BktGetPosition() == ePositionLast && need_to_replicate) {
+          bl1.BktAdd(bkt_first, ePositionNext); // insert bucket
+        }
+        else {
+          Bucket<Condition> *bkt = new Bucket<Condition>;
+          *bkt = *bkt_first;
+          bl1.BktAdd(bkt, ePositionNext); // insert bucket
+        }
+      }
+d126 3
+a128 4
+      // Append current bl bucket to this current bucket.
+      bl1.BktAppend(bl2);
+    }
+  }
+d133 1
+a133 1
+Condition& Condition::operator||(Condition& c)
+d135 1
+a135 10
+  if (mConditionBktList.TotalBuckets())
+  {
+    BucketList<Condition> qbl = c.mConditionBktList; // make a copy
+    mConditionBktList.Attach(qbl, eSouth); // TBD: Deprecate Attach().
+  }
+  else {
+    // the mConditionBktList is empty so it should
+    // be ok to simply copy the one in c.
+    mConditionBktList = c.mConditionBktList;
+  }
+d137 2
+a138 1
+  return *this;
+d141 2
+a142 2
+/* Initializing Condition with Value's */
+Condition& Condition::operator<(Value& val)
+d148 1
+a148 1
+  mConditionBktList.Add(*this, eSouth);
+d152 1
+a152 1
+Condition& Condition::operator>(Value& val)
+d158 1
+a158 1
+  mConditionBktList.Add(*this, eSouth);
+d162 1
+a162 1
+Condition& Condition::operator>=(Value& val)
+d168 1
+a168 1
+  mConditionBktList.Add(*this, eSouth);
+d172 1
+a172 1
+Condition& Condition::operator<=(Value& val)
+d178 1
+a178 1
+  mConditionBktList.Add(*this, eSouth);
+d182 1
+a182 1
+Condition& Condition::operator==(Value& val)
+d188 1
+a188 1
+  mConditionBktList.Add(*this, eSouth);
+d192 1
+a192 1
+Condition& Condition::operator!=(Value& val)
+d198 1
+a198 1
+  mConditionBktList.Add(*this, eSouth);
+d202 1
+a202 1
+Condition& Condition::operator%=(Value& val)
+d204 1
+a204 1
+  mValueOperator = eValueLikeOperator;
+d208 1
+a208 1
+  mConditionBktList.Add(*this, eSouth);
+d212 1
+a212 1
+/* Initializing Condition with int's */
+d219 1
+a219 1
+  mConditionBktList.Add(*this, eSouth);
+d229 1
+a229 1
+  mConditionBktList.Add(*this, eSouth);
+d239 1
+a239 1
+  mConditionBktList.Add(*this, eSouth);
+d249 1
+a249 1
+  mConditionBktList.Add(*this, eSouth);
+d259 1
+a259 1
+  mConditionBktList.Add(*this, eSouth);
+d269 1
+a269 1
+  mConditionBktList.Add(*this, eSouth);
+d273 1
+a273 1
+/* Initializing Condition with unsigned int's */
+d280 1
+a280 1
+  mConditionBktList.Add(*this, eSouth);
+d290 1
+a290 1
+  mConditionBktList.Add(*this, eSouth);
+d300 1
+a300 1
+  mConditionBktList.Add(*this, eSouth);
+d310 1
+a310 1
+  mConditionBktList.Add(*this, eSouth);
+d320 1
+a320 1
+  mConditionBktList.Add(*this, eSouth);
+d330 1
+a330 1
+  mConditionBktList.Add(*this, eSouth);
+d334 1
+a334 1
+/* Initializing Condition with short's */
+d341 1
+a341 1
+  mConditionBktList.Add(*this, eSouth);
+d351 1
+a351 1
+  mConditionBktList.Add(*this, eSouth);
+d361 1
+a361 1
+  mConditionBktList.Add(*this, eSouth);
+d371 1
+a371 1
+  mConditionBktList.Add(*this, eSouth);
+d381 1
+a381 1
+  mConditionBktList.Add(*this, eSouth);
+d391 1
+a391 1
+  mConditionBktList.Add(*this, eSouth);
+d395 1
+a395 1
+/* Initializing Condition with unsigned short */
+d402 1
+a402 1
+  mConditionBktList.Add(*this, eSouth);
+d412 1
+a412 1
+  mConditionBktList.Add(*this, eSouth);
+d422 1
+a422 1
+  mConditionBktList.Add(*this, eSouth);
+d432 1
+a432 1
+  mConditionBktList.Add(*this, eSouth);
+d442 1
+a442 1
+  mConditionBktList.Add(*this, eSouth);
+d452 1
+a452 1
+  mConditionBktList.Add(*this, eSouth);
+d456 1
+a456 2
+/* Initializing Condition with char* */
+Condition& Condition::operator<(char* val)
+d459 1
+a459 1
+  mValue         = val;
+d462 2
+a463 1
+  mConditionBktList.Add(*this, eSouth);
+d467 1
+a467 1
+Condition& Condition::operator>(char* val)
+d470 1
+a470 1
+  mValue         = val;
+d473 2
+a474 1
+  mConditionBktList.Add(*this, eSouth);
+d478 1
+a478 1
+Condition& Condition::operator>=(char* val)
+d481 1
+a481 1
+  mValue         = val;
+d484 2
+a485 1
+  mConditionBktList.Add(*this, eSouth);
+d489 1
+a489 1
+Condition& Condition::operator<=(char* val)
+d492 1
+a492 1
+  mValue         = val;
+d495 2
+a496 1
+  mConditionBktList.Add(*this, eSouth);
+d500 1
+a500 1
+Condition& Condition::operator==(char* val)
+d503 1
+a503 1
+  mValue         = val;
+d506 2
+a507 1
+  mConditionBktList.Add(*this, eSouth);
+d511 1
+a511 1
+Condition& Condition::operator!=(char* val)
+d514 1
+a514 1
+  mValue         = val;
+d517 2
+a518 1
+  mConditionBktList.Add(*this, eSouth);
+d522 1
+a522 1
+/* Initializing Condition with const char* */
+d529 1
+a529 1
+  mConditionBktList.Add(*this, eSouth);
+d539 1
+a539 1
+  mConditionBktList.Add(*this, eSouth);
+d549 1
+a549 1
+  mConditionBktList.Add(*this, eSouth);
+d559 1
+a559 1
+  mConditionBktList.Add(*this, eSouth);
+d569 1
+a569 1
+  mConditionBktList.Add(*this, eSouth);
+d579 35
+a613 1
+  mConditionBktList.Add(*this, eSouth);
+d619 2
+a620 3
+//fprintf(fp, "  %s ", Enum2Str(OperatorNV, mValueOperator));
+  mValue >> (fp);
+  fprintf(fp, "\n");
+d674 72
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d6 1
+d12 6
+a17 6
+Condition::Condition(const char* attrib_name) :
+  attributeName(attrib_name),
+  oper(eNoOperator),
+  lsbBit(SHRT_MAX), // set for maximum surprise, faster debug
+  msbBit(SHRT_MAX), // set for maximum surprise, faster debug
+  bitWidthSet(FALSE)
+d25 31
+a55 13
+void Condition::p() { Print(stdout); }
+void Condition::d() { Dump(stdout); }
+void Condition::Name(FILE* fp) { fprintf(fp, "%s", attributeName); }
+
+Condition::Condition(Condition& c)
+{
+  attributeName = c.attributeName;
+  oper          = c.oper;
+  value         = c.value;
+
+  lsbBit        = c.lsbBit;
+  msbBit        = c.msbBit;
+  bitWidthSet   = c.bitWidthSet;
+d138 2
+a139 2
+  oper = eLessThan;
+  value = val;
+d148 2
+a149 2
+  oper = eGreaterThan;
+  value = val;
+d158 2
+a159 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d168 2
+a169 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d178 2
+a179 2
+  oper = eEqualTo;
+  value = val;
+d188 2
+a189 2
+  oper = eNotEqualTo;
+  value = val;
+d198 2
+a199 2
+  oper = eLikeOperator;
+  value = val;
+d209 2
+a210 2
+  oper = eLessThan;
+  value = val;
+d219 2
+a220 2
+  oper = eGreaterThan;
+  value = val;
+d229 2
+a230 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d239 2
+a240 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d249 2
+a250 2
+  oper = eEqualTo;
+  value = val;
+d259 2
+a260 2
+  oper = eNotEqualTo;
+  value = val;
+d270 2
+a271 2
+  oper = eLessThan;
+  value = val;
+d280 2
+a281 2
+  oper = eGreaterThan;
+  value = val;
+d290 2
+a291 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d300 2
+a301 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d310 2
+a311 2
+  oper = eEqualTo;
+  value = val;
+d320 2
+a321 2
+  oper = eNotEqualTo;
+  value = val;
+d331 2
+a332 2
+  oper = eLessThan;
+  value = val;
+d341 2
+a342 2
+  oper = eGreaterThan;
+  value = val;
+d351 2
+a352 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d361 2
+a362 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d371 2
+a372 2
+  oper = eEqualTo;
+  value = val;
+d381 2
+a382 2
+  oper = eNotEqualTo;
+  value = val;
+d392 2
+a393 2
+  oper = eLessThan;
+  value = val;
+d402 2
+a403 2
+  oper = eGreaterThan;
+  value = val;
+d412 2
+a413 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d422 2
+a423 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d432 2
+a433 2
+  oper = eEqualTo;
+  value = val;
+d442 2
+a443 2
+  oper = eNotEqualTo;
+  value = val;
+d453 2
+a454 2
+  oper = eLessThan;
+  value = val;
+d463 2
+a464 2
+  oper = eGreaterThan;
+  value = val;
+d473 2
+a474 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d483 2
+a484 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d493 2
+a494 2
+  oper = eEqualTo;
+  value = val;
+d503 2
+a504 2
+  oper = eNotEqualTo;
+  value = val;
+d514 2
+a515 2
+  oper = eLessThan;
+  value = val;
+d524 2
+a525 2
+  oper = eGreaterThan;
+  value = val;
+d534 2
+a535 2
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+d544 2
+a545 2
+  oper = eLessThanOrEqualTo;
+  value = val;
+d554 2
+a555 2
+  oper = eEqualTo;
+  value = val;
+d564 2
+a565 2
+  oper = eNotEqualTo;
+  value = val;
+d574 2
+a575 3
+  fprintf(fp, "  %s: ", attributeName);
+//fprintf(fp, "  %s ", Enum2Str(OperatorNV, oper));
+  value >> (fp);
+d614 2
+a615 2
+      lsbBit = lsb;
+      msbBit = msb;
+d617 1
+a617 1
+      bitWidthSet = TRUE;
+d620 4
+a623 4
+    if (lsbBit > msbBit) {
+      temp   = lsbBit;
+      lsbBit = msbBit;
+      msbBit = temp;
+@

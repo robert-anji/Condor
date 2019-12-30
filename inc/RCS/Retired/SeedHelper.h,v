@@ -1,0 +1,36 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.12.20.17.15.52;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Simple utility to get the global Simulation seed.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile:$
+// $Revision:$
+
+#ifndef SEED_HELPER_DECL
+#define SEED_HELPER_DECL
+
+unsigned SeedGet();
+
+#endif
+
+// End
+@

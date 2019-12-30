@@ -1,0 +1,387 @@
+head	1.4;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2010.09.14.18.01.47;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.13.08.59;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.00.13.37;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@For now storing global enums and defines in this new file.
+@
+
+
+1.4
+log
+@1. Renamed eClockEdge to eSignalEdge.
+@
+text
+@// $RCSfile: DefinesAndEnum.h,v $
+// $Revision: 1.3 $
+
+#ifndef DefinesAndEnumHeader
+#define DefinesAndEnumHeader
+
+#include <limits.h>
+
+#define MAX_ATTR_NAME_LENGTH    256
+#define MAX_ATTR_TYPE_LENGTH    256
+#define MAX_RECORD_LINE_LENGTH  1024
+#define MAX_ATTR_VALUE_BYTES    1024
+#define MAX_FILENAME_LENGTH     1024
+
+#define MacroIsExactMultiple(A, B) !(A % B)
+#define MacroAssert1(A)             { assert(A); }
+#define MacroAssert2(A, B)          { assert(A); assert(B); }
+#define MacroAssert3(A, B, C)       { MacroAssert2(A, B); assert(C); }
+#define MacroAssert4(A, B, C, D)    { MacroAssert2(A, B) MacroAssert2(C,D) }
+#define MacroAssert5(A, B, C, D, E) { MacroAssert2(A, B) MacroAssert3(C,D, E) }
+
+enum eSortOrder {
+  eSortOrder_Ascending,
+  eSortOrder_Descending
+};
+
+enum eListLinkTransferType {
+  eListLinkTransferType_FromCurrentToBeforeCurrent,
+  eListLinkTransferType_FromCurrentToAfterCurrent
+};
+
+enum eTableCommitMode {
+  eTableCommitMode_Auto,
+  eTableCommitMode_Manual
+};
+
+enum eTableOpenFlags {
+  // Table open content:
+  eTableOpenFlagBit_New             = 1<<0,
+  eTableOpenFlagBit_FromFile        = 1<<1,
+  eTableOpenFlagBit_Persistant      = 1<<2,
+  // Table permissions:
+  eTableOpenFlagBit_PermRead        = 1<<3,
+  eTableOpenFlagBit_PermAppend      = 1<<4,
+  eTableOpenFlagBit_PermModify      = 1<<5,
+  eTableOpenFlagBit_PermDelete      = 1<<6,
+  // Table commit mode:
+  eTableOpenFlagBit_CommitManual    = 1<<7,
+  eTableOpenFlagBit_UseTransactions = 1<<8,
+
+  // Useful shortcuts:
+  eTableOpenFlags_PermAll =
+      eTableOpenFlagBit_New
+    | eTableOpenFlagBit_PermRead
+    | eTableOpenFlagBit_PermAppend
+    | eTableOpenFlagBit_PermModify
+    | eTableOpenFlagBit_PermDelete,
+  //
+  eTableOpenFlags_FromFile_PermAll =
+      eTableOpenFlagBit_FromFile
+    | eTableOpenFlagBit_PermRead
+    | eTableOpenFlagBit_PermAppend
+    | eTableOpenFlagBit_PermModify
+    | eTableOpenFlagBit_PermDelete,
+  //
+  eTableOpenFlags_Default =
+      eTableOpenFlags_PermAll
+    | eTableOpenFlagBit_UseTransactions,
+  //
+  eTableOpenFlags_DontCare = 0
+};
+
+enum eRecordPermissionBits {
+  // Owner permissions
+  eRecPermBit_OwnerAdd      = 1<<0,
+  eRecPermBit_OwnerDelete   = 1<<1,
+  eRecPermBit_OwnerModify   = 1<<2,
+  eRecPermBit_OwnerRead     = 1<<3,
+  // Group permissions
+  eRecPermBit_GroupAdd      = 1<<4,
+  eRecPermBit_GroupDelete   = 1<<5,
+  eRecPermBit_GroupModify   = 1<<6,
+  eRecPermBit_GroupRead     = 1<<7,
+  // Other permissions
+  eRecPermBit_OtherAdd      = 1<<8,
+  eRecPermBit_OtherDelete   = 1<<9,
+  eRecPermBit_OtherModify   = 1<<10,
+  eRecPermBit_OtherRead     = 1<<11,
+
+  // Derived enums for frequently used permission combinations:
+  eRecPerm_All =
+      eRecPermBit_OwnerAdd    | eRecPermBit_GroupAdd    | eRecPermBit_OtherAdd
+    | eRecPermBit_OwnerDelete | eRecPermBit_GroupDelete | eRecPermBit_OtherDelete
+    | eRecPermBit_OwnerModify | eRecPermBit_GroupModify | eRecPermBit_OtherModify
+    | eRecPermBit_OwnerRead   | eRecPermBit_GroupRead   | eRecPermBit_OtherRead,
+  eRecPerm_OwnerGroupOrOtherAdd =
+      eRecPermBit_OwnerAdd
+    | eRecPermBit_GroupAdd
+    | eRecPermBit_OtherAdd,
+  eRecPerm_OwnerGroupOrOtherDelete =
+      eRecPermBit_OwnerDelete
+    | eRecPermBit_GroupDelete
+    | eRecPermBit_OtherDelete,
+  eRecPerm_OwnerGroupOrOtherModify =
+      eRecPermBit_OwnerModify
+    | eRecPermBit_GroupModify
+    | eRecPermBit_OtherModify,
+  eRecPerm_OwnerGroupOrOtherRead =
+      eRecPermBit_OwnerRead
+    | eRecPermBit_GroupRead
+    | eRecPermBit_OtherRead,
+  eRecPerm_OwnerAll =
+      eRecPermBit_OwnerAdd
+    | eRecPermBit_OwnerDelete
+    | eRecPermBit_OwnerModify
+    | eRecPermBit_OwnerRead,
+  eRecPerm_GroupAll =
+      eRecPermBit_GroupAdd
+    | eRecPermBit_GroupDelete
+    | eRecPermBit_GroupModify
+    | eRecPermBit_GroupRead,
+  eRecPerm_OtherAll =
+      eRecPermBit_OtherAdd
+    | eRecPermBit_OtherDelete
+    | eRecPermBit_OtherModify
+    | eRecPermBit_OtherRead,
+  eRecPerm_None = 0
+};
+
+enum eValueType {
+  eValueUnknown,
+  //
+  eValueBit,
+  eValueChar,
+  eValueCharPtr,
+  eValueConstCharConstPtr,
+  eValueVoidPtr,
+  eValueString,
+  eValueUnsigned,
+  eValueInt,
+  //
+  eValueDontCare = eValueUnknown
+};
+
+enum eValueOperator {
+  eValueOperatorNone,
+  eValueLessThan,
+  eValueGreaterThan,
+  eValueEqualTo,
+  eValueNotEqualTo,
+  eValueGreaterThanOrEqualTo,
+  eValueLessThanOrEqualTo,
+  eValueOperatorLike,
+  eValueNegation,
+  eValueOperatorInvalid
+};
+
+enum eViewSelectOperation {
+  eViewSelectUnique,
+  eViewSelectDuplicate
+};
+
+enum eAggregateType {
+  eAggr_ValueAverage,
+  eAggr_ValueMinimum,
+  eAggr_ValueMaximum,
+  eAggr_ValueSum,
+  eAggr_RecordsCount,
+  eAggr_RecordsAdded,
+  eAggr_RecordsDeleted,
+  eAggr_None
+};
+
+enum eAggregateUpdateReasonType {
+  eAggrUpdType_RecordAdd,
+  eAggrUpdType_RecordDelete,
+  eAggrUpdType_RecordModify
+};
+
+enum eTriggerType {
+  eTrgUnconditional,
+  eTrgRecAdd,
+  eTrgRecDelete,
+  eTrgRecModify,
+  eTrgAggregate
+//eTrgRecAttrModify
+};
+
+ // CONT: Separate define file for DB and Simulator.
+enum eTimeScale {
+  eTimeScale_s,
+  eTimeScale_ms,
+  eTimeScale_us,
+  eTimeScale_ns,
+  eTimeScale_ps
+};
+
+enum eSignalEdge {
+  eSignalEdge_None,
+  eSignalEdge_PositiveEdge,
+  eSignalEdge_PositiveLevel,
+  eSignalEdge_NegativeEdge,
+  eSignalEdge_NegativeLevel,
+  eSignalEdge_PositiveAndNegativeEdge,
+  eSignalEdge_Invalid
+};
+
+enum eClockScale {
+  eClockScale_kHz,
+  eClockScale_MHz,
+  eClockScale_GHz,
+  eClockScale_Invalid
+};
+
+enum eBucket          { eFirstBucket, eLastBucket };
+enum eEnd             { eFirst, eLast };
+enum eConstType       { eNonConst, eConst };
+enum eAddDirection    { eSouth, eNorth, eEast, eWest };
+enum eSearchDirection { eForward, eBackward };
+enum                  { eMaxRecords    = SHRT_MAX };
+enum                  { eMaxAttributes = SHRT_MAX };
+
+enum eEdgePosition    { eEdgePosition_Before, eEdgePosition_After };
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@1. Added more useful enums for eTableOpenFlags.
+2. Added enums eValueInt and eValueConstCharConstPtr to eValueType.
+3. Added enum eTrgUnconditional to eTriggerType.
+4. Renamed some eValueOperator, eAggregateType enums.
+5. Added assert Macros to assert several args at once.
+2. Added new enums:
+   - eValueNegation.
+   - eSortOrder
+   - eLinkListTransferType
+   - eTableCommitMode
+   - eAggregateUpdateReasonType
+   - eClockEdge
+   - eClockScale
+   - eEdgePosition
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d189 17
+a205 7
+enum eClockEdge {
+  eClockEdge_PositiveEdge,
+  eClockEdge_PositiveLevel,
+  eClockEdge_NegativeEdge,
+  eClockEdge_NegativeLevel,
+  eClockEdge_PositiveAndNegativeEdge,
+  eClockEdge_Invalid
+@
+
+
+1.2
+log
+@1. Added some more useful enums to eRecordPermission.
+2. Enums eValueType and eValueOperator moved here (from Value class I think).
+3. Added enums eAggregateUpdateReasonType, eTriggerType.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d9 27
+a35 2
+
+#define MAX_RECORD_LENGTH 1024
+d38 4
+a41 3
+  // Table open:
+  eTableOpenFlagBit_New           = 1<<0,
+  eTableOpenFlagBit_FromFile      = 1<<1,
+d43 28
+a70 4
+  eTableOpenFlagBit_PermRead      = 1<<2,
+  eTableOpenFlagBit_PermAppend    = 1<<3,
+  eTableOpenFlagBit_PermModify    = 1<<4,
+  eTableOpenFlagBit_PermDelete    = 1<<5
+d132 1
+d136 2
+a137 1
+  eValueConstCharPtr,
+d140 3
+d146 1
+a146 1
+  eValueNoOperator,
+d153 3
+a155 2
+  eValueLikeOperator,
+  eValueInvalidOperator
+d164 8
+a171 5
+  eAggregateNone,
+  eAggregateValue_Average,
+  eAggregateValue_Minimum,
+  eAggregateValue_Maximum,
+  eAggregateValue_Sum
+d181 1
+d189 16
+d213 2
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: Database.h,v $
+d9 1
+a23 1
+  eRecPermNone              = 0,
+d39 61
+a99 13
+  // Frequently used
+  eRecPermAll               =   eRecPermBit_OwnerAdd
+                              | eRecPermBit_OwnerDelete
+                              | eRecPermBit_OwnerModify
+                              | eRecPermBit_OwnerRead
+                              | eRecPermBit_GroupAdd
+                              | eRecPermBit_GroupDelete
+                              | eRecPermBit_GroupModify
+                              | eRecPermBit_GroupRead
+                              | eRecPermBit_OtherAdd
+                              | eRecPermBit_OtherDelete
+                              | eRecPermBit_OtherModify
+                              | eRecPermBit_OtherRead
+d109 18
+a126 5
+  eAggregateAvrg,
+  eAggregateCount,
+  eAggregateMinimum,
+  eAggregateMaximum,
+  eAggregateSum
+@

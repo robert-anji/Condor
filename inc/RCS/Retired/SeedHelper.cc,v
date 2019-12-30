@@ -1,0 +1,38 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2011.12.20.17.22.17;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@A simple utility for any class to retrieve the global Simulation seed.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile:$
+// $Revision:$
+
+#include "Simulator.h"
+
+extern Simulator* gSimulator;
+
+unsigned SeedGet()
+{
+  return gSimulator->SeedGet();
+}
+
+// End
+@

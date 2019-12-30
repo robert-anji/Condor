@@ -1,0 +1,228 @@
+head	1.2;
+access;
+symbols;
+locks
+	robert:1.2; strict;
+comment	@// @;
+
+
+1.2
+date	2010.09.21.22.27.36;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.39.22;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Invoke ProcessRemove() instead of TimerRemove() in Scheduler.
+3. Removed eTimerState, using eProcessState instead.
+4. Added eTimeScale to TimerStart().
+5. Moved the 'timeout' argument from constructor to TimerStart().
+6. Renamed TimerStart() to TimerStartAndBlockProcess(), makes it more obvious.
+7. Renamed eTimeUnit to eTimeScale.
+8. Replaced Execute(ok, intf) with ProcessExecute(ExecuteReason).
+@
+text
+@// $RCSfile: Timer.cc,v $
+// $Revision: 1.1 $
+
+#include <assert.h>
+
+#include "Timer.h"
+//
+#include "Global.h"
+#include "Scheduler.h"
+
+extern Scheduler* gScheduler;
+M_ExternConstructDestructCountInt;
+
+Timer::Timer(const char* name, Module* module) :
+  Process           (name, module),
+  mTimeout          (0),
+  mTimeScale        (eTimeScale_ns),
+  mTimeStarted      (0),
+  mTimeStopped      (0),
+  mTimerScheduled   (FALSE),
+  mpBlockedProcess  (0)
+{
+  mProcessState = eProcessState_NotYetStarted;
+
+  M_UpdConstructCount(eType_Timer);
+}
+
+Timer::~Timer()
+{
+  M_UpdDestructCount(eType_Timer);
+}
+
+void Timer::ProcessExecute(ProcessExecuteReason& exec_reason)
+{
+  eProcessState next_state = mProcessState; // the default next state if no transition found
+
+  switch (mProcessState) {
+    case eProcessState_Running: {
+      next_state = eProcessState_Completed;
+
+      if (mpBlockedProcess) {
+        gScheduler->ProcessUnblock(mpBlockedProcess, TRUE);
+
+        mpBlockedProcess = 0;
+      }
+    }
+    break;
+    default:
+      assert(0);
+  }
+
+  mProcessState = next_state;
+}
+
+bool Timer::TimerStart(unsigned timeout, eTimeScale tm_scale)
+{
+  return TimerStartAndBlockProcess(timeout, tm_scale, (Process*)0);
+}
+
+// Start timer and if a process is specified, block it.
+bool Timer::TimerStartAndBlockProcess(unsigned timeout, eTimeScale tm_scale, Process* process)
+{
+  if (mTimerScheduled) return FALSE; // cannot schedule more than once
+
+  mTimeScale = tm_scale;
+  mTimeout   = timeout;
+
+  assert (gScheduler->ProcessAdd(this));
+
+  if (process != 0) {
+    bool process_already_blocked = (mpBlockedProcess == process);
+
+    mpBlockedProcess = process;
+
+    // For TimerRestart() the process may already be scheduled as blocked.
+    if (!process_already_blocked)
+      gScheduler->ProcessBlock(mpBlockedProcess);
+  }
+  // else: mpBlockedProcess should remain at default of 0
+
+  mProcessState   = eProcessState_Running;
+  mTimeStarted    = gScheduler->SimulationTimeGet();
+  mTimerScheduled = TRUE;
+  mTimeStopped    = 0;
+
+  return TRUE;
+}
+
+bool Timer::TimerRestart()
+{
+  if (mTimerScheduled) {
+    if (!gScheduler->ProcessRemove(this)) assert(0);
+  }
+
+  mTimerScheduled = FALSE;
+
+  return TimerStartAndBlockProcess(mTimeout, mTimeScale, mpBlockedProcess);
+}
+
+bool Timer::TimerStop()
+{
+  if (mpBlockedProcess) {
+    gScheduler->ProcessUnblock(mpBlockedProcess, FALSE);
+
+    mpBlockedProcess = 0;
+  }
+  assert (gScheduler->ProcessRemove(this));
+
+  mProcessState  = eProcessState_NotYetStarted;
+  mTimeStopped = gScheduler->SimulationTimeGet() - mTimeStarted;
+
+  return FALSE;
+}
+
+SimulationTime Timer::TimeElapsed() const
+{
+  SimulationTime elapsed = gScheduler->SimulationTimeGet() - mTimeStarted;
+
+  return elapsed;
+}
+
+eProcessType Timer::ProcessType() const
+{
+  return eProcessType_Timer;
+}
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d7 2
+a8 1
+
+d12 1
+d14 1
+a14 1
+Timer::Timer(const char* name, unsigned timeout, eTimeUnit tm_unit, Module* module) :
+d16 2
+a17 2
+  mTimeout          (timeout),
+  mTimeUnit         (tm_unit),
+a19 1
+  mTimerState       (eTimerState_NotYetStarted),
+d23 3
+d30 1
+d33 1
+a33 1
+void Timer::Execute(bool& all_ok, Interface* intf)
+d35 1
+a35 3
+  eTimerState next_state;
+
+  next_state = mTimerState; // next state default if no transition found
+d37 3
+a39 4
+  switch (mTimerState) {
+    eTimerState_Started:
+    {
+      next_state = eTimerState_Completed;
+d47 1
+d52 2
+a53 1
+  mTimerState = next_state;
+d55 3
+a57 1
+  all_ok = 1;
+d61 1
+a61 1
+bool Timer::TimerStart(Process* process)
+d65 4
+a68 1
+  assert (gScheduler->ProcessAddTimer(this));
+d81 1
+a81 1
+  mTimerState     = eTimerState_Started;
+d92 1
+a92 1
+    if (!gScheduler->TimerRemove(this)) assert(0);
+d97 1
+a97 1
+  return TimerStart(mpBlockedProcess);
+d107 1
+a107 1
+  assert (gScheduler->TimerRemove(this));
+d109 1
+a109 1
+  mTimerState  = eTimerState_NotYetStarted;
+@

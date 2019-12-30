@@ -1,0 +1,43 @@
+head	1.1;
+access;
+symbols
+	C1_80:1.1;
+locks
+	ranji:1.1; strict;
+comment	@# @;
+
+
+1.1
+date	2007.06.19.14.24.26;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@This makefile can be used to override the default values
+of the make variables with project specific ones.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#-------------------------------------------------------------------------------
+#   $RCSfile: makefile,v $
+#   $Revision: 1.2 $
+#-------------------------------------------------------------------------------
+#
+# This makefile is used to set or redefine the main makefile's default variable
+# values to project specific values.
+#-------------------------------------------------------------------------------
+ADMIN_FILES      = notes.txt tbd.txt ideas.txt
+BACKUP_NETWORK   = /mnt/hgfs/Robert_AnjiHome/Backup/${PROJECT}
+CC               = g++
+PROJECT          = Condor
+PROJECTs         = condor
+#-------------------------------------------------------------------------------
+#
+# End
+@

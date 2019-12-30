@@ -1,0 +1,1595 @@
+head	1.5;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.5
+date	2011.12.20.17.28.11;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.22.19.33.56;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.51.03;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.01.55.45;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@Added Hash() to hash the string.
+@
+text
+@// $RCSfile: String.cc,v $
+// $Revision: 1.4 $
+
+#include <stdio.h>  // needed for file functions:   *f()   etc.
+#include <string.h> // needed for mpChar functions: str*() etc.
+
+#include "String.h"
+//
+#include "Global.h"
+
+M_ExternConstructDestructCountInt;
+
+
+String::String() :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  if (mSize) {
+    mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+    mpChar[0] = '\0';
+  }
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(char* str) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  if (str) {
+    int l = strlen(str);
+
+    if (l >= mSize) mSize = l+1;
+
+    mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+    strcpy(mpChar, str);
+  }
+  else {
+    if (mSize) {
+      mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+      mpChar[0] = '\0';
+    }
+  }
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(const char* str) :
+// Same as char* constructor
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  if (str) {
+    int l = strlen(str);
+
+    if (l >= mSize) mSize = l+1;
+
+    mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+    strcpy(mpChar, str);
+  }
+  else {
+    if (mSize) {
+      mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+      mpChar[0] = '\0';
+    }
+  }
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(const String& str) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  int l = str.Length();
+
+  if (l >= mSize) mSize = l+1;
+
+  mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+
+  if (str.mpChar) strcpy(mpChar, str.mpChar);
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(String& str, short startpos) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  int l = str.Length();
+
+  if (l > startpos) {
+    if ((l-startpos) > mSize) mSize = l-startpos+1;
+  }
+
+  if (mSize) mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+
+  if (l > startpos) strcpy(mpChar, &str.mpChar[l-startpos]);
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(String& str, short startpos, short endpos) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  int l = str.Length();
+
+  if (endpos > l) endpos = l; // endpos not valid, truncate
+
+  if ((endpos - startpos + 1) > mSize) mSize = endpos - startpos + 2;
+
+  char* ptr    = str.mpChar + startpos;
+  char* endptr = str.mpChar + endpos;
+
+  if (startpos <= endpos) {
+    for (int i=0; i<=(endpos-startpos); i++) {
+      mpChar[i] = str.mpChar[startpos + i];
+    }
+  }
+
+  mpChar[endpos-startpos+1] = '\0';
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(String& str, char* startstr) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  int pos = str.Position(startstr);
+
+  int l;
+
+  if (pos != -1) l = strlen(&str.mpChar[pos]);
+  else           l = 0;
+
+  if (l > mSize) mSize = l;
+
+  if (mSize) {
+    mpChar = new char [mSize]; M_UpdConstructCountN(eType_Char, mSize);
+
+    if (pos != -1) strcpy(mpChar, &str.mpChar[pos]);
+    else           mpChar[0] = '\0';
+  }
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::String(String& str, String& startstr) :
+  mpChar(0),
+  mSize(eStringInitSize)
+{
+  int pos = str.Position(startstr);
+
+  int l;
+
+  if (pos != -1) l = strlen(&str.mpChar[pos]);
+  else           l = 0;
+
+  if (l > mSize) mSize = l;
+
+  if (mSize) {
+    mpChar = new char [mSize]; M_UpdConstructCountN(eType_Char, mSize);
+
+    if (pos != -1) strcpy(mpChar, &str.mpChar[pos]);
+    else           mpChar[0] = '\0';
+  }
+
+  M_UpdConstructCount(eType_String);
+}
+
+String::~String()
+{
+  if (mpChar != 0)
+  {
+    delete [] mpChar; M_UpdDestructCountN(eType_Char, mSize);
+    mpChar = 0;
+    mSize  = 0;
+  }
+
+  M_UpdDestructCount(eType_String);
+}
+
+int String::Length(void) const
+{
+  if (mpChar) return strlen(mpChar);
+  else        return 0;
+}
+
+void String::Clear(void)
+{
+  if (mpChar) mpChar[0] = '\0';
+}
+
+void String::Append(const String& str)
+{
+  Append(str.mpChar);
+}
+
+void String::Append(char c)
+{
+  char buf[2];
+
+  buf[0] = c, buf[1] = '\0';
+  Append(buf);
+}
+
+void String::Append(const char* str)
+{
+  int l;
+
+  if (str==NULL || (l=strlen(str))==0) return;
+
+  int rem = mSize - Length(); // rem'ainder also needs to fit '\0'
+
+  if (l >= rem)
+  {
+    String s(*this);
+
+    // Check if we are appending to the same mpChar
+    if (mpChar == str)
+    {
+      if (mpChar) { delete [] mpChar; mpChar = 0; M_UpdDestructCountN(eType_Char, mSize); }
+      mSize = 2*l + 1;
+      mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+      strcpy(mpChar, s);
+      strcat(mpChar, s);
+    }
+    else
+    {
+      if (mpChar) { delete [] mpChar; mpChar = 0; M_UpdDestructCountN(eType_Char, mSize); }
+      mSize += l + 1;
+      mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+      strcpy(mpChar, s);
+      strcat(mpChar, str);
+    }
+  }
+  else
+  {
+    // Check if we are appending to the same mpChar
+    if (mpChar == str)
+    {
+      String s(str);
+      strcat(mpChar, (const char*)s);
+    }
+    else
+      strcat(mpChar, str);
+  }
+}
+
+void String::Append(char* str)
+{
+  Append((char*) str);
+}
+
+void String::Prepend(char* str)
+{
+  String s(str);
+
+  s.Append(*this);
+  *this = s;
+}
+
+// Returns the number of substitutions made
+short String::Replace(char cc, char dd)
+{
+  short count=0;
+  char* r;
+  int l1 = Length();
+
+  const char* s = mpChar;
+  while ((r=strchr(mpChar, (int)cc)) && l1)
+  {
+    *r = dd;
+    count++;
+    s = r+1;
+  }
+
+  return count;
+}
+
+// Returns the number of substitutions made
+short String::Replace(char* str1, const char* str2)
+{
+  if (mpChar == NULL || str1 == NULL || strlen(str1) == 0)
+    return 0;
+
+  int count=0;
+  String newstr;
+  const char* repl = str2;
+
+  if (str2 == NULL) repl = "";
+
+  int l1 = strlen(str1);
+
+  const char* s = mpChar;
+  char* r;
+
+  while (r=strstr(mpChar, str1))
+  {
+    r = '\0';
+    newstr.Append(s);
+    newstr.Append(repl);
+    s += strlen(s) + l1;
+
+    count++;
+  }
+  newstr.Append(s);
+
+  *this = newstr;
+
+  return count;
+}
+
+// TBD: Review functions below. Done reviewing above.
+
+short String::Replace(char* str1, const char* str2, int n)
+{
+  if (mpChar == NULL || str1 == NULL || strlen(str1) == 0 || n == 0)
+    return 0;
+
+  int count=0;
+  String newstr;
+  const char* repl = str2;
+
+  if (str2 == NULL) repl = "";
+
+  char* r;
+  int l1 = strlen(str1);
+
+  const char* s = mpChar;
+  while (r=strstr(mpChar, str1))
+  {
+    char save = *r;
+    *r = '\0';
+    newstr.Append(s);
+    newstr.Append(repl);
+    s += strlen(s) + l1;
+    *r = save;
+
+    count++;
+    if (count == n)
+      break;
+  }
+  newstr.Append(s);
+
+  *this = newstr;
+
+  return count;
+}
+
+short String::Occurences(char c) const
+{
+  short count=0;
+  char* s = mpChar;
+  char* r;
+
+  while (r=strchr(s, c))
+  {
+    count++;
+    s = r+1;
+  }
+
+  return count;
+}
+
+short String::Occurences(char* str) const
+{
+  char *s, *t;
+  short count=0;
+  int l = strlen(str);
+  int m = Length();
+
+  s = mpChar;
+  while(l && m)
+  {
+    if (t=strstr(s, str))
+    {
+      count++;
+      s = t+l;
+    }
+    else
+      break;
+  }
+
+  return count;
+}
+
+short String::Occurences(const char* str) const
+{
+  return Occurences((char*)str);
+}
+
+int String::Position(char c) const
+{
+  char* r;
+
+  r=strchr(mpChar, c);
+
+  if (r)
+    return (int)(r-mpChar);
+
+  return -1;
+}
+
+int String::Position(char c, int n) const
+{
+  char *r, *t;
+  int found=0;
+
+  r = t = mpChar;
+  while (found < n && r != 0)
+  {
+    r=strchr(t, c);
+    if (r)
+    {
+      found++;
+      t = r+1;
+    }
+    else
+      break;
+  }
+
+  if (found)
+    return (int)(t-mpChar-1);
+
+  return -1;
+}
+
+int String::Position(const char* str) const
+{
+  char *s;
+
+  if (s=strstr(mpChar, str))
+    return (int)(s-mpChar);
+
+  return -1;
+}
+
+int String::Position(const char* str, int n) const
+{
+  char* t;
+  char* s = mpChar;
+  for (int i=0; i<n; i++)
+  {
+    if (t=strstr(s, str))
+    {
+      s = t+1;
+    }
+    else
+      return -1;
+  }
+
+  return (int)(t-mpChar);
+}
+
+int String::Position(int pos, char c) const
+{
+  if (pos>=Length() || pos<0)
+    return -1;
+
+  char* r;
+  char* s = &mpChar[pos];
+
+  r=strchr(s, c);
+
+  if (r)
+    return (int)(r-mpChar);
+
+  return -1;
+}
+
+int String::Position(int pos, char c, int n) const
+{
+  if (pos>=Length() || pos<0)
+    return -1;
+
+  char *r, *t;
+  int found=0;
+
+  r = mpChar;
+  t = &mpChar[pos];
+  while (found < n && r != 0)
+  {
+    r=strchr(t, c);
+    if (r)
+    {
+      found++;
+      t = r+1;
+    }
+    else
+      break;
+  }
+
+  if (found)
+    return (int)(t-mpChar-1);
+
+  return -1;
+}
+
+int String::Position(int pos, const char* str) const
+{
+  if (pos>=Length() || pos<0)
+    return -1;
+
+  char *s, *t;
+
+  t = &mpChar[pos];
+
+  if (s=strstr(t, str))
+    return (int)(s-mpChar);
+
+  return -1;
+}
+
+int String::Position(int pos, const char* str, int n) const
+{
+  if (pos>=Length() || pos<0)
+    return -1;
+
+  char* t;
+  char* s = &mpChar[pos];
+
+  for (int i=0; i<n; i++)
+  {
+    if (t=strstr(s, str))
+    {
+      s = t+1;
+    }
+    else
+      return -1;
+  }
+
+  return (int)(t-mpChar);
+}
+
+void String::Insert(char* str, int pos)
+{
+  if (!(strlen(str)))
+    return;
+
+  if (pos > Length())
+    return;
+
+  char save = mpChar[pos];
+  int rem = Length() - pos;
+  if (rem)
+  {
+    String s(&mpChar[pos]);
+    mpChar[pos] = '\0';
+    Append(str);
+    Append(s);
+  }
+  else
+    Append(str);
+}
+
+void String::Insert(char c, int pos)
+{
+  Insert(c, pos, 1);
+}
+
+void String::Insert(char c, int pos, int count)
+{
+  char str[2];
+  str[0] = c;
+  str[1] = '\0';
+
+  for (int i=0; i<count; i++)
+    Insert(str, pos);
+}
+
+//String::operator char*() const
+//{
+//  return mpChar;
+//}
+
+String::operator const char*() const
+{
+  return mpChar;
+}
+
+String& String::operator<<(String &str)
+{
+  Append(str);
+
+  return *this;
+}
+
+String& String::operator<<(char c)
+{
+  char buf[2];
+
+  buf[0] = c, buf[1] = '\0';
+  Append(buf);
+
+  return *this;
+}
+
+String& String::operator<<(char* str)
+{
+  Append(str);
+
+  return *this;
+}
+
+String& String::operator<<(const char* str)
+{
+  Append(str);
+
+  return *this;
+}
+
+String& String::operator<<(short i)
+{
+  char buf[12];
+  sprintf(buf, "%hd", i);
+  Append(buf);
+
+  return *this;
+}
+
+String& String::operator<<(int i)
+{
+  char buf[12];
+  sprintf(buf, "%d", i);
+  Append(buf);
+
+  return *this;
+}
+
+String& String::operator<<(unsigned i)
+{
+  char buf[12];
+  sprintf(buf, "%u", i);
+  Append(buf);
+
+  return *this;
+}
+
+String& String::operator+(const char* str)
+{
+  Append(str);
+
+  return *this;
+}
+
+String& String::operator=(char c)
+{
+  Clear();
+  Append(c);
+
+  return *this;
+}
+
+String& String::operator=(const char* str)
+{
+  Clear();
+  Append(str);
+
+  return *this;
+}
+
+String& String::operator=(const String& str)
+{
+  // Do not copy self
+  if (this != &str)
+  {
+    Clear();
+    Append(str);
+  }
+
+  return *this;
+}
+
+bool String::operator==(const String& str) const
+{
+  if (!strcmp(mpChar, str.mpChar)) return TRUE;
+  else                             return FALSE;
+}
+
+bool String::operator==(const char* str) const
+{
+  if (!strcmp(mpChar, str)) return TRUE;
+  else                      return FALSE;
+}
+
+bool String::operator==(char* str) const
+{
+  if (!strcmp(mpChar, str)) return TRUE;
+  else                      return FALSE;
+}
+
+bool String::operator!=(const char* str) const
+{
+  return (!(*this==str));
+}
+
+bool String::operator!=(const String& str) const
+{
+  return (!(*this==str));
+}
+
+void String::IncrSize()
+{
+  String str = *this;
+
+  delete [] mpChar; M_UpdDestructCountN(eType_Char, mSize);
+
+  mSize += eStringIncrSize;
+  mpChar = new char[mSize]; M_UpdConstructCountN(eType_Char, mSize);
+  strcpy(mpChar, str.mpChar);
+}
+
+bool String::Replace(char c, int pos)
+{
+  if (pos < 0) return FALSE;
+
+  if (pos >= Length()) return FALSE;
+
+  mpChar[pos] = c;
+  return TRUE;
+}
+
+char String::Getc(int pos) const
+{
+  if (pos < Length())
+  {
+    return mpChar[pos];
+  }
+  else
+    return (char)0;
+}
+
+bool String::Chop()
+{
+  int len = Length() - 1;
+
+  if (mpChar[len] == '\n')
+  {
+    mpChar[len] = '\0';
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool String::Chop(short n)
+{
+  int len = Length();
+
+  if (n > len) return FALSE;
+
+  mpChar[len-n] = '\0';
+
+  return TRUE;
+}
+
+bool String::Find(char c) const
+{
+  if (strchr(mpChar, c))
+    return TRUE;
+
+  return FALSE;
+}
+
+bool String::Find(char* str) const
+{
+  if (str == NULL) return FALSE;
+
+  if (strstr(mpChar, str))
+    return TRUE;
+
+  return FALSE;
+}
+
+bool String::Find(const char* str) const
+{
+  return Find((char*)str);
+}
+
+bool String::Find(String& str) const
+{
+  return Find((const char*)str);
+}
+
+unsigned String::Hash()
+{
+  unsigned hash = 0;
+  char*    str  = mpChar;
+  int c;
+
+  while (c = *str++)
+      hash = c + (hash << 6) + (hash << 16) - hash;
+
+  return hash;
+}
+
+// End
+@
+
+
+1.4
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Renamed mString to mpChar.
+3. Removed Append() and made constructors more eficient.
+4. Made functions and args const wherever possible.
+5. Removed 'operator char*'.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d788 12
+@
+
+
+1.3
+log
+@1. Cosmetic changes only.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d5 7
+a11 1
+#include <string.h> // needed for mString functions: str*() etc.
+a12 1
+#include "MyString.h"
+d15 1
+a15 1
+  mString(0),
+d19 2
+a20 2
+    mString = new char[mSize];
+    mString[0] = '\0';
+d22 2
+d27 1
+a27 1
+  mString(0),
+d30 2
+a31 1
+  int l;
+d33 1
+a33 2
+  if (str) {
+    if ((l=strlen(str)) >= mSize) mSize = l+1;
+d35 2
+a36 2
+    mString = new char[mSize];
+    strcpy(mString, str);
+d40 2
+a41 2
+      mString = new char[mSize];
+      mString[0] = '\0';
+d44 2
+d50 1
+a50 1
+  mString(0),
+d53 13
+a65 5
+  // Copy the const mString. This will allow all operations like append etc.
+  // but is not as efficient as simply copying the pointer.
+  if (mSize) {
+    mString    = new char[mSize];
+    mString[0] = '\0';
+d68 1
+a68 1
+  Append(str);
+d71 2
+a72 2
+String::String(String& str) :
+  mString(0),
+d75 7
+a81 4
+  if (mSize) {
+    mString    = new char[mSize];
+    mString[0] = '\0';
+  }
+d83 1
+a83 1
+  Append(str);
+d87 1
+a87 1
+  mString(0),
+d90 4
+a93 3
+  if (mSize) {
+    mString    = new char[mSize];
+    mString[0] = '\0';
+d96 5
+a100 2
+  if (startpos < str.Length())
+    Append(&(str.mString[startpos]));
+d104 1
+a104 1
+  mString(0),
+d107 5
+a111 4
+  if (mSize) {
+    mString    = new char[mSize];
+    mString[0] = '\0';
+  }
+d113 2
+a114 1
+  char save;
+d116 4
+a119 4
+  if (str.Length() >= endpos+1)
+  {
+    save = str.mString[endpos+1];
+    str.mString[endpos+1] = '\0';
+a120 2
+  else
+    save ='\0';
+d122 1
+a122 2
+  if (startpos < str.Length())
+    Append(&(str.mString[startpos]));
+d124 1
+a124 2
+  if (save != '\0')
+    str.mString[endpos+1] = save;
+d128 1
+a128 1
+  mString(0),
+d133 13
+a145 1
+  if (pos == -1) return;
+d147 1
+a147 1
+  Append(pos);
+d151 1
+a151 1
+  mString(0),
+a154 1
+  if (pos == -1) return;
+d156 15
+a170 1
+  Append(pos);
+d175 1
+a175 1
+  if (mString != 0)
+d177 3
+a179 3
+    delete [] mString;
+    mString = 0;
+    mSize   = 0;
+d181 2
+d185 1
+a185 1
+int String::Length(void)
+d187 2
+a188 2
+  if (mString) return strlen(mString);
+  else         return 0;
+d193 1
+a193 1
+  if (mString) mString[0] = '\0';
+d196 1
+a196 1
+void String::Append(String& str)
+d198 1
+a198 1
+  Append(str.mString);
+a210 5
+  Append((char*) str);
+}
+
+void String::Append(char* str)
+{
+d221 2
+a222 2
+    // Check if we are appending to the same mString
+    if (mString == str)
+d224 1
+a224 1
+      if (mString) { delete [] mString; mString = 0; }
+d226 3
+a228 3
+      mString = new char[mSize];
+      strcpy(mString, s);
+      strcat(mString, s);
+d232 1
+a232 1
+      if (mString) { delete [] mString; mString = 0; }
+d234 3
+a236 3
+      mString = new char[mSize];
+      strcpy(mString, s);
+      strcat(mString, str);
+d241 2
+a242 2
+    // Check if we are appending to the same mString
+    if (mString == str)
+d245 1
+a245 1
+      strcat(mString, (char*)s);
+d248 1
+a248 1
+      strcat(mString, str);
+d252 5
+d272 2
+a273 2
+  const char* s = mString;
+  while ((r=strchr(s, (int)cc)) && l1)
+d286 1
+a286 1
+  if (mString == NULL || str1 == NULL || strlen(str1) == 0)
+d297 1
+a297 1
+  const char* s = mString;
+d300 1
+a300 1
+  while (r=strstr(s, str1))
+d320 1
+a320 1
+  if (mString == NULL || str1 == NULL || strlen(str1) == 0 || n == 0)
+d332 2
+a333 2
+  const char* s = mString;
+  while (r=strstr(s, str1))
+d353 1
+a353 1
+short String::Occurences(char c)
+d356 1
+a356 1
+  char* s = mString;
+d368 1
+a368 1
+short String::Occurences(char* str)
+d375 1
+a375 1
+  s = mString;
+d390 1
+a390 1
+short String::Occurences(const char* str)
+d395 1
+a395 1
+int String::Position(char c)
+d399 1
+a399 1
+  r=strchr(mString, c);
+d402 1
+a402 1
+    return (int)(r-mString);
+d407 1
+a407 1
+int String::Position(char c, int n)
+d412 1
+a412 1
+  r = t = mString;
+d426 1
+a426 1
+    return (int)(t-mString-1);
+d431 1
+a431 1
+int String::Position(char* str)
+d435 2
+a436 2
+  if (s=strstr(mString, str))
+    return (int)(s-mString);
+d441 1
+a441 1
+int String::Position(char* str, int n)
+d444 1
+a444 1
+  char* s = mString;
+d455 1
+a455 1
+  return (int)(t-mString);
+d458 1
+a458 1
+int String::Position(int pos, char c)
+d464 1
+a464 1
+  char* s = &mString[pos];
+d469 1
+a469 1
+    return (int)(r-mString);
+d474 1
+a474 1
+int String::Position(int pos, char c, int n)
+d482 2
+a483 2
+  r = mString;
+  t = &mString[pos];
+d497 1
+a497 1
+    return (int)(t-mString-1);
+d502 1
+a502 1
+int String::Position(int pos, char* str)
+d509 1
+a509 1
+  t = &mString[pos];
+d512 1
+a512 1
+    return (int)(s-mString);
+d517 1
+a517 1
+int String::Position(int pos, char* str, int n)
+d523 1
+a523 1
+  char* s = &mString[pos];
+d535 1
+a535 1
+  return (int)(t-mString);
+d546 1
+a546 1
+  char save = mString[pos];
+d550 2
+a551 2
+    String s(&mString[pos]);
+    mString[pos] = '\0';
+d574 4
+a577 4
+String::operator char*()
+{
+  return mString;
+}
+d579 1
+a579 1
+String::operator const char*()
+d581 1
+a581 1
+  return mString;
+a648 8
+String& String::operator=(char* str)
+{
+  Clear();
+  Append(str);
+
+  return *this;
+}
+
+d665 1
+a665 1
+String& String::operator=(String& str)
+d677 1
+a677 1
+int String::operator==(String& str)
+d679 3
+a681 2
+  if (!strcmp(mString, str.mString))
+    return TRUE;
+d683 4
+a686 1
+  return FALSE;
+d689 1
+a689 1
+int String::operator==(const char* str)
+d691 2
+a692 4
+  if (!strcmp(mString, str))
+    return TRUE;
+
+  return FALSE;
+d695 1
+a695 1
+int String::operator!=(const char* str)
+d700 1
+a700 1
+int String::operator!=(String& str)
+d709 1
+a709 1
+  delete [] mString;
+d712 2
+a713 2
+  mString = new char[mSize];
+  strcpy(mString, str.mString);
+d716 1
+a716 1
+eBoolean String::Replace(char c, int pos)
+d722 1
+a722 1
+  mString[pos] = c;
+d726 1
+a726 1
+char String::Getc(int pos)
+d730 1
+a730 1
+    return mString[pos];
+d736 1
+a736 1
+eBoolean String::Chop()
+d740 1
+a740 1
+  if (mString[len] == '\n')
+d742 1
+a742 1
+    mString[len] = '\0';
+d749 1
+a749 1
+eBoolean String::Chop(short n)
+d755 1
+a755 1
+  mString[len-n] = '\0';
+d760 1
+a760 1
+eBoolean String::Find(char c)
+d762 1
+a762 1
+  if (strchr(mString, c))
+d768 1
+a768 1
+eBoolean String::Find(char* str)
+d772 1
+a772 1
+  if (strstr(mString, str))
+d778 1
+a778 1
+eBoolean String::Find(const char* str)
+d783 1
+a783 1
+eBoolean String::Find(String& str)
+d785 1
+a785 1
+  return Find((char*)str);
+@
+
+
+1.2
+log
+@1. Renamed class members to use 'm' prefix.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d75 1
+a75 1
+  if (startpos<str.Length())
+d139 1
+a139 1
+  else        return 0;
+d180 1
+a180 1
+      delete [] mString;
+d188 1
+a188 1
+      delete [] mString;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+a3 1
+#include <string.h> // needed for string functions: str*() etc.
+d5 1
+d10 2
+a11 2
+  string(0),
+  size(eStringInitSize)
+d13 4
+a16 2
+  string    = new char[size];
+  string[0] = '\0';
+d20 2
+a21 2
+  string(0),
+  size(eStringInitSize)
+d25 2
+a26 2
+  if ((l=strlen(str)) >= size)
+    size = l + eStringIncrSize;
+d28 9
+a36 2
+  string = new char[size];
+  strcpy(string, str);
+d40 10
+a49 6
+/* Same as char* constructor */
+  string(0),
+  size(eStringInitSize)
+{
+  string    = new char[size];
+  string[0] = '\0';
+d55 2
+a56 2
+  string(0),
+  size(eStringInitSize)
+d58 4
+a61 2
+  string    = new char[size];
+  string[0] = '\0';
+d67 2
+a68 2
+  string(0),
+  size(eStringInitSize)
+d70 4
+a73 2
+  string    = new char[size];
+  string[0] = '\0';
+d76 1
+a76 1
+    Append(&(str.string[startpos]));
+d80 2
+a81 2
+  string(0),
+  size(eStringInitSize)
+d83 4
+a86 2
+  string    = new char[size];
+  string[0] = '\0';
+d92 2
+a93 2
+    save = str.string[endpos+1];
+    str.string[endpos+1] = '\0';
+d99 1
+a99 1
+    Append(&(str.string[startpos]));
+d102 1
+a102 1
+    str.string[endpos+1] = save;
+d106 2
+a107 2
+  string(0),
+  size(eStringInitSize)
+d113 1
+a113 2
+  String tempstr(str, pos);
+  *this = tempstr;
+d117 2
+a118 2
+  string(0),
+  size(eStringInitSize)
+d123 1
+a123 2
+  String tempstr(str, pos);
+  *this = tempstr;
+d128 1
+a128 1
+  if (string != 0)
+d130 3
+a132 2
+    delete [] string;
+    string = 0;
+d138 2
+a139 1
+  return strlen(string);
+d144 1
+a144 1
+  string[0] = '\0';
+d149 1
+a149 6
+  Append(str.string);
+}
+
+void String::Append(char* str)
+{
+  Append((const char*)str);
+d162 6
+a167 1
+  int l = strlen(str);
+d169 1
+a169 1
+  if (str==NULL || l==0) return;
+d171 1
+a171 1
+  int rem = size - Length() - 1;
+d177 2
+a178 2
+    /* Check if we are appending to the same string */
+    if (string == str)
+d180 5
+a184 5
+      delete string;
+      size += 2*l + 1 + eStringIncrSize;
+      string = new char[size];
+      strcpy(string, s);
+      strcat(string, s);
+d188 5
+a192 5
+      delete string;
+      size += l + 1 + eStringIncrSize;
+      string = new char[size];
+      strcpy(string, s);
+      strcat(string, str);
+d197 2
+a198 2
+    /* Check if we are appending to the same string */
+    if (string == str)
+d201 1
+a201 1
+      strcat(string, s);
+d204 1
+a204 1
+      strcat(string, str);
+d216 1
+a216 1
+/* Returns the number of substitutions made */
+d219 1
+a219 1
+  int count=0;
+d223 1
+a223 1
+  const char* s = string;
+d234 1
+a234 1
+/* Returns the number of substitutions made */
+d237 1
+a237 1
+  if (string == NULL || str1 == NULL || strlen(str1) == 0)
+d246 3
+a249 3
+  int l1 = Length();
+  int l2 = strlen(str1);
+  int l3 = strlen(repl);
+a250 1
+  const char* s = string;
+d253 1
+a253 2
+    char save = *r;
+    *r = '\0';
+d256 1
+a256 2
+    s += strlen(s) + l2;
+    *r = save;
+d267 2
+d271 1
+a271 1
+  if (string == NULL || str1 == NULL || strlen(str1) == 0 || n == 0)
+d281 1
+a281 3
+  int l1 = Length();
+  int l2 = strlen(str1);
+  int l3 = strlen(repl);
+d283 1
+a283 1
+  const char* s = string;
+d290 1
+a290 1
+    s += strlen(s) + l2;
+d307 1
+a307 1
+  char* s = string;
+d326 1
+a326 1
+  s = string;
+d350 1
+a350 1
+  r=strchr(string, c);
+d353 1
+a353 1
+    return (int)(r-string);
+d363 1
+a363 1
+  r = t = string;
+d377 1
+a377 1
+    return (int)(t-string-1);
+d386 2
+a387 2
+  if (s=strstr(string, str))
+    return (int)(s-string);
+d395 1
+a395 1
+  char* s = string;
+d406 1
+a406 1
+  return (int)(t-string);
+d415 1
+a415 1
+  char* s = &string[pos];
+d420 1
+a420 1
+    return (int)(r-string);
+d433 2
+a434 2
+  r = string;
+  t = &string[pos];
+d448 1
+a448 1
+    return (int)(t-string-1);
+d460 1
+a460 1
+  t = &string[pos];
+d463 1
+a463 1
+    return (int)(s-string);
+d474 1
+a474 1
+  char* s = &string[pos];
+d486 1
+a486 1
+  return (int)(t-string);
+d497 1
+a497 1
+  char save = string[pos];
+d501 2
+a502 2
+    String s(&string[pos]);
+    string[pos] = '\0';
+d527 1
+a527 1
+  return string;
+d532 1
+a532 1
+  return string;
+d626 1
+a626 1
+  /* Do not copy self */
+d638 1
+a638 1
+  if (!strcmp(string, str.string))
+d646 1
+a646 1
+  if (!strcmp(string, str))
+d666 1
+a666 1
+  delete string;
+d668 3
+a670 3
+  size += eStringIncrSize;
+  string = new char[size];
+  strcpy(string, str.string);
+d679 1
+a679 1
+  string[pos] = c;
+d687 1
+a687 1
+    return string[pos];
+d697 1
+a697 1
+  if (string[len] == '\n')
+d699 1
+a699 1
+    string[len] = '\0';
+d712 1
+a712 1
+  string[len-n] = '\0';
+d719 1
+a719 1
+  if (strchr(string, c))
+d729 1
+a729 1
+  if (strstr(string, str))
+@

@@ -1,0 +1,464 @@
+head	1.8;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.8; strict;
+comment	@ * @;
+
+
+1.8
+date	2011.08.21.22.20.29;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.08.16.02.49.44;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.22.17.07.32;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.12.55.59;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.23.27.24;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.8
+log
+@1. Add ability to assign different bits to self.
+2. Added operator bool() so that bit can be tested using 'if'.
+3. Comparison operators not correct, fixed one of them and added CONT.
+@
+text
+@// $RCSfile: Bit.h,v $
+// $Revision: 1.7 $
+
+#ifndef Bit_Class
+#define Bit_Class
+
+#include <stdio.h>
+
+#include "DBDefines.h"
+#include "Global.h"
+#include "SimulatorDefines.h"
+
+class Interface;
+
+class Bit
+{
+public:
+  enum eBitRangeState { eBitRangeState_Clear, eBitRangeState_MsbSet, eBitRangeState_LsbSet };
+
+  // Constructors
+  Bit();
+//Bit(unsigned int i);
+  Bit(short high_bit, short low_bit);
+  Bit(const Bit& b); // needed for 'passing by value'
+  Bit(Interface& intf);
+  ~Bit();
+
+  // Determine if the bit satisfies the edge.
+  bool IsAtSignalEdge(eSignalEdge edge);
+
+  // Assignment
+  Bit& operator=(const Bit& b);
+  Bit& operator=(Bit& b);
+  Bit& operator=(unsigned int value);
+  Bit& SelfCopy(); // needed to support b[2] = b[1].SelfCopy()
+
+  // Arithmetic
+  Bit& operator++(int);
+  Bit& operator--(int);
+  void operator+=(Bit &bit);
+  void operator-=(Bit &bit);
+  Bit& operator+(unsigned u);
+  Bit& operator-(unsigned u);
+  Bit& operator>>(int u);
+  Bit& operator<<(int u);
+
+  // Comparison (int)
+  bool operator==(int i);
+  bool operator!=(int i);
+  bool operator> (int i);
+  bool operator< (int i);
+  bool operator>=(int i);
+  bool operator<=(int i);
+
+  // Comparison (unsigned)
+  bool operator==(unsigned u);
+  bool operator!=(unsigned u);
+  bool operator> (unsigned u);
+  bool operator< (unsigned u);
+  bool operator>=(unsigned u);
+  bool operator<=(unsigned u);
+
+  // Comparison (Bit)
+  // Note: cannot have const arg as we clear operand bit (msb,lsb) state
+  bool operator==(Bit& bit);
+  bool operator!=(Bit& bit);
+  bool operator> (Bit& bit);
+  bool operator< (Bit& bit);
+  bool operator>=(Bit& bit);
+  bool operator<=(Bit& bit);
+
+  // Logic operations
+  Bit  operator&(Bit& bit);
+  Bit  operator|(Bit& bit);
+  Bit  operator^(Bit& bit);
+  Bit  operator~();
+  bool operator!() const;
+
+  // Concatenate
+//Bit& Concatenate(Bit &b0, Bit &b1) { Bit b(0,0); /*b=Concatenate2(b0, b1);*/ return b; }
+  Bit& Concatenate2(Bit&, Bit&);
+  Bit& Concatenate3(Bit&, Bit&, Bit&);
+  Bit& Concatenate4(Bit&, Bit&, Bit&, Bit&);
+  Bit& Concatenate5(Bit&, Bit&, Bit&, Bit&, Bit&);
+  Bit& Concatenate6(Bit&, Bit&, Bit&, Bit&, Bit&, Bit&);
+  Bit& Concatenate7(Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&);
+  Bit& Concatenate8(Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&);
+  Bit& Concatenate9(Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&, Bit&);
+
+  // Used to set the range of bits for a subsequent operation.
+  Bit& operator[](short bit);
+
+  // Set/Test bits
+  short IsBitSet      (short bit_num) const;
+  void  SetBit        (short bit_num);
+  void  ClearBit      (short bit_num);
+  void  BitSetAll     ();
+  void  BitClearAll   ();
+
+  // Allow retrieving bits as built-in types
+  operator unsigned int   ();
+  operator unsigned short ();
+  operator short          ();
+  operator int            ();
+  operator bool           ();
+
+  // Return the size of the Bit
+  short BitWidth() const  { return mNumBits; }
+
+  // Allow retrieving the commited value from a Signal within an Interface.
+  Bit& operator=(Interface& intf);
+
+  // Alternate (faster) way to set msb/lsb instead of using ["n:m"].
+  void SetMsbLsb(short msb, short lsb);
+
+  // Save, Initialize, Print the bit.
+  char* Save       (char buf [MAX_RECORD_LINE_LENGTH+1]) const;
+  bool  Initialize (const char* line, const char* format);
+  void  VcdPrint   (FILE* fp) const;
+  void  Print      (const char* format_str = "%s\n") const;
+
+protected:
+  void        InitMasks();
+  void        InitBitsAndWords(short msb, short lsb);
+
+  inline void ResetBitRange()    { mLsbBit=0; mMsbBit=mNumBits-1;
+                                   mBitRangeState=eBitRangeState_Clear; }
+  inline bool IsEmptyBit() const { if (mNumBits) return FALSE;
+                                   else          return TRUE; }
+
+  // Use mutable to allow modification of mLsbBit & mMsbBit in const functions.
+  mutable short      mLsbBit;
+  mutable short      mMsbBit;
+
+  short      mNumWords;
+  unsigned*  mpWords;
+  short      mNumBits; // Note:
+                       // mNumBits is needed because mMsbBit and mLsbBit can
+                       // be changed when working with bit ranges.
+
+  Bit*       mpSavedBit;
+  bool       mSavedBitSet;
+
+  eBitRangeState mBitRangeState;
+};
+
+class Bit1  : public Bit { public: Bit1()  : Bit( 0, 0) {} ~Bit1()  {} };
+class Bit2  : public Bit { public: Bit2()  : Bit( 1, 0) {} ~Bit2()  {} };
+class Bit3  : public Bit { public: Bit3()  : Bit( 2, 0) {} ~Bit3()  {} };
+class Bit4  : public Bit { public: Bit4()  : Bit( 3, 0) {} ~Bit4()  {} };
+class Bit5  : public Bit { public: Bit5()  : Bit( 4, 0) {} ~Bit5()  {} };
+class Bit6  : public Bit { public: Bit6()  : Bit( 5, 0) {} ~Bit6()  {} };
+class Bit7  : public Bit { public: Bit7()  : Bit( 6, 0) {} ~Bit7()  {} };
+class Bit8  : public Bit { public: Bit8()  : Bit( 7, 0) {} ~Bit8()  {} };
+class Bit9  : public Bit { public: Bit9()  : Bit( 8, 0) {} ~Bit9()  {} };
+class Bit10 : public Bit { public: Bit10() : Bit( 9, 0) {} ~Bit10() {} };
+class Bit11 : public Bit { public: Bit11() : Bit(10, 0) {} ~Bit11() {} };
+class Bit12 : public Bit { public: Bit12() : Bit(11, 0) {} ~Bit12() {} };
+class Bit13 : public Bit { public: Bit13() : Bit(12, 0) {} ~Bit13() {} };
+class Bit14 : public Bit { public: Bit14() : Bit(13, 0) {} ~Bit14() {} };
+class Bit15 : public Bit { public: Bit15() : Bit(14, 0) {} ~Bit15() {} };
+class Bit16 : public Bit { public: Bit16() : Bit(15, 0) {} ~Bit16() {} };
+class Bit17 : public Bit { public: Bit17() : Bit(16, 0) {} ~Bit17() {} };
+class Bit18 : public Bit { public: Bit18() : Bit(17, 0) {} ~Bit18() {} };
+class Bit19 : public Bit { public: Bit19() : Bit(18, 0) {} ~Bit19() {} };
+class Bit20 : public Bit { public: Bit20() : Bit(19, 0) {} ~Bit20() {} };
+class Bit21 : public Bit { public: Bit21() : Bit(20, 0) {} ~Bit21() {} };
+class Bit22 : public Bit { public: Bit22() : Bit(21, 0) {} ~Bit22() {} };
+class Bit23 : public Bit { public: Bit23() : Bit(22, 0) {} ~Bit23() {} };
+class Bit24 : public Bit { public: Bit24() : Bit(23, 0) {} ~Bit24() {} };
+class Bit25 : public Bit { public: Bit25() : Bit(24, 0) {} ~Bit25() {} };
+class Bit26 : public Bit { public: Bit26() : Bit(25, 0) {} ~Bit26() {} };
+class Bit27 : public Bit { public: Bit27() : Bit(26, 0) {} ~Bit27() {} };
+class Bit28 : public Bit { public: Bit28() : Bit(27, 0) {} ~Bit28() {} };
+class Bit29 : public Bit { public: Bit29() : Bit(28, 0) {} ~Bit29() {} };
+class Bit30 : public Bit { public: Bit30() : Bit(29, 0) {} ~Bit30() {} };
+class Bit31 : public Bit { public: Bit31() : Bit(30, 0) {} ~Bit31() {} };
+class Bit32 : public Bit { public: Bit32() : Bit(31, 0) {} ~Bit32() {} };
+class Bit64 : public Bit { public: Bit64() : Bit(63, 0) {} ~Bit64() {} };
+
+#endif
+// End
+@
+
+
+1.7
+log
+@1. Made mLsbBit and mMsbBit mutable.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d35 1
+d105 1
+d141 3
+@
+
+
+1.6
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d129 4
+a133 2
+  short      mLsbBit;
+  short      mMsbBit;
+@
+
+
+1.5
+log
+@1. Added constructor with Interface arg so that bit can be set to the
+   interface comitted value.
+2. Added member function to test if Bit is at a particular edge.
+3. Renamed Print() to VcdPrint().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d9 1
+a9 1
+#include "DefinesAndEnum.h"
+d11 1
+@
+
+
+1.4
+log
+@. Added function: Bit& operator=(Bit& b);
+2. Added Bit(const Bit& b), needed for 'passing by value'.
+3. Added several increment/decrement functions.
+4. Added comparison operators for unsigned and int.
+5. Added logic operations for &, |, ^, ~ .
+6. Added a whole set of Concatenate functions.
+7. Made some access functions const.
+8. Added function: short BitWidth() const.
+9. Added function bool operator=(Interface& intf) to allow retrieving the
+   commited value for a signal in the interface.
+10.Added function: bool  Initialize (const char* line, const char* format).
+11.Made the following protexted: void InitMasks(),
+                                 void InitBitsAndWords(short msb, short lsb),
+                                 void ResetBitRange(),
+                                 bool IsEmptyBit() const,
+12.Added new fixed width Bit classes (Bit1, Bit2, Bit3 ... Bit16 ... Bit64 etc.)
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d24 1
+d27 3
+d62 1
+d79 8
+a86 8
+  Bit& Concatenate2(Bit &b, Bit &b);
+  Bit& Concatenate3(Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate4(Bit &b, Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate5(Bit &b, Bit &b, Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate6(Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate7(Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate8(Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b);
+  Bit& Concatenate9(Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b, Bit &b);
+d108 1
+a108 1
+  bool operator=(Interface& intf);
+d116 2
+a117 2
+  void  Print      (FILE* fp) const; // for Vcd
+  void  Print      (const char* format_str = "%s") const;
+d128 7
+a134 7
+  short          mNumWords;
+  short          mLsbBit;
+  short          mMsbBit;
+  unsigned int*  mpWords;
+  short          mNumBits; // Note:
+                           // mNumBits is needed because mMsbBit and mLsbBit can
+                           // be changed when working with bit ranges.
+@
+
+
+1.3
+log
+@1. Added functions BitSetAll() and BitClearAll().
+2. Converted to using the 'm' data member prefix.
+@
+text
+@d2 4
+a5 1
+// $Revision: 1.2 $
+d9 5
+d17 2
+d20 2
+d23 1
+a23 2
+  Bit(Bit& b);
+  Bit(char* size_str);
+d27 1
+a29 1
+  Bit& operator=(short value);
+d31 51
+a81 7
+  // Comparison
+  short operator==(Bit& bit);
+  short operator!=(Bit& bit);
+  short operator> (Bit& bit);
+  short operator< (Bit& bit);
+  short operator>=(Bit& bit);
+  short operator<=(Bit& bit);
+d84 1
+a84 1
+  Bit& operator[](const char* width_str);
+d87 5
+a91 5
+  short IsBitSet(short bit_num);
+  void  SetBit(short bit_num);
+  void  ClearBit(short bit_num);
+  void  BitSetAll();
+  void  BitClearAll();
+d94 10
+a103 5
+  operator unsigned int();
+  operator unsigned short();
+  operator short();
+  operator int();
+  inline unsigned int GetWord(short w) { return mWords[w]; }
+d108 14
+a121 5
+  // Print the bit.
+  void Print(FILE* fp, const char* format_str = "%0*x");
+
+private:
+  inline void ResetBits() { mLsbBit = 0; mMsbBit = mNumBits-1; }
+a123 1
+  short          mNumBits;
+d126 6
+a131 1
+  unsigned int  *mWords;
+d134 35
+@
+
+
+1.2
+log
+@1. Added operators >, <, >= and <= for Bit comparisons.
+2. Added cast function for unsigned short, short and int.
+3. Added alternate invokation of SetMsbLsb using (short msb, short lsb).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d35 2
+d43 1
+a43 1
+  inline unsigned int GetWord(short w) { return words[w]; }
+d52 1
+a52 1
+  inline void ResetBits() { lsbBit = 0; msbBit = numBits-1; }
+d54 5
+a58 5
+  short        numWords;
+  short        numBits;
+  short        lsbBit;
+  short        msbBit;
+  unsigned int *words;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 4
+a4 2
+// $RCSfile$
+// $Revision$
+d16 3
+a18 3
+  Bit& operator =(Bit& b);
+  Bit& operator =(unsigned int value);
+  Bit& operator =(short value);
+d21 6
+a26 2
+  short operator ==(Bit& bit);
+  short operator !=(Bit& bit);
+d36 1
+a36 1
+  // Allow retrieving bits as unsigned
+d38 3
+d43 6
+@

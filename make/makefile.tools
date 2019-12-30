@@ -1,0 +1,565 @@
+#----------------------------------------------------------
+#  $RCSfile: makefile.tools,v $
+#  $Revision: 1.13 $
+#----------------------------------------------------------
+
+targets:
+	grep -E '^[a-z_A-Z0-9]*:' makefile ${MAKE_DIR}/${MAKEFILE_TOOLS}
+
+RcsDir:
+	mkdir ${HOME}/${RCS}/${RCS}${PROJECT}
+
+RcsLinks:
+	ln -s ${HOME}/Projects/${RCS}/${RCS}${PROJECT} ${RCS}
+	@for rcs in ${INC} ${SRC}; \
+	do \
+		ln -s ../${RCS} $$rcs/${RCS}; \
+	done;
+
+cleanHpobj:
+	make cleanobj OBJ=obj BIN=bin
+
+cleanSunobj:
+	make cleanobj OBJ=obj.sun BIN=${BIN}.sun
+
+# Default cleanobj is same as cleanhpobj
+clean: cleanobj
+	@ if [ ${PLATFORM} = "PC" ]; then               \
+        echo "Removing ${BIN}/${TARGET}.exe";       \
+        rm -f ${BIN}/${TARGET}.exe;                 \
+      else                                          \
+        echo "Removing ${BIN}/${TARGET}";           \
+        rm -f ${BIN}/${TARGET};                     \
+      fi
+
+cleansun:
+	make clean OBJ=obj.sun BIN=${BIN}.sun
+
+cleanobj:
+	rm -f ${OBJS}
+
+tohtml:
+	@ echo "Creating html document"
+	@ ${HOME}/bin/html -t ${PROJECT} `ls ${SRC}/*cc ${INC}/*h`
+
+debug:
+	cd ${BIN}; xdb -p ../${PLAYDIR}/${PLAYFILE} -d ../${SRC} ${TARGET}
+
+debugrelease:
+	cd ${BIN}; xdb -p ../${PLAYDIR}/${PLAYFILE} -d ../${RELEASE} \
+	${TARGET}.${RELEASE}
+
+debugtest:
+	cd ${BIN}; xdb -p ../${PLAYDIR}/${PLAYFILE} -d ../${SRC} -d ../${INC} \
+	-d ../${TEST} test
+
+debugtool:
+	cd ${BIN}; xdb -p ../${PLAYDIR}/${PLAYFILE} -d ../${SRC} -d ../${INC} \
+	-d ../${TOOLS} tool
+
+tags:
+	ctags --exclude=doc -f .ctags_gen -R --extra=+f
+	extract_dupl_tags.pl
+
+cscope:
+	find ${PROJ_DIR} -name "*.cc" -o -name "*.h" -name doc -prune > ${CSCOPE_FILE_LIST}
+	cscope -b -f ${CSCOPE_DB_FILE} -i ${CSCOPE_FILE_LIST}
+
+print:
+	make print2
+
+# Single side printing
+print1:
+	@echo Printing file = $(file)
+	@sed -e 's/	/    /g' $(file) > prfile
+	@mp -l prfile|lpr
+#	@a2ps -n -H$(file) prfile|lpr -Ppost
+	@rm prfile
+
+# Double side printing
+print2:
+	@echo Printing file = $(file)
+	@sed -e 's/	/    /g' $(file) > prfile
+	@mp -l prfile|lpr -Pduplex
+#	@a2ps -n -H$(file) prfile|lpr -Pduplex
+	@rm prfile
+
+# Show which files differ between any two releases
+# Specify the Release with variables Rel1 and Rel2
+reldiff:
+	@make -i rdiff
+
+rdiff:
+	@for file in `ls ${RCS}`; \
+	do \
+		co -r${Rel1} -p $$file 2> /dev/null >f1; \
+		co -r${Rel2} -p $$file 2> /dev/null >f2; \
+		if [ -s f1 ]; \
+		then \
+			if [ -s f2 ]; \
+			then \
+				if diff f1 f2 > /dev/null 2>&1; \
+				then \
+					echo "$$file\t - Files are identical"; \
+				else \
+					echo "$$file\t - Files differ"; \
+				fi \
+			else \
+				echo "\t - One of the files does not exist"; \
+			fi \
+		fi \
+	done;
+	@rm -f f1 f2
+
+diff:
+	@for dir in ${INC} ${SRC}; \
+	do \
+		for file in `ls $$dir`; \
+		do \
+			if [ -s ${TEMP}/$$file ]; \
+			then \
+				if diff $$dir/$$file ${TEMP} > /dev/null 2>&1; \
+				then \
+					echo "$$file\t - No change"; \
+				else \
+					echo "$$file\t - File differs"; \
+				fi \
+			else \
+				echo "\t - File ${TEMP}/$$file does not exist"; \
+			fi \
+		done; \
+	done;
+
+compare:
+	make checkout_release RELEASE=${RELEASE} PATCHES='${PATCHES}' \
+	TEMP=compare
+	make diff TEMP=compare
+
+showdifftk:
+	make showdiff COUNT=${COUNT} TKDIFF=tkdiff;
+
+# Compare current files with repository including optional tag.
+showdiff:
+	@count=0; \
+	for dir in ${INC} ${SRC}; \
+    do \
+      for file in `ls $$dir`; \
+      do \
+        if [ $$file != "RCS" ]; then \
+          if ! rcsdiff -q --brief $$dir/$$file; then \
+            if [ -n "${TKDIFF}" ]; then \
+              count=`expr $$count + 1`; \
+              if [ $$count = ${COUNT} ]; then \
+                tkdiff $$dir/$$file & \
+                exit 0; \
+              fi; \
+            fi; \
+          fi; \
+        fi; \
+      done; \
+    done; \
+    exit 0;
+
+# Create a release with name RELEASE
+# Labels all current files in RCS
+# All files should be checked in
+# in order to ensure the current
+# environment of source files
+# *******************************
+release:
+	@echo "First checking in the ${ADMIN_FILES}"
+	for file in ${ADMIN_FILES}; \
+    do \
+      cp ${ADMIN_DIR}/$$file .; \
+      rcs -l $$file; \
+      ci -q -m"Changes for release: ${RELEASE}" $$file; \
+    done
+	@echo "Now tagging all files with label: ${RELEASE}"
+	@for file in `ls ${RCS}/*,v`; \
+	do \
+		if [ $$file != ${RCS}/${REL_HISTORY},v ]; \
+		then \
+			rcs -N${RELEASE}: $$file; \
+			echo $$file; \
+		fi; \
+	done
+	@co -l ${REL_HISTORY}
+	@echo "***   Release: ${RELEASE}   ***" >> ${REL_HISTORY}
+	@echo "***   Enter Description for this release   ***"
+	@ci ${REL_HISTORY}
+	@rcs -N${RELEASE}: ${REL_HISTORY};
+
+# Checkin initial source code
+# ***************************
+checkin: ciinc cisrc
+
+ciinc:
+	@echo "***   Checking in all ${INC} files to RCS   ***"
+	@for file in `ls ${INC}/*.h`; \
+	do \
+		ci -u $$file; \
+	done
+
+cisrc:
+	@echo "***   Checking in all ${SRC} files to RCS   ***"
+	@for file in `ls ${SRC}/*.cc`; \
+	do \
+		ci -u $$file; \
+	done
+
+# Recreate a previous release. Provide Release name as RELEASE=...
+recreate: checkout_release
+	@ cd ${RELEASE}; make compile_release RELEASE=${RELEASE} \
+	  PATCHES='${PATCHES}'
+	@ cd ..
+	@ make clean_release RELEASE=${RELEASE}
+
+checkout_release:
+	@ if [ -d ${RELEASE} ]; \
+	  then \
+		/bin/rm -rf ${RELEASE}; \
+	  fi;
+	@ mkdir ${RELEASE}
+	@ co -p -r${RELEASE} makefile       > ${RELEASE}/makefile
+	@ co -p -r${RELEASE} makefile.tools > ${RELEASE}/makefile.tools
+	@ cd ${RELEASE}; make Env
+	@ cd ${RELEASE}; make checkout RELEASE=${RELEASE}
+	@ cd ${RELEASE}; make checkout_patches RELEASE=${RELEASE} PATCHES='${PATCHES}'
+
+compile_release:
+	@ if [ ${PLATFORM} = HP ]; \
+	then \
+		make ${TARGET} INC=. SRC=. BIN=. \
+		OBJ=. RELEASE=${RELEASE} PATCHES='${PATCHES}'; \
+		mv ${TARGET} ../${BIN}/${TARGET}.${RELEASE}; \
+	elif [ ${PLATFORM} = SUN ]; \
+	then \
+		make ${TARGET}.sun INC=. SRC=. OBJ=. \
+		DEF=${DEF} CC=gcc BIN=. PLATFORM=SUN TARGET=${TARGET}.sun \
+		RELEASE=${RELEASE} PATCHES='${PATCHES}'; \
+		mv ${TARGET}.sun ../${BIN}/${TARGET}.sun.${RELEASE}; \
+	elif [ ${PLATFORM} = PC ]; \
+	then \
+		make ${TARGET} INC=. SRC=. OBJ=. BIN=. CC=gcc \
+		PLATFORM=PC DEF=${DEF} RELEASE=${RELEASE} PATCHES='${PATCHES}'; \
+	fi;
+
+
+checkout_patches:
+	@echo "***   Checking out files for Patches   ***"
+	@ var=0; \
+	ver="1.1"; \
+	file="file"; \
+	for item in ${PATCHES}; \
+	do \
+		if [ $$var != 0 ]; \
+		then \
+			file=$$item; \
+			var=0; \
+			co $$ver $$file; \
+			/bin/rm -rf ${RELEASE}/$$file; \
+			mv $$file ${RELEASE}; \
+		else \
+			ver=$$item; \
+			var=1; \
+		fi \
+	done;
+	@echo "***   Done   ***"
+
+clean_release:
+	@ /bin/rm -rf ${RELEASE}
+
+# Checkout source code
+# ********************
+checkout:
+	@ make coinc cosrc RELEASE=${RELEASE}
+	@echo "***   Checkout complete   ***"
+
+coinc:
+	@echo "***   Checking out include files from RCS   ***"
+	@for file in `ls ${RCS}/*.h,v`; \
+	do \
+        if [ ${RELEASE} != "Latest" -a ${RELEASE} != "" ]; then \
+		  co -r${RELEASE} $$file; \
+        else \
+		  co $$file; \
+        fi; \
+		mv *.h ${INC}; \
+	done
+
+cosrc:
+	@echo "***   Checking out source files from RCS   ***"
+	@for file in `ls ${RCS}/*.cc,v`; \
+	do \
+        if [ ${RELEASE} != "Latest" -a ${RELEASE} != "" ]; then \
+		  co -r${RELEASE} $$file; \
+        else \
+		  co $$file; \
+        fi; \
+		mv *.cc ${SRC}; \
+	done
+
+# Number of lines in all source code
+size:
+	@echo "***   Number of lines:   ***"
+	@make lines
+	@echo
+
+proj_log:
+	@ echo >> ${CODE_SIZE_LOG}; echo -n "# " >> ${CODE_SIZE_LOG};
+	@ date >> ${CODE_SIZE_LOG};
+	@ make -s lines >> ${CODE_SIZE_LOG};
+	@ tbd.sh | egrep '^Main|^TBD' >> ${CODE_SIZE_LOG};
+
+show_proj_log:
+	@ more ${CODE_SIZE_LOG};
+
+lines:
+	@echo -n "${PROJECT}: code: "; \
+    wc -l ${SRC}/*.cc ${INC}/*.h makefile ${MAKE_DIR}/${MAKEFILE_DEFINES} ${MAKE_DIR}/${MAKEFILE_TOOLS} \
+     | grep total
+	@echo -n "${PROJECT}: admin:"; \
+    cd ${ADMIN_DIR}; wc -l ${ADMIN_FILES} | grep total
+	@echo -n "${PROJECT}: total:"; \
+	for file in ${ADMIN_FILES}; \
+	do \
+		admin_file="$$admin_file ${ADMIN_DIR}/$$file"; \
+	done; \
+	wc -l ${SRC}/*.cc ${INC}/*.h makefile ${MAKE_DIR}/${MAKEFILE_DEFINES} ${MAKE_DIR}/${MAKEFILE_TOOLS} \
+     `echo $$admin_file` | grep total; \
+
+lines_added:
+	@ echo -n "src lines:   "; rcsdiff src/*cc 2>&1 | grep '>'|wc -l;
+	@ echo -n "inc lines:   "; rcsdiff inc/*h  2>&1 | grep '>'|wc -l;
+	@ echo -n "total lines: "; rcsdiff src/*cc inc/*h 2>&1 |grep '>'|wc -l;
+
+cont:
+	@if grep CONT inc/*h src/*cc 2>&1 > /dev/null; then \
+       grep -nH CONT inc/*h src/*cc | sed -n -e 's/:[ ]\+/:\t/1p' > ${ADMIN_DIR}/cont.txt; \
+       num_lines=`wc -l ${ADMIN_DIR}/cont.txt | sed -n -e "s/\/.*//p"`; \
+       cat ${ADMIN_DIR}/cont.txt; \
+       echo "total: $$num_lines:"; \
+     fi
+
+
+tbd:
+	@if grep TBD inc/*h src/*cc 2>&1 > /dev/null; then \
+       grep TBD inc/*h src/*cc; \
+     fi
+     
+dbg:
+	@if grep DBG inc/*h src/*cc 2>&1 > /dev/null; then \
+       grep DBG inc/*h src/*cc; \
+     fi
+
+# Builds directory structure and
+# Checks out necessary files
+Env:
+	@ echo "***   Creating Environment   ***"
+	@ make directories
+	@ make RcsLinks
+
+directories:
+	@for dirs in ${DIR}; \
+	do \
+		if [ ! -d $$dirs ]; \
+		then \
+			echo "***   Creating $$dirs directory   ***"; \
+			mkdir $$dirs; \
+		else \
+			echo "***   $$dirs directory  exists   ***"; \
+		fi \
+	done;
+
+search:
+	@ grep -n '${STR}' inc/*h src/*cc
+
+# Show locked files
+showlock:
+	@echo "*** Locked files are:   ***"
+	@rlog -L -R ${RCS}/*,v
+	@echo
+
+history:
+	@ cat ${BACKUP}/${PROJECT}/${BKP_HISTORY}
+
+DailyBackup:
+	@ if [ ! -d ${PROJ_BKP_DIR} ]; \
+	then \
+		mkdir ${PROJ_BKO_DIR}; \
+	fi;
+	@ if [ -s ${PROJ_BKP_DIR}/${PROJECT}.Daily ]; \
+	then \
+		rm -rf ${PROJ_BKP_DIR}.prev; \
+		mv ${PROJ_BKP_DIR}.Daily ${PROJ_BKP_DIR}.prev; \
+	fi;
+	${MAKE} backup DATE=Daily
+	${MAKE} permbackup
+
+date:
+	@date "+%m_%d_%y";
+	@DTE=`date "+%m_%d_%y"`; DT="04.04.04"; \
+	echo "date=$$DTE dt=$$DT";
+
+backup_network:
+	@ if [ -d ${BACKUP_NETWORK} ]; \
+      then \
+        echo "Starting backup in directory ${BACKUP_NETWORK}"; \
+        make backup PROJ_BKP_DIR=${BACKUP_NETWORK}; \
+      else \
+        echo "!!! The network directory ${BACKUP_NETWORK} is not accessible"; \
+      fi
+
+backup:
+	@ DATE=`date "+%m_%d_%y"`; \
+	if [ -s ${PROJ_BKP_DIR}/${PROJECT}.$$DATE.tgz ]; \
+	then \
+		echo "Cannot backup, directory exists"; \
+		echo "${PROJ_BKP_DIR}/${PROJECT}.$$DATE.tgz"; \
+		echo ""; \
+	else \
+		${MAKE} backupcont PROJ_BKP_DIR=${PROJ_BKP_DIR} ID=$$DATE \
+                           BACKUP_COMMENT="${BACKUP_COMMENT}"; \
+	fi
+
+# Target for cron.
+# Cron will supply an ID to identify the backup, make will append the current
+# year so that backup names are unique to each year. VMWare cron is setup to
+# call make this target repeatedly since VMWare will not be 'On' all the time,
+# therefore, if the backup for an ID already exists then nothing is done.
+backup_cron:
+	@if [ ${ID} = "" ];        then id=UnknownID; fi; \
+	 if [ ${ID} = "daily" ];   then id=${ID}_`date "+%d"`; fi; \
+	 if [ ${ID} = "weekly" ];  then id=${ID}_`date "+%W"`; fi; \
+	 if [ ${ID} = "monthly" ]; then id=${ID}_`date "+%m"`; fi; \
+	 if [ ! -s ${PROJ_BKP_DIR}/${PROJECT}.$$id.tgz ]; then \
+	   ${MAKE} backupcont PROJ_BKP_DIR=${PROJ_BKP_DIR} ID=$$id \
+                          BACKUP_COMMENT="${BACKUP_COMMENT}"; \
+	 fi
+
+# Continue backup
+backupcont:
+	@if [ -z ${BACKUP_COMMENT} ]; \
+      then \
+        echo -n "Enter a backup comment: "; \
+	    read inp; \
+	    echo "$$inp" >  Readme_backup; \
+        echo "Also add a log of this backup" > /dev/null; \
+        date >> ${ADMIN_DIR}/proj_bkp.log; \
+	    echo "${PROJECT}.${ID}.tgz:" >> ${ADMIN_DIR}/proj_bkp.log; \
+	    echo "  $$inp" >> ${ADMIN_DIR}/proj_bkp.log; \
+      else \
+	    echo "${BACKUP_COMMENT}" > Readme_backup; \
+      fi
+	@ for file in ${ADMIN_FILES}; \
+      do \
+        cp ${ADMIN_DIR}/$$file .; \
+      done
+	@ tar cvf ${PROJECT}.tar ${BKP_LIST} Readme_backup
+	@ gzip -c ${PROJECT}.tar > ${PROJECT}.tgz
+	@ rm -f ${PROJECT}.tar
+	@ mv ${PROJECT}.tgz ${PROJ_BKP_DIR}/${PROJECT}.${ID}.tgz
+	@ echo "${PROJECT} backed up:"
+	@ ls -l ${PROJ_BKP_DIR}/${PROJECT}.${ID}.tgz;
+	@ \rm -f ${ADMIN_FILES}
+	@ \rm -f Readme_backup
+	@ echo ""
+
+backup_dir:
+	@ tar cvf ${BDIR}.tar ${BDIR}/*
+	@ gzip -c ${BDIR}.tar > ${BDIR}.tgz
+	@ mv ${BDIR}.tgz ${BACKUP}/${PROJECT}.${DATE}
+	@ rm ${BDIR}.tar
+
+permbackup:
+	@ weekday=`date '+%a'`; \
+	/bin/rm -rf ${PROJ_BKP_DIR}.$$weekday; \
+	make backuplist TODAY=$$weekday LIST="${BKP_WEEKDAYS}"
+	@ monthday=`date '+%d'`; \
+	/bin/rm -rf ${PROJ_BKP_DIR}.$$monthday; \
+	make backuplist TODAY=$$monthday LIST="${BKP_MONTHDAYS}"
+
+backuplist:
+	@ for day in ${LIST}; \
+	do \
+		if [ $$day != ${TODAY} ]; \
+		then \
+			set day = ""; \
+		else \
+			make backup DATE=$$TODAY; \
+		fi; \
+	done
+
+get_backup:
+	@ cp -r ${BACKUP}/${PROJECT}/${PROJECT}.${DATE} .
+	@ mv ${PROJECT}.${DATE}/*tgz .
+	gzip -d *.tgz
+	tar xvf *.tar
+	rm -f *.tar
+	rm -f *tgz
+	rm -rf ${PROJECT}.${DATE}
+	touch README
+	echo "${PROJECT}.${DATE}" >> README
+	make Env
+
+showbkp:
+	@ ls ${BACKUP}/${PROJECTs}
+
+sync_diff:
+	@ echo "TBD";
+
+sync_diff_tbd:
+	@ echo "Diff in ${PROJECT} source files:";
+	@ sync.sh -i -s ${HOME}/Projects/${PROJECT} -d ${SYNC_DIR}/Projects/${PROJECT} -f 'obj|bin|swp|doc/html'
+
+gdb:
+	echo "F=${F}"; \
+    echo "b ${F}" > .gdbinit; \
+    echo "${C}" >> .gdbinit; \
+    echo "winheight src 34" >> .gdbinit; \
+    echo run >> .gdbinit; \
+	gdb -x .gdbinit ${BIN}/${PROJECT}
+
+sync_export:
+	\rm -f core.*
+	make sync_src_to_export_dir SYNC_DIR=${SYNC_DIR} SYNC_FLGS=${SYNC_FLGS}
+    make sync_env_to_export_dir SYNC_DIR=${SYNC_DIR} SYNC_FLGS=${SYNC_FLGS}
+
+sync_import:
+	make sync_import_dir_to_src SYNC_DIR=${SYNC_DIR} SYNC_FLGS=${SYNC_FLGS}
+ 	make sync_import_dir_to_env SYNC_DIR=${SYNC_DIR} SYNC_FLGS=${SYNC_FLGS}
+
+sync_src_to_export_dir:
+	@ echo "Syncing (export) source files to ${SYNC_DIR}:";
+	@ sync.sh ${SYNC_FLGS} -s ${HOME}/Projects/${PROJECT}     -d ${SYNC_DIR} -f 'aux|obj|bin|swp|RCS|doc/html'
+	@ sync.sh ${SYNC_FLGS} -s ${HOME}/Projects/${PROJECT}/aux -d ${SYNC_DIR}/aux_win
+	@ sync.sh ${SYNC_FLGS} -s ${HOME}/Projects/RCS/RCSCondor  -d ${SYNC_DIR}/RCS
+
+sync_import_dir_to_src:
+	@ echo "Syncing (import) source files from ${SYNC_DIR}:";
+	@ sync.sh ${SYNC_FLGS} -d ${HOME}/Projects/${PROJECT}     -s ${SYNC_DIR} -f 'aux|obj|bin|env|swp|RCS|doc/html'
+	@ sync.sh ${SYNC_FLGS} -d ${HOME}/Projects/${PROJECT}/aux -s ${SYNC_DIR}/aux_win
+	@ sync.sh ${SYNC_FLGS} -d ${HOME}/Projects/RCS/RCSCondor  -s ${SYNC_DIR}/RCS
+
+sync_env_to_export_dir:
+	@ echo "Syncing (export) environment  files:";
+	@ sync.sh ${SYNC_FLGS} -s ${ENV_DIR} -d ${SYNC_DIR}/env -f swp
+
+sync_import_dir_to_env:
+	@ echo "Syncing (import) environment  files:";
+	@ sync.sh ${SYNC_FLGS} -d ${ENV_DIR} -s ${SYNC_DIR}/env -f swp
+
+sync_export_usb:
+	make sync_src_to_export_dir SYNC_DIR=/mnt/hgfs/USB_MEM/Syncd/${PROJECT} SYNC_FLGS=${SYNC_FLGS}
+	make sync_env_to_export_dir SYNC_DIR=/mnt/hgfs/USB_MEM/Syncd            SYNC_FLGS=${SYNC_FLGS}
+
+sync_import_usb:
+	make sync_import_dir_to_src SYNC_DIR=/mnt/hgfs/USB_MEM/Syncd/${PROJECT} SYNC_FLGS=${SYNC_FLGS}
+	make sync_import_dir_to_env SYNC_DIR=/mnt/hgfs/USB_MEM/Syncd            SYNC_FLGS=${SYNC_FLGS}
+
+# List of useful features that can be implemented
+# ***********************************************
+# - Show the difference between a backed-up version and current.
+# - Cleanup unused/old targets.
+
+# END

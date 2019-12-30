@@ -1,0 +1,238 @@
+head	1.5;
+access;
+symbols;
+locks
+	robert:1.5; strict;
+comment	@// @;
+
+
+1.5
+date	2011.12.07.13.00.37;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.06.26.16.01.46;	author robert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.04.22.20.59.10;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.01.30.07.59.44;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.22.19.38.58;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@Renamed from Main.cc .
+@
+
+
+1.5
+log
+@Moved show_memory_usage() and check_objects_deleted() to file MemoryUsage.cc .
+@
+text
+@// $RCSfile: Condor.cc,v $
+// $Revision: 1.4 $
+
+#include <assert.h>
+
+#include "Global.h"
+#include "Database.h"
+#include "Enum.h"
+#include "Simulator.h"
+#include "Stack.h"
+#include "ModuleTop.h"
+#include "Vcd.h"
+
+int            gConstructCount[eType_Max];
+int            gDestructCount[eType_Max];
+Database*      gDB;
+Simulator*     gSimulator;
+SimulationTime gSimTime;
+Vcd*           gVcd;
+
+bool       gDbg = 1;
+
+bool run_simulation();
+bool check_objects_deleted(bool print, FILE* fp);
+void show_memory_usage();
+
+int main(int argc, char* argv[])
+{
+  // To start of, the very first thing we need is a database
+  // as many classes use it to store their information.
+  // We cannot create the database in run_simulation() because
+  // some tables are freed only once run_simulation scope exits
+  // and a 'delete gDB;' in run_simulation would be before that.
+  gDB = new Database("./", "FirstVerifyRightDB");
+
+  Stack<int>  int_stack;
+  Stack<int*> intp_stack;
+
+  run_simulation();
+
+  if (gDB) { delete gDB; gDB = 0; }
+
+  show_memory_usage();
+
+  return 1;
+}
+
+bool run_simulation()
+{
+  gSimulator = new Simulator();
+
+  Module* my_top = (Module*)(new ModuleTop("RW_Top"));
+  gVcd           = new Vcd(); // keep Vcd handle handy in case dumping is turned on.
+
+//gVcd->DumpStart(my_top, "dump.vcd");
+  gSimulator->SimulationTimeMax(400*1);
+  gSimulator->Start(my_top);
+
+  delete my_top;
+  delete gVcd;
+  delete gSimulator;
+
+  return TRUE;
+}
+
+#include "MemoryUsage.cc"
+
+// End
+@
+
+
+1.4
+log
+@Temporary instantiation of Stack object for tessting.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d66 1
+a66 43
+void show_memory_usage()
+{
+  bool print = TRUE;
+
+  FILE* fp = NULL;
+  if (print) fp = fopen("memory", "w");
+
+  if (!check_objects_deleted(print, fp)) {
+    printf("\nAll objects not deleted cleanly"), M_FL;
+    if (!print) check_objects_deleted(print=TRUE, stdout);
+  }
+  else {
+    printf("All objects deleted cleanly!!"), M_FL;
+  }
+}
+
+bool check_objects_deleted(bool print, FILE* fp)
+{
+  bool all_deleted_ok = TRUE;
+
+  // Memory allocation/deallocation check.
+  // Print out the cleanly deleted items.
+  for (int i=0, j=0; i<eType_Max; i++) {
+    if (gConstructCount[i] == gDestructCount[i] && gConstructCount[i] != 0) {
+      if (print) if (j==0) fprintf(fp, "Clean:\n");
+      if (print)
+        fprintf(fp, "Eq:%2d  Type:%25s Constructed/Destructed=%d/%d\n", j++, Enum2Str(TypesNV, i), gConstructCount[i], gDestructCount[i]);
+    }
+  }
+
+  // Print out the not cleanly deleted items.
+  for (int i=0, j=0; i<eType_Max; i++) {
+    if (gConstructCount[i] != gDestructCount[i]) {
+      if (print) {
+        if (j == 0) fprintf(fp, "Not clean:\n");
+        fprintf(fp, "Neq:%2d Type:%25s Constructed/Destructed=%d/%d\n", j++, Enum2Str(TypesNV, i), gConstructCount[i], gDestructCount[i]);
+      }
+      all_deleted_ok = FALSE;
+    }
+  }
+
+  return all_deleted_ok;
+}
+@
+
+
+1.3
+log
+@1. Removed global gModuleTop, using local my_top instead.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d10 1
+d36 3
+@
+
+
+1.2
+log
+@Placed memory check code into new function: show_memory_usage().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a15 1
+Module*        gModuleTop;
+d48 2
+a49 2
+  gModuleTop = (Module*)(new ModuleTop("RW_Top"));
+  gVcd       = new Vcd(); // keep Vcd handle handy in case dumping is turned on.
+d51 1
+a51 1
+//gVcd->DumpStart(gModuleTop, "dump.vcd");
+d53 1
+a53 1
+  gSimulator->Start(gModuleTop);
+d55 1
+a55 1
+  delete gModuleTop;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d25 1
+d40 1
+a40 12
+  bool print = TRUE;
+
+  FILE* fp = NULL;
+  if (print) fp = fopen("memory", "w");
+
+  if (!check_objects_deleted(print, fp)) {
+    printf("\nAll objects not deleted cleanly"), M_FL;
+    if (!print) check_objects_deleted(print=TRUE, stdout);
+  }
+  else {
+    printf("All objects deleted cleanly!!"), M_FL;
+  }
+d42 1
+a42 1
+  return 0;
+d63 16
+@

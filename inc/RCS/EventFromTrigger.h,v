@@ -1,0 +1,49 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.06.26.15.34.34;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Utility class that combines a Trigger with an Event. When the trigger
+matches it will Notify the event.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: EventFromTrigger.h,v $
+// $Revision: 1.1 $
+
+#ifndef EventFromTriggerClass
+#define EventFromTriggerClass
+
+#include "Event.h"
+#include "Trigger.h"
+
+class EventFromTrigger : public Event, public Trigger
+{
+public:
+  EventFromTrigger(const char* ev_name, eTriggerType type, View* v, Query* q=0, Record* rec=0);
+  //
+ ~EventFromTrigger();
+
+  virtual void TriggerActionExecute();
+
+private:
+};
+
+#endif
+
+// End
+@

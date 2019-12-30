@@ -1,0 +1,547 @@
+head	1.9;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.9
+date	2011.12.20.17.24.16;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.09.19.16.26.48;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.09.05.03.18.36;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.06.26.15.45.08;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.01.30.06.57.47;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.13.23.03.49;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.12.58.50;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.00.08.07;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@1. A Condition object is logically composed of:
+   - a  Value object
+   - an Operator
+   - an Attribute (for which to apply the Operator and Value).
+   except that:
+   - for Bit support it needs to retain the msb, lsb info
+   - for on-the-fly sum-of-products creation it needs a BucketList<Condition>
+@
+
+
+1.9
+log
+@Added == and != comparison of Attribute with Record pointer.
+@
+text
+@// $RCSfile: Condition.h,v $
+// $Revision: 1.8 $
+
+#ifndef ConditionClass
+#define ConditionClass
+
+#include "Attribute.h"
+#include "BucketList.h"
+#include "Global.h"
+#include "Value.h"
+
+class Aggregate;
+class Record;
+class Value;
+class ViewIterator;
+
+enum eCondOperandType {
+  eCondOperand_None,
+  eCondOperand_Value,
+  eCondOperand_ValuePtr,
+  eCondOperand_AttributePtr,
+  eCondOperand_RecordPtr,
+  eCondOperand_Unknown
+};
+
+enum eCondOperatorType {
+  eCondOper_None,
+  eCondOper_Less,
+  eCondOper_Greater,
+  eCondOper_Equal,
+  eCondOper_NotEqual,
+  eCondOper_GreaterOrEqual,
+  eCondOper_LessOrEqual,
+  eCondOper_Like,
+  eCondOper_Negation,
+  eCondOper_Invalid
+};
+
+// A Condition represents one or more comparisons like ValueA > ValueB.
+// Note that this class is primed for use with database tables and hence
+// one of the vales to compare will come from the database table record,
+// the other value can come directly from the users query and is stored
+// in this class (mValue) or it can come from another table record (for
+// database Join operations.
+// If more than one Condition is required then these are gathered inline
+// and stored as a sum-of-products using a two-dimensional linked list
+// called BucketList.
+class Condition
+{
+  friend class Query;
+  friend class ViewJoin;
+
+public:
+  Condition(const Attribute* attr);
+  Condition(const Aggregate* aggr);
+  Condition(const Value  val);
+  Condition(const Value* pval);
+  Condition(const Condition& c);
+  Condition(const Value& val,      bool alloc); // For use by Value class
+  Condition(const Attribute* attr, bool alloc); // For use by Attribute class
+  Condition(const Aggregate* aggr, bool alloc); // For use by Aggregate class
+  //
+  ~Condition();
+
+  bool Match(Record* rec=0);
+
+  Condition& operator&&(Condition& c);
+  Condition& operator||(Condition& c);
+
+  friend void OperationAnd (BucketList<Condition>& bl1, BucketList<Condition>& bl2);
+  friend void OperationOr  (BucketList<Condition>& bl1, BucketList<Condition>& bl2);
+
+  // A Condition object is complete only once a condition operation is invoked
+  // on it. This is accomplished for multiple types using the overloaded
+  // operators below.
+  Condition& operator< (const Value& val);
+  Condition& operator> (const Value& val);
+  Condition& operator>=(const Value& val);
+  Condition& operator<=(const Value& val);
+  Condition& operator==(const Value& val);
+  Condition& operator!=(const Value& val);
+  Condition& operator%=(const Value& val);
+
+  Condition& operator< (const Value* val);
+  Condition& operator> (const Value* val);
+  Condition& operator>=(const Value* val);
+  Condition& operator<=(const Value* val);
+  Condition& operator==(const Value* val);
+  Condition& operator!=(const Value* val);
+  Condition& operator%=(const Value* val);
+
+  Condition& operator< (int val);
+  Condition& operator> (int val);
+  Condition& operator>=(int val);
+  Condition& operator<=(int val);
+  Condition& operator==(int val);
+  Condition& operator!=(int val);
+
+  Condition& operator< (unsigned val);
+  Condition& operator> (unsigned val);
+  Condition& operator>=(unsigned val);
+  Condition& operator<=(unsigned val);
+  Condition& operator==(unsigned val);
+  Condition& operator!=(unsigned val);
+
+  Condition& operator< (short val);
+  Condition& operator> (short val);
+  Condition& operator>=(short val);
+  Condition& operator<=(short val);
+  Condition& operator==(short val);
+  Condition& operator!=(short val);
+
+  Condition& operator< (unsigned short val);
+  Condition& operator> (unsigned short val);
+  Condition& operator>=(unsigned short val);
+  Condition& operator<=(unsigned short val);
+  Condition& operator==(unsigned short val);
+  Condition& operator!=(unsigned short val);
+
+  Condition& operator< (const Bit& b);
+  Condition& operator> (const Bit& b);
+  Condition& operator>=(const Bit& b);
+  Condition& operator<=(const Bit& b);
+  Condition& operator==(const Bit& b);
+  Condition& operator!=(const Bit& b);
+
+  Condition& operator< (const char* val);
+  Condition& operator> (const char* val);
+  Condition& operator>=(const char* val);
+  Condition& operator<=(const char* val);
+  Condition& operator==(const char* val);
+  Condition& operator!=(const char* val);
+
+  Condition& operator< (const Attribute& attr);
+  Condition& operator> (const Attribute& attr);
+  Condition& operator<=(const Attribute& attr);
+  Condition& operator>=(const Attribute& attr);
+  Condition& operator==(const Attribute& attr);
+  Condition& operator!=(const Attribute& attr);
+
+  Condition& operator==(const Record* val);
+  Condition& operator!=(const Record* val);
+
+  Condition& operator==(void* val);
+  Condition& operator!=(void* val);
+
+  Condition& operator!();
+
+  // Bit range operator to support bit-select comparison
+  Condition& operator[](const char* width_str);
+
+  //
+  Condition& EditIndex(short s);
+
+  // Access functions
+  eCondOperatorType Operator()   const { return mCondOperator; }
+  const Value&     ValueGet()    const { return mValueRHS;     }
+  short            GetMsb()      const { return mMsbBit;       }
+  short            GetLsb()      const { return mLsbBit;       }
+  bool             BitWidthSet() const { return mBitWidthSet;  }
+  Value*           ValuePtrGet(const Aggregate* aggr) const;
+
+  // Debug functions
+  void Print (FILE* fp);
+  void Dump  (FILE* fp);
+  void Name  (FILE* fp) { fprintf(fp, "Condition"); }
+
+  inline const Attribute& AttributeGet() { return *mpAttributeLHS; }
+
+private:
+  eCondOperandType      mTypeLHS;
+  eCondOperandType      mTypeRHS;
+  const Attribute*      mpAttributeLHS;    // LHS=>Left-hand-sinde, RHS=>Right-hand-side
+  const Attribute*      mpAttributeRHS;
+  const Value*          mpValueLHS;
+  const Value*          mpValueRHS;
+  Value                 mValueLHS;
+  Value                 mValueRHS;
+//View*                 mpViewLHS;         // needed for joins
+//View*                 mpViewRHS;         //         "
+  ViewIterator*         mpViewIteratorLHS; //         "
+  ViewIterator*         mpViewIteratorRHS; //         "
+  eCondOperatorType     mCondOperator;
+  BucketList<Condition> mConditionBktList;
+  short                 mLsbBit;
+  short                 mMsbBit;
+  bool                  mBitWidthSet;  
+  bool                  mIsAllocatedAuto;
+  short                 mValueIndex;
+
+  // Private member functions.
+
+  // Note: Could not make function const because it calls 'rec<mValue' ???
+  bool Evaluate();                  // needed for ?
+  bool Evaluate(Record* rec);       // needed for typical searches
+  bool Evaluate(const Value &lhs, const Value &rhs);
+
+
+  // Shortcuts for use inside the debugger (gdb):
+  void p();
+  void pp() {mConditionBktList.p(); }
+  void d();
+};
+
+#endif
+
+// End
+@
+
+
+1.8
+log
+@1. Added friend class: ViewJoin.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d22 1
+d141 3
+@
+
+
+1.7
+log
+@1. Condition can now handle Value, Value* or Attribute for both LHS and RHS,
+   (previously it was implicitly Attribute on LHS and Value on RHS).
+2. Removed public: Evaluate(Value).
+3. Renamed public: Evaluate(Record) with Match(Record=0).
+4. Added private: Evaluate(), Evaluate(Record), Evaluate(Value lhs, Value rhs).
+4. Added overloaded comparison functions for Value* and Attribute.
+5. Comparison type is now renamed and defined within Condition class, was in
+   Value class.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d50 1
+@
+
+
+1.6
+log
+@Added ability to handle Aggregates.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d13 1
+d15 22
+a36 1
+class Record;
+a49 2
+  friend class Attribute;
+  friend class Aggregate;
+d54 2
+d57 4
+d63 1
+a63 3
+  // Note: Could not make function const because it calls 'rec<mValue' ???
+  bool Evaluate(Record* rec);       // needed for typical searches
+  bool Evaluate(const Value &val);  // needed for Aggregates
+d82 8
+d132 7
+d151 6
+a156 5
+  eValueOperator   Operator()    const { return mValueOperator;  }
+  const Value&     ValueGet()    const { return mValue;          }
+  short            GetMsb()      const { return mMsbBit;         }
+  short            GetLsb()      const { return mLsbBit;         }
+  bool             BitWidthSet() const { return mBitWidthSet;    }
+d163 1
+a163 1
+  inline const Attribute& AttributeGet() { return *mpAttribute; }
+d166 13
+a178 2
+  const Attribute*      mpAttribute;
+  const Aggregate*      mpAggregate;
+a179 2
+  eValueOperator        mValueOperator;
+  Value                 mValue;
+d187 6
+a192 2
+  Condition(const Attribute* attr, bool alloc); // For use by Attribute class
+  Condition(const Aggregate* aggr, bool alloc); // For use by Aggregate class
+@
+
+
+1.5
+log
+@Made arg Value const in Evaluate(value).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d12 1
+d29 1
+d33 1
+d127 1
+d139 1
+@
+
+
+1.4
+log
+@1. Added function EditIndex(short) to support Query::QueryEdit().
+2. Renamed mIsAllocatedWithNew with mIsAllocatedAuto.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d35 2
+a36 2
+  bool Evaluate(Record* rec); // needed for typical searches
+  bool Evaluate(Value &val);  // needed for Aggregates
+@
+
+
+1.3
+log
+@1. Removed 'const' for constructor argument 'Attribute'.
+2. Added function bool Evaluate(Record*).
+3. Added const prefix for Value arg in comparison operators.
+4. Added comparison functions for Bit objects.
+5. Made access functions const.
+6. Changes eBoolean to bool.
+7. Added private constructor for use by Attribute class (to allow query
+   building using attributes).
+8. Made mpAttribute private and added AttributeGet().
+9. Added functions: Condition& operator==(void* val) and
+   Condition& operator!=(void* val).
+10.Added functions: friend void OperationAnd (bl1, bl2) and
+                    friend void OperationOr  (bl1, bl2).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+a25 1
+public:
+d29 1
+d105 3
+d118 1
+a118 6
+
+  // Shortcuts for use insinde the debugger (gdb):
+  void p();
+  void pp() {mConditionBktList.p(); }
+  void d();
+  void Name(FILE* fp) { fprintf(fp, "Condition"); }
+d130 2
+a131 1
+  bool                  mIsAllocatedWithNew;
+d135 5
+@
+
+
+1.2
+log
+@1. Constructor now takes Attribute object instead of const char* .
+2. Added Evaluate(Value &val) to check the condition.
+3. Converted to using the 'm' prefix for data members.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d13 1
+d28 1
+d30 2
+a31 2
+  Condition(Attribute *const attr);
+  Condition(Condition& c);
+d34 3
+a36 1
+  eBoolean Evaluate(Value &val);
+d41 13
+a53 9
+  // operators for different types
+  // which can intialize the query
+  Condition& operator< (Value& val);
+  Condition& operator> (Value& val);
+  Condition& operator>=(Value& val);
+  Condition& operator<=(Value& val);
+  Condition& operator==(Value& val);
+  Condition& operator!=(Value& val);
+  Condition& operator%=(Value& val);
+d83 6
+a88 6
+  Condition& operator< (char* val);
+  Condition& operator> (char* val);
+  Condition& operator>=(char* val);
+  Condition& operator<=(char* val);
+  Condition& operator==(char* val);
+  Condition& operator!=(char* val);
+d97 5
+d106 5
+a110 5
+  eValueOperator   Operator()    { return mValueOperator; }
+  Value&           ValueGet()    { return mValue;          }
+  short            GetMsb()      { return mMsbBit;         }
+  short            GetLsb()      { return mLsbBit;         }
+  eBoolean         BitWidthSet() { return mBitWidthSet;    }
+d115 1
+d120 1
+a120 1
+  void Name(FILE* fp) { mAttribute->Name(fp); }
+d122 1
+a122 1
+  Attribute *const  mAttribute;
+d125 1
+d127 9
+a135 5
+  eValueOperator    mValueOperator;
+  Value             mValue;
+  short             mLsbBit;
+  short             mMsbBit;
+  eBoolean          mBitWidthSet;  
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d7 2
+a9 1
+#include "BucketList.h"
+d15 8
+a22 2
+// If more than one Condition is required then this is stored as a
+// sum-of-products in a two-dimension linked list (BucketList).
+d28 1
+a28 1
+  Condition(const char* attrib_name);
+d32 1
+a32 5
+  // Shortcuts for use insinde the debugger (gdb):
+  void p();
+  void pp() {mConditionBktList.p(); }
+  void d();
+  void Name(FILE* fp);
+d37 2
+a38 2
+  /* operators for different types */
+  /* which can intialize the query */
+d92 17
+a108 11
+  /* Access functions */
+  const char* Attribute()   { return attributeName; }
+  eOperator   Operator()    { return oper;          }
+  Value&      GetValue()    { return value;         }
+  short       GetMsb()      { return msbBit;        }
+  short       GetLsb()      { return lsbBit;        }
+  eBoolean    BitWidthSet() { return bitWidthSet;   }
+
+  /* Debug functions */
+  void Print(FILE* fp);
+  void Dump(FILE* fp);
+d112 5
+a116 6
+  eOperator         oper;
+  const char*       attributeName;
+  Value             value;
+  short             lsbBit;
+  short             msbBit;
+  eBoolean          bitWidthSet;  
+@

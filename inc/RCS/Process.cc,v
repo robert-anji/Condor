@@ -1,0 +1,272 @@
+head	1.4;
+access;
+symbols
+	C1_80:1.1
+	C1_70:1.1;
+locks
+	robert:1.4; strict;
+comment	@// @;
+
+
+1.4
+date	2011.12.07.13.06.16;	author robert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.01.08.19.45.35;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.21.23.43.23;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.01.56.06;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@Modified constructor so that a function pointer is passed in. This function will
+be automatically called for each ProcessExecute() invoked by the Scheduler.
+@
+text
+@// $RCSfile: Process.cc,v $
+// $Revision: 1.3 $
+// 1. Added member mProcessName.
+
+#include <assert.h>
+#include <stdio.h>
+
+#include "Process.h"
+//
+#include "Global.h"
+#include "Interface.h"
+#include "Module.h"
+#include "Scheduler.h"
+
+extern Scheduler* gScheduler;
+M_ExternConstructDestructCountInt;
+
+Process::Process(const char* name, Module* parent_module) :
+  mProcessName           (name),
+  mpModule               (parent_module),
+  mpInterface            (0),
+  mProcessState          (eProcessState_Running),
+  mpProcessExecFnPtr     (0)
+{
+  mpModule->ProcessAdd(this);
+
+  M_UpdConstructCount(eType_Process);
+}
+
+Process::Process(const char* name, Module* parent_module, ProcessExecFnPtr fn_ptr) :
+  mProcessName           (name),
+  mpModule               (parent_module),
+  mpInterface            (0),
+  mProcessState          (eProcessState_Running),
+  mpProcessExecFnPtr     (fn_ptr)
+{
+  mpModule->ProcessAdd(this);
+
+  M_UpdConstructCount(eType_Process);
+}
+
+Process::Process(const char* name, Module* parent_module, Interface* intf) :
+  mProcessName           (name),
+  mpModule               (parent_module),
+  mpInterface            (intf),
+  mProcessState          (eProcessState_Running),
+  mpProcessExecFnPtr     (0)
+{
+  mpModule->ProcessAdd(this);
+
+  intf->SetOwningProcess(this);
+
+  M_UpdConstructCount(eType_Process);
+}
+
+Process::~Process()
+{
+  if (mpInterface) { delete mpInterface; mpInterface = 0; }
+
+  M_ListDeleteAll(mSensitiveEdgeList, SensitiveEdgeInfo);
+
+  M_UpdDestructCount(eType_Process);
+}
+
+// Just remember which signal and edge the process is sensitive to. This info
+// will be used when the process first gets scheduled at which time this signal
+// should be connected to something (clock or an output signal).
+bool Process::ProcessIsSensitiveTo(const char* signal_name, eSignalEdge edge)
+{
+  assert(mpInterface);
+  Signal* signal = mpInterface->SignalGet(signal_name);
+  assert(signal);
+
+  SensitiveEdgeInfo* info = new SensitiveEdgeInfo;
+  assert(info);
+
+  // Dont add the entry if it already exists.
+  for (M_ListIterateAll(mSensitiveEdgeList)) {
+    SensitiveEdgeInfo* sensitive_edge_info = mSensitiveEdgeList.Get();
+    assert(sensitive_edge_info);
+
+    if (sensitive_edge_info->mSignalName == signal_name
+    &&  sensitive_edge_info->mEdge       == edge)
+    {
+      printf("Warning: ignoring duplicate sensitivity for signal %s edge %s",
+       signal_name, Enum2Str(SignalEdgeNV, edge));
+
+      return TRUE; // warning, not error, so return true
+    }
+  }
+
+  // Initialize the new proces,signal_name,edge combination.
+  info->mpProcess   = this;
+  info->mSignalName = signal_name;
+  info->mEdge       = edge;
+
+  // Add the new proces,signal_name,edge combination.
+  // The main use is in Signal where the input signal change can cause the
+  // process to be triggered, we also keep it here for convenience to know
+  // all the sensitivities for the Process.
+  bool result1 = signal->mSensitiveEdgeList.Add(info);
+  bool result2 =   this->mSensitiveEdgeList.Add(info);
+
+  return (result1 && result2);
+}
+
+bool Process::InterfaceSet(Interface* intf)
+{
+  // Allow an interface to be added only if it doesnt yet exist.
+  if (mpInterface == 0) { mpInterface = intf; mpInterface->SetOwningProcess(this); }
+  else                  assert(0);
+}
+
+void Process::ProcessExecute(ProcessExecuteReason& exec_reason)
+{
+  SimulationTime tm = gScheduler->SimulationTimeGet();
+
+  printf("%s: Simulation time = %u", (const char*)mProcessName, tm), M_FL;
+
+  if (mpProcessExecFnPtr) (*mpProcessExecFnPtr)(exec_reason, this);
+
+  exec_reason.mExecutedOk = TRUE;
+}
+
+bool Process::ProcessStateModify(eProcessState new_state)
+{
+  // If this is supported then the derived class needs to implement this.
+  // If the derived class does not override this function then error out.
+  assert(0);
+
+  return FALSE;
+}
+
+eProcessType Process::ProcessType() const
+{
+  if      (mpInterface == 0)              return eProcessType_Software;
+  else if (mpInterface->IsSynchronous())  return eProcessType_Synchronous;
+  else                                    return eProcessType_Asynchronous;
+
+  // Note: Timer & Clock are derived classes from Process and override this function.
+}
+
+// End
+@
+
+
+1.3
+log
+@1. Remove uneeded constructors.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d19 17
+a35 4
+  mProcessName    (name),
+  mpModule        (parent_module),
+  mpInterface     (0),
+  mProcessState   (eProcessState_Running)
+d43 5
+a47 5
+  mProcessName      (name),
+  mpModule          (parent_module),
+  mpInterface       (intf),
+  //
+  mProcessState     (eProcessState_Running)
+d120 2
+@
+
+
+1.2
+log
+@1. Implemented all constructors and member functions.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a42 32
+Process::Process(const char* name, Module* parent_module, Interface* intf, eSignalEdge edge) :
+  mProcessName      (name),
+  mpModule          (parent_module),
+  mpInterface       (intf),
+  //
+  mProcessState     (eProcessState_Running)
+{
+  mpModule->ProcessAdd(this);
+
+  intf->SetOwningProcess(this);
+
+  M_UpdConstructCount(eType_Process);
+}
+
+Process::Process(const char* name, Module* parent_module, InterfaceDescription* intf_desc, eSignalEdge edge) :
+  mProcessName       (name),
+  mpModule           (parent_module),
+  mpInterface        (0),
+  //
+  mProcessState      (eProcessState_Running)
+{
+  mpInterface = new Interface(name, intf_desc);
+
+  assert(mpInterface);
+
+  mpModule->ProcessAdd(this);
+
+  mpInterface->SetOwningProcess(this);
+
+  M_UpdConstructCount(eType_Process);
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 6
+a6 2
+// $RCSfile$
+// $Revision$
+d9 47
+d57 6
+a62 1
+Process::Process()
+d64 9
+d77 81
+@

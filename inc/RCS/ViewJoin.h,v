@@ -1,0 +1,52 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.09.19.16.31.29;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Initial logic for handling Joins.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#ifndef VIEWJOIN
+#define VIEWJOIN
+
+#include "List.h"
+#include "Record.h"
+
+class Query;
+class View;
+
+class ViewJoin
+{
+public:
+  ViewJoin(Query* q);
+ ~ViewJoin();
+
+  bool RecordJoinSearchFirst();
+  bool RecordJoinSearchNext();
+  bool RecordJoinSearchIsDone();
+
+  Record* RecordGet(View* view);
+
+private:
+  List<ViewIterator> mViewIteratorList;
+  bool               mJoinSearchIsDone;
+  Query*             mpQuery;
+};
+
+#endif
+@

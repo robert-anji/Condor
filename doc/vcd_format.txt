@@ -1,0 +1,278 @@
+15.2 Format of the value change dump file
+
+
+Chapter  start   Previous  page
+15.2 Format of the value change dump file
+The dump file is structured in a free format. White space is used to separate 
+commands and to make the file easily readable by a text editor.
+Syntax of the value change dump file
+The syntax of the VCD file is as follows:
+ 
+Syntax 15-2: Syntax of the output VCD file
+The VCD file starts with header information giving the date, the simulator's 
+version number used for the simulation, and the timescale used. Next, the file 
+contains definitions of the scope and type of variables being dumped, followed 
+by the actual value changes at each simulation time increment. Only the 
+variables that change value during a time increment are listed.
+The simulation time recorded in VCD file is the absolute value of the simulation 
+time for the changes in variable values that follow.
+Value changes for real variables are specified by real numbers.Value changes for 
+all other variables are specified in binary format by 0 , 1 , x , or z values. 
+Strength information and memories are not dumped.
+A real number is dumped using a %.16g printf() format. This preserves the 
+precision of that number by outputting all 53 bits in the mantissa of a 64-bit 
+IEEE STD-754 double precision number. Application programs can read a real 
+number using a %g format to scanf() .
+The value change dumper generates character identifier codes to represent 
+variables. The identifier code is a code composed of the printable characters 
+that are in the ASCII character set from ! to ~ (decimal 33 to 126).
+NOTES
+  1) --The VCD format does not support a mechanism to dump part of a vector. For 
+  example, only bits 8 to 15 (8:15) of a 16-bit vector cannot be dumped in VCD 
+  file, instead, the entire vector (0:15) must be dumped. In addition, 
+  expressions, such as a + b, cannot be dumped in the VCD file.
+  2) -- Data in the VCD file is case sensitive.
+Formats of variable values
+Variables may be either scalars or vectors. Each type is dumped in its own 
+format. Dumps of value changes to scalar variables shall not have any white 
+space between the value and the identifier code.
+Dumps of value changes to vectors shall not have any white space between the 
+base letter and the value digits, but must have one white space between the 
+value digits and the identifier code.
+The output format for each value is right-justified. Vector values appear in the 
+shortest form possible: redundant bit values that result from left-extending 
+values to fill a particular vector size are eliminated. 
+The rules for left-extending vector values are as follows:
+  Table 15-1: Rules for left-extending vector valuesWhen the value is: VCD 
+      left-extends with:
+      10
+      00
+      ZZ
+      XX
+
+The following table shows how the VCD may shorten values:
+  Table 15-2: How the VCD may shorten valuesThe binary value: extends to 
+      fill a 
+      4-bit register as:and appears in the 
+      VCD file as:
+      100010b10
+      X10XX10bX1
+      ZX0ZZX0bZX0
+      0X100X10b0X10
+
+Events are dumped in the same format as scalars: for example, 1*%. For events, 
+however, the value (1 in this example) is irrelevant. Only the identifier code 
+(*% in this example) is significant. It appears in the VCD file as a marker to 
+indicate that the event was triggered during the time step.
+Examples:
+ 
+1*@	     No space between the value 1 and the identifier code *@ 
+ 
+b1100x01z (k		 					No space between the b and 1100x01z, 							but a space between b1100x01z and (k  
+Description of keyword commands
+The general information in the VCD file is presented as a series of sections 
+surrounded by keywords. Keyword commands provide a means of inserting 
+information in the VCD file. Keyword commands can be inserted either by the 
+dumper or manually.
+This section deals with the following keyword commands:
+  Table 15-3: Keyword CommandsDeclaration KeywordsSimulation Keywords
+      $comment $timescale $dumpall 
+      $date $upscope $dumpoff 
+      $enddefinitions $var $dumpon 
+      $scope $version $dumpvars 
+
+$comment
+The $comment section provides a means of inserting a comment in the VCD file. 
+Syntax:
+ 
+	 
+$comment
+ comment_text
+ $end
+Examples:
+ 
+$comment
+ 	This is a single-line comment	      $end
+  
+$comment
+ 	This is a 		 multiple-line comment 	   $end
+	$date
+The $date section indicates the date on which the VCD file was generated.
+Syntax:
+ 
+	$date
+ 
+ date_text 
+$end 
+Example:
+ 
+$date 
+     		June 25, 1989 09:24:35$end
+$enddefinitions
+The $enddefinitions section marks the end of the header information and 
+definitions.
+Syntax:
+ 
+	$enddefinitions $end
+ 
+$scope
+The $scope section defines the scope of the variables being dumped.
+Syntax:
+ 
+	$scope
+ 
+ scope_type scope
+_identifier 	$end
+ 
+	scope_type ::= module
+ | task
+ | function
+ | begin
+ | fork
+ The scope type indicates one of the following scopes:
+module top-level module and module instances
+task tasks
+function functions
+begin named sequential blocks
+fork named parallel blocks
+Example:
+ 
+$scope
+     		module
+ top$end
+$timescale
+The $timescale keyword specifies what timescale was used for the simulation.
+Syntax: 
+ 
+	$timescale
+ 
+ number time_unit $end
+number ::= 1
+ | 10
+ | 100
+time_unit ::= s
+ | ms
+ | us
+ | ns
+ | ps
+ | fs
+Example:
+ 
+$timescale
+  10  ns  $end
+$upscope
+The $upscope section indicates a change of scope to the next higher level in the 
+design hierarchy.
+Syntax:
+ 
+	$upscope $end
+ 
+$version
+The $version section indicates which version of the VCD writer was used to 
+produce the VCD file.
+Syntax:
+ 
+	$version
+ 
+ version_text 
+$end
+Example:
+ 
+$version
+      VERILOG-SIMULATOR 1.0a $end
+$var
+The $var section prints the names and identifier codes of the variables being 
+dumped.
+Syntax:
+ 
+$var var_type size identifier_code reference $end
+ 
+ 
+var_type ::= event
+ | integer
+ | parameter 
+| real
+ | reg
+ | supply0
+ | supply1
+ | time
+ | tri
+ | triand
+ | trior
+ | trireg
+ | tri0
+ | tri1
+ | wand
+ | wire
+ | wor
+ 
+size ::= decimal_number 
+reference ::= identifier| identifier [ bit_select_index ]| identifier [ msb_index : lsb_index ] 
+index ::= decimal_numberSize specifies how many bits are in the variable.
+The identifier code specifies the name of the variable using printable ASCII 
+characters, as previously described.
+  a) The msb index indicates the most significant index; lsb index indicates the 
+  least significant index.
+  b) More than one reference name may be mapped to the same identifier code. For 
+  example, net10 and net15 may be interconnected in the circuit, and therefore 
+  may have the same identifier code.
+  c) The individual bits of vector nets may be dumped individually. 
+  d) The identifier is the name of the variable being dumped in the model .
+Example:
+ 
+$var integer 32 (2 index 	 $end
+$dumpall
+The $dumpall keyword specifies current values of all variables dumped.
+Syntax:
+ 
+	$dumpall 
+ 
+{ value_changes } $end
+Example:
+ 
+$dumpall
+   1*@  x*#   0*$   bx   (k   $end 
+		$dumpoff
+The $dumpoff keyword indicates all variables dumped with X values.
+Syntax:
+ 
+	$dumpoff 
+ 
+ 
+ 
+{ value_changes } $end
+Example:
+ 
+$dumpoff  x*@  x*#   x*$   bx   (k   $end 		$dumpon
+The $dumpon keyword indicates resuming of dumping and lists current values of 
+all variables dumped.
+Syntax:
+ 
+	$dumpon 
+ 
+ 
+{ value_changes } $end
+Example:
+ 
+$dumpon
+   x*@  0*#   x*$   b1   (k   $end
+ 		$dumpvars
+ 
+The section beginning with $dumpvars
+ keyword lists initial values of all variables dumped.Syntax:
+ 
+	$dumpvars
+ 
+ 
+  { value_changes } $end
+Example:
+ 
+$dumpvars
+   x*@   z*$   b0   (k   $end
+Value change dump file format example
+The following example illustrates the format of the value change dump file. 
+ 
+
+
+
+Chapter  start   Previous  page

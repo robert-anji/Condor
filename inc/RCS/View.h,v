@@ -1,0 +1,645 @@
+head	1.10;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks
+	robert:1.10; strict;
+comment	@ * @;
+
+
+1.10
+date	2011.12.04.05.17.30;	author robert;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.09.19.16.25.33;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.06.26.16.03.53;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.25.13.34.40;	author ranji;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.01.30.07.48.04;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.22.01.53.01;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.14.21.26;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.01.45.37;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@New View class.
+All database operations are accomplished via 'views'. A view is a subset of a
+Table. Simply put, the Table should represent the physical storage of records
+while the View represents the logical operations possible on the Table records.
+@
+
+
+1.10
+log
+@1. Added PrintHeader() to show attribute names and types.
+2. Added additional Record search functions that pass in a Query reference
+   instead of Query pointer.
+@
+text
+@// $RCSfile: View.h,v $
+// $Revision: 1.9 $
+
+#ifndef ViewClass
+#define ViewClass
+
+#include <assert.h>
+
+#include "Global.h"
+#include "DBDefines.h"
+#include "Database.h"
+#include "List.h"
+
+M_ExternConstructDestructCountInt;
+
+class Attribute;
+class Aggregate;
+class Process;
+class Query;
+class Record;
+class Table;
+class Trigger;
+class Value;
+class ViewIterator;
+
+class View
+{
+  friend class Database;
+  friend class Table;
+
+public:
+  // Constructor/Desctructor are private, used only by friend class: Table.
+
+  // Records API (iterate, search, retrieve, delete records etc.):
+  ////////////////////////////////////////////////////////////////
+  //   select  records (also allows this to be accomplished iteratively)
+  //   import  records (the records that were selected)
+  //   import  records (dynamically, using triggers)
+  //   own the records (set ownership/permission)
+  //   release records (decrements the reference count)
+  //   delete  records (delete will occur when reference count becomes 0)
+  //
+  unsigned TableRecordsSelect     (Query* q);
+  unsigned TableRecordsSelect     (unsigned start, unsigned end);
+  bool     ViewRecordUnselect     (Record *rec);
+  // \
+  unsigned TableRecordsSelect     (Regex* r); // TBD: upcoming feature
+  bool     TableRecordsImportSelected();
+  bool     TableRecordsImportFromTrigger(Trigger *trigger);
+  //
+  Record*  RecordNew(bool auto_commit);
+  //
+  // Record positioning functions.
+  Record*  RecordCurrentGet    (          )    { return RecordCurrentGet   (   (ViewIterator*)0); }
+  Record*  RecordSearchFirst   (Query* q=0)    { return RecordSearchFirst  (q, (ViewIterator*)0); }
+  Record*  RecordSearchNext    (Query* q=0)    { return RecordSearchNext   (q, (ViewIterator*)0); }
+  Record*  RecordSearchLast    (Query* q=0)    { return RecordSearchLast   (q, (ViewIterator*)0); }
+  Record*  RecordSearchPrev    (Query* q=0)    { return RecordSearchPrev   (q, (ViewIterator*)0); }
+  bool     RecordSearchIsLast  (Query* q=0)    { return RecordSearchIsLast (q, (ViewIterator*)0); }
+  bool     RecordSearchIsDone  (Query* q=0)    { return RecordSearchIsDone (q, (ViewIterator*)0); }
+  Record*  RecordFind          (Query* q=0)    { return RecordFind         (q, (ViewIterator*)0); }
+  // Note: We do not allow Search by Condition as Condition objects are mostly
+  //       dynamically created and are thus managed (deleted) by a Query object.
+  //
+  bool     RecordMoveCurrToIter(ViewIterator* iter, eListAddPosition pos, eListCurrentLinkAfterUnlink pos_for_cur);
+  bool     RecordMoveIterToCurr(ViewIterator* iter, eListAddPosition pos, eListCurrentLinkAfterUnlink pos_for_iter);
+  bool     RecordMoveIterToIter(ViewIterator* itr1, ViewIterator* itr2, eListAddPosition pos, eListCurrentLinkAfterUnlink pos_for_iter);
+
+  // View Iterator API.
+  ViewIterator* ViewIteratorNew();
+  bool          ViewIteratorFree(ViewIterator* iter);
+  bool          PositionSet(ViewIterator* view_iter);
+  //
+  // TBD: next two delete functions.
+  unsigned TranRecordsDelete   (Query* q=0);
+  unsigned TranRecordsDelete   (unsigned start=0, unsigned end=0);
+  bool     TranRecordAdd       (Record* rec);
+  bool     TranRecordDelete    (Record* rec);
+  bool     TranRecordModify    (Record* rec, const Attribute* attr, const Value &v);
+  //
+  bool     RecordAdd           (Record* rec, eListAddPosition pos, ViewIterator* iter=0);
+  bool     RecordAddDynamic    (Query *q=0);
+  bool     RecordsKeepMax      (unsigned max);
+
+  const Attribute* AttributeFind(const char* attr_name);
+  const Attribute* AttributeFind(short index);
+
+  // Aggregates API:
+  //////////////////
+  Aggregate* AggregateAdd(Attribute *const attr, eAggregateType type);
+  // TBD (Aggregates with Query or Regex) next two lines): \
+  Aggregate* AggregateAdd(Attribute *const attr, eAggregateType type, Query* q); \
+  Aggregate* AggregateAdd(Attribute *const attr, eAggregateType type, Regex* q);
+  //
+  bool     AggregateDelete(Aggregate* aggr_ptr);
+  bool     AggregatesUpdate(eAggregateUpdateReasonType type, Record *rec, const Attribute* attr=0, Value *old_val=0);
+
+  // Trigger API:
+  ///////////////
+  Trigger* TriggerNew      (const char* trg_name, eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, Query *q=0, Record *rec=0);
+  bool     TriggerDelete   (Trigger *trg);
+
+  // Direct aggregate computation
+  void ValueMin(const Attribute* attr, Value *min_val);
+  void ValueMax(const Attribute* attr, Value *max_val);
+
+  // View Iterator support.
+  void PositionSetSame(ViewIterator* view_iter);
+
+  // View Utilities:
+  //////////////////
+  // Compare two Views:
+  // TBD (View operator == and !=) next paragraph\
+  bool     operator==(const View* view);   \
+  bool     operator!=(const View* view);   \
+  // Sort a View:
+  void     Sort(Attribute const* attr, eSortOrder);
+  void     Print(int num_of_recs=-1);
+  void     PrintHeader();
+  // TBD:
+//bool     ViewContainsRecord(Record* rec);
+  unsigned Size() { return mpRecordPtrList->Size(); }
+
+  short AttributesTotal() const;
+
+  List<Record>*          mpRecordPtrList;   // all records selected by view
+  eRecordPermissionBits  mRecPermission;
+
+private:
+  const char*            mpName;
+  Table*                 mpTable;  // the table from which the view was made
+//eRecordPermissionBits  mRecPermission;
+//List<Record>*          mpRecordPtrList;   // all records selected by view
+  List<Aggregate>        mAggregatePtrList; // all aggregates added to view
+  List<Record>           mRecordNewPtrList; // all new records, not added yet to table
+  List<ViewIterator>     mViewIteratorList;
+
+  // Private member functions:
+  View  (const char* view_name, Table* table, eRecordPermissionBits perm);
+ ~View ();
+
+public:
+  // These are for sole use of ViewIterator (or make ViewIterator a friend of View).
+  Record*  RecordCurrentGet    (          ViewIterator* iter);
+  Record*  RecordSearchFirst   (Query* q, ViewIterator* iter);
+  Record*  RecordSearchNext    (Query* q, ViewIterator* iter);
+  Record*  RecordSearchLast    (Query* q, ViewIterator* iter);
+  Record*  RecordSearchPrev    (Query* q, ViewIterator* iter);
+  bool     RecordSearchIsLast  (Query* q, ViewIterator* iter);
+  bool     RecordSearchIsDone  (Query* q, ViewIterator* iter);
+  Record*  RecordFind          (Query* q, ViewIterator* iter);
+  // Same as above with Query reference instead of pointer.
+  Record*  RecordSearchFirst   (Query& q, ViewIterator* iter) { return RecordSearchFirst (&q, iter); }
+  Record*  RecordSearchNext    (Query& q, ViewIterator* iter) { return RecordSearchNext  (&q, iter); }
+  Record*  RecordSearchLast    (Query& q, ViewIterator* iter) { return RecordSearchLast  (&q, iter); }
+  Record*  RecordSearchPrev    (Query& q, ViewIterator* iter) { return RecordSearchPrev  (&q, iter); }
+  bool     RecordSearchIsLast  (Query& q, ViewIterator* iter) { return RecordSearchIsLast(&q, iter); }
+  bool     RecordSearchIsDone  (Query& q, ViewIterator* iter) { return RecordSearchIsDone(&q, iter); }
+  Record*  RecordFind          (Query& q, ViewIterator* iter) { return RecordSearchFirst (&q, iter); }
+  // Note: We do not allow Search by Condition as Condition objects are mostly
+  //       dynamically created and are thus managed (deleted) by a Query object.
+};
+
+class ViewIterator
+{
+  friend class View;
+  friend class ViewJoin;
+
+public:
+  // Constructor can only be accessed by View class. Use View class to create an Iterator.
+
+  // Iterator functionality (will simply invoke corresponding View functions.
+  Record*  RecordCurrentGet    ()           { return mpView->RecordCurrentGet  (   this); }
+  Record*  RecordSearchFirst   (Query* q=0) { return mpView->RecordSearchFirst (q, this); }
+  Record*  RecordSearchNext    (Query* q=0) { return mpView->RecordSearchNext  (q, this); }
+  Record*  RecordSearchLast    (Query* q=0) { return mpView->RecordSearchLast  (q, this); }
+  Record*  RecordSearchPrev    (Query* q=0) { return mpView->RecordSearchPrev  (q, this); }
+  bool     RecordSearchIsLast  (Query* q=0) { return mpView->RecordSearchIsLast(q, this); }
+  bool     RecordSearchIsDone  (Query* q=0) { return mpView->RecordSearchIsDone(q, this); }
+  Record*  RecordFind          (Query* q=0) { return mpView->RecordSearchFirst (q, this); }
+  // Same as above with Query reference instead of pointer.
+  Record*  RecordSearchFirst   (Query& q) { return mpView->RecordSearchFirst (&q, this); }
+  Record*  RecordSearchNext    (Query& q) { return mpView->RecordSearchNext  (&q, this); }
+  Record*  RecordSearchLast    (Query& q) { return mpView->RecordSearchLast  (&q, this); }
+  Record*  RecordSearchPrev    (Query& q) { return mpView->RecordSearchPrev  (&q, this); }
+  bool     RecordSearchIsLast  (Query& q) { return mpView->RecordSearchIsLast(&q, this); }
+  bool     RecordSearchIsDone  (Query& q) { return mpView->RecordSearchIsDone(&q, this); }
+  Record*  RecordFind          (Query& q) { return mpView->RecordSearchFirst (&q, this); }
+
+  // Set the iterator current link position from another iterator.
+  bool PositionSet(ViewIterator* view_iter) {
+    return mpRecordListIter->PositionSet(view_iter->mpRecordListIter);
+  }
+
+  void PositionSetSameAsView() { mpView->PositionSetSame(this); }
+
+  void Print();
+
+private:
+  ListIterator<Record>*  mpRecordListIter;
+  View*                  mpView;
+
+  // Private member functions:
+  ViewIterator(ListIterator<Record>* rec_iter, View* view) :
+    mpRecordListIter (rec_iter),
+    mpView           (view)
+  { assert(mpView);
+    assert(rec_iter);
+    M_UpdConstructCount(eType_ViewIterator);
+  }
+
+  ~ViewIterator()
+  { M_UpdDestructCount(eType_ViewIterator); }
+};
+
+#endif
+
+// End
+@
+
+
+1.9
+log
+@1. Added friend class: ViewJoin.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.8 $
+d62 2
+d119 1
+d152 10
+d181 8
+@
+
+
+1.8
+log
+@Moved the RecordSearch(...) functions that also accept Iterators
+into a separate public section as User doesnt need to know about
+them. Could also have made them public but the ViewIterator needs
+to become a friend of View.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d154 1
+@
+
+
+1.7
+log
+@Added trigger name arg to TriggerNew().
+[2010Sep28: Implement Event's based on Trigger's in a new class: EventFromTrigger.]
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d54 9
+a62 9
+  // The iterator handle is specified only when using view iterators.
+  Record*  RecordCurrentGet    (            ViewIterator* iter=0);
+  Record*  RecordSearchFirst   (Query* q=0, ViewIterator* iter=0);
+  Record*  RecordSearchNext    (Query* q=0, ViewIterator* iter=0);
+  Record*  RecordSearchLast    (Query* q=0, ViewIterator* iter=0);
+  Record*  RecordSearchPrev    (Query* q=0, ViewIterator* iter=0);
+  bool     RecordSearchIsLast  (Query* q=0, ViewIterator* iter=0);
+  bool     RecordSearchIsDone  (Query* q=0, ViewIterator* iter=0);
+  Record*  RecordFind          (Query* q=0, ViewIterator* iter=0);
+d125 1
+d137 12
+a148 1
+  ~View ();
+d156 1
+a156 1
+  // Constructor can only be accessed by View class.
+@
+
+
+1.6
+log
+@1. Added TriggerActionFnPtr arg to TriggerNew().
+2. Removed TriggerAcivate() (no longer needed, trigger is active on construction).
+3. Removed TriggerSuspend().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d98 1
+a98 1
+  Trigger* TriggerNew      (eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, Query *q=0, Record *rec=0);
+@
+
+
+1.5
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d98 2
+a99 6
+  Trigger* TriggerNew      (eTriggerType type, void *trg_owner_obj, Query *q=0, Record *rec=0); // trg for rec
+  Trigger* TriggerNew      (eTriggerType type, void *trg_owner_obj, Aggregate *aggr, Query *q); // trg for aggr
+  bool     TriggerActivate (Trigger* trg, TriggerActionFnPtr fn);  // trg invokes callback
+  bool     TriggerActivate (Trigger* trg, Process* process);       // trg blocks/unblocks proc
+  bool     TriggerSuspend  (Trigger* trg);
+  bool     TriggerDelete   (Trigger* trg);
+@
+
+
+1.4
+log
+@1. Moved friend declarations to the top of the class.
+2. Added arg auto_commit to RecordNew() function.
+3. Added functions to modify the ViewIterator position from View|ViewIterator.
+4. There is no need to pass pointers by reference for TranRecordAdd, RecordAdd.
+5. Renamed mView to mpView in ViewIterator.
+6. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d10 1
+a11 1
+#include "DefinesAndEnum.h"
+@
+
+
+1.3
+log
+@1. Added a view iterator class called ViewIterator.
+2. Added function RecordNew().
+3. Added function RecordFind().
+4. Prefixed 'Tran' for Record (Add, Delete, Modify) functions.
+5. Changed eBoolean to bool.
+6. Triggers are now allocated and managed by the View class,
+   (per API, work is actually done in the Table class).
+7. Added Sort().
+8. mpRecordPtrList made public (temporarily, forgot why this was done).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d13 2
+a14 1
+#include "Scheduler.h"
+a27 1
+public:
+d31 1
+d43 2
+a45 2
+  unsigned TableRecordsSelect     (unsigned start, unsigned end);
+  unsigned TableRecordsSelect     (Query* q);
+a47 1
+  //
+d51 2
+a52 1
+  Record*  RecordNew           ();
+d54 1
+a54 2
+  // For convenience these functions are also used by the ViewIterator class
+  // by providing the 'iter' handle.
+d62 4
+a65 4
+  Record*  RecordFind          (Query* q=0, ViewIterator* iter=0) { return RecordSearchFirst(q, iter); }
+  // Reposition (Re-insert) a record  to before|after the current record.
+  // Only permitted by a View, not by a ViewIterator.
+  bool Reposition(ViewIterator* iter, eListAddPosition pos);
+a71 1
+  // TBD: add RecordSearchLast(Query* q) ?
+d75 1
+a75 1
+  bool     TranRecordAdd       (Record* &rec);
+d79 1
+a79 1
+  bool     RecordAdd           (Record*& rec, eListAddPosition pos=eListAddPosition_AfterCurrent);
+d109 3
+d120 1
+a120 1
+  void     Print(unsigned num_of_recs=0);
+d128 1
+d132 1
+a132 1
+  eRecordPermissionBits  mRecPermission;
+a144 1
+public:
+d147 1
+d151 8
+a158 8
+  Record*  RecordCurrentGet    ()           { return mView->RecordCurrentGet  (   this); }
+  Record*  RecordSearchFirst   (Query* q=0) { return mView->RecordSearchFirst (q, this); }
+  Record*  RecordSearchNext    (Query* q=0) { return mView->RecordSearchNext  (q, this); }
+  Record*  RecordSearchLast    (Query* q=0) { return mView->RecordSearchLast  (q, this); }
+  Record*  RecordSearchPrev    (Query* q=0) { return mView->RecordSearchPrev  (q, this); }
+  bool     RecordSearchIsLast  (Query* q=0) { return mView->RecordSearchIsLast(q, this); }
+  bool     RecordSearchIsDone  (Query* q=0) { return mView->RecordSearchIsDone(q, this); }
+  Record*  RecordFind          (Query* q=0) { return mView->RecordSearchFirst (q, this); }
+d165 1
+a165 3
+  bool PositionSet(View* view) {
+    return mpRecordListIter->PositionSet(view->mpRecordPtrList);
+  }
+d171 1
+a171 1
+  View*                  mView;
+d176 5
+a180 2
+    mView            (view)
+  { assert(mView); assert(rec_iter); }
+d182 2
+a183 1
+  ~ViewIterator() {}
+@
+
+
+1.2
+log
+@1. Made class Database a friend.
+2. Importing records no longer needs to specify permission which is now
+   set in the constructor.
+3. Added importing records via a trigger to support 'dynamic record add'.
+4. Switched to using Attribute object instead of 'short attr_pos'.
+5. Added function: RecordAddDynamic(Query *q).
+6. Added API for Aggregates.
+7. Added API for Triggers.
+8. Added utilities: ValueMin() and ValueMax().
+9. Added function: const char* ValueSeparatorGet().
+10.View constructor now takes additional argument: eRecordPermission .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 2
+d13 1
+d17 1
+d23 1
+d34 1
+d42 1
+d45 2
+a46 2
+  // TBD (TableRecordSelect with Regex) next line \
+  unsigned TableRecordsSelect     (Regex* r); // upcoming feature
+d48 2
+a49 2
+  eBoolean TableRecordsImportSelected();
+  eBoolean TableRecordsImportFromTrigger(Trigger *trigger);
+d51 35
+a85 11
+  eBoolean RecordSearchFirst   (Query* q=0);
+  eBoolean RecordSearchNext    (Query* q=0);
+  eBoolean RecordSearchIsLast  (Query* q=0);
+  eBoolean RecordSearchIsDone  (Query* q=0);
+  unsigned RecordsDelete       (Query* q=0);
+  unsigned RecordsDelete       (unsigned start=0, unsigned end=0);
+  eBoolean RecordAdd           (Record *rec);
+  eBoolean RecordDelete        (Record *rec);
+  eBoolean RecordModify        (Record *rec, Attribute *const attr, Value &v);
+  //
+  eBoolean RecordAddDynamic    (Query *q);
+d88 1
+d94 2
+a95 2
+  eBoolean AggregateDelete(Aggregate* aggr_ptr);
+  eBoolean AggregatesUpdate(eAggregateUpdateReasonType type, Record *rec, Attribute *const attr=0, Value *old_val=0);
+d98 7
+a104 5
+  Trigger* TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, Query *q=0, Record *rec=0);
+  Trigger* TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, Aggregate *aggr, Query *q);
+  eBoolean TriggerSuspend   (Trigger *trg);
+  eBoolean TriggerActivate  (Trigger *trg);
+  eBoolean TriggerDelete    (Trigger *trg);
+d107 2
+a108 2
+  void ValueMin(Attribute *const attr, Value *min_val);
+  void ValueMax(Attribute *const attr, Value *max_val);
+d110 3
+a112 1
+  // Compare two views:
+d114 8
+a121 2
+  eBoolean operator==(View* view);   \
+  eBoolean operator!=(View* view);   \
+d123 1
+a123 2
+  short AttributesTotal();
+  const char* ValueSeparatorGet();
+d125 1
+d127 9
+a135 1
+  // Functions:
+d138 6
+d145 34
+a178 7
+  // Data:
+  const char            *mName;
+  Table                 *mTable;  // the table from which the view was made
+  eRecordPermissionBits  mRecPermission;
+  //
+  List<Record>     mRecordPtrList;    // list of any records selected by view
+  List<Aggregate>  mAggregatePtrList; // list of any aggregates added to view
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d8 1
+d12 2
+d17 1
+a19 3
+// TBD (next line)\
+class Attribute;
+
+d23 1
+d28 1
+a28 1
+  // Views can:
+d38 5
+a42 2
+  // TBD (next line)
+//unsigned TableRecordsSelect     (Regex* r); // upcoming feature
+a43 4
+  eBoolean TableRecordsImportSelected (eRecordPermissionBits perm);
+  eBoolean TableRecordsImportDynamic  (Query* q, eRecordPermissionBits perm);
+
+  // Iterate, search, retrieve, delete records within View with optional query:
+a49 1
+
+d52 23
+a74 1
+  eBoolean RecordModify        (Record *rec, short attr_pos, Value &v);
+d77 1
+a77 1
+  // TBD (next paragraph)\
+a79 6
+                                     \
+  // TBD: Set and retrieve aggregate values: \
+  eBoolean AggregateAdd     (const char* name, eAggregateType type, Attribute attr, Query* q); \
+  eBoolean AggregateAdd     (const char* name, eAggregateType type, Attribute attr, Regex* q); \
+  Value    AggregateValue   (const char* name);
+  // (end paragraph TBD)
+d82 1
+a82 1
+  short AttributesPosition(const char *attr_name);
+d85 2
+a86 1
+  View  (const char* view_name, Table* table);
+d89 7
+a95 4
+  const char      *mName;
+  Table           *mTable;     // the table from which the view was made
+
+  List<Record>     mRecordPtrList;  // list of records selected by this view
+@

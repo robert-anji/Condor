@@ -1,0 +1,3008 @@
+head	1.10;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.10; strict;
+comment	@// @;
+
+
+1.10
+date	2011.12.20.17.28.33;	author robert;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.12.03.18.08.07;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.08.16.02.55.57;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.25.13.27.13;	author ranji;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.05.22.00.30.56;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.01.30.18.21.24;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.22.00.44.59;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.55.32;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.01.22.47;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.10
+log
+@Added Meta-Attributes to help track number of records and record pointer.
+@
+text
+@//  $RCSfile: Table.cc,v $
+//  $Revision: 1.9 $
+
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "Table.h"
+//
+#include "Attribute.h"
+#include "Bit.h"
+#include "Database.h"
+#include "Global.h"
+#include "List.h"
+#include "Query.h"
+#include "Record.h"
+#include "Scheduler.h"
+#include "TableRecord.h"
+#include "Trigger.h"
+#include "Value.h"
+
+extern SimulationTime gSimTime;
+
+extern Scheduler* gScheduler;
+M_ExternConstructDestructCountInt;
+
+static const char* gDefaultDatabaseDirectory = "./";
+static const char* gRecordSeparator          = "\n";
+static const char* gAttributeSeparator       = ">|<";
+
+Table::Table(Database* db, const char* tbname, int flags) :
+  mpDatabase         (db),
+  mpName             (tbname),
+  mTableOpenFlags    (flags),
+  mpViewOwner        (0),
+  mViewOwnerRecPermission(eRecPerm_None),
+  mpAttr_RecordPtr   (0),
+  mpAttr_RecordCount (0)
+{
+  printf("Creating table: %s", mpName), M_FL;
+  if (mTableOpenFlags & eTableOpenFlagBit_FromFile) Read(flags);
+
+  mpAttr_RecordPtr   = new Attribute("TableRecordPtr");
+  mpAttr_RecordCount = new Attribute("TableRecordCount");
+
+  M_UpdConstructCount(eType_Table);
+}
+
+// TBD: Remove this, operation is not correct or safe and use-case is unknown.
+Table::Table(Table& tbl)
+{
+  *this = tbl;
+
+  M_UpdConstructCount(eType_Table);
+}
+
+Table::~Table()
+{
+  MacroListDeleteAll(mAttributeList,           Attribute);
+  MacroListDeleteAll(mTableRecordList,         TableRecord);
+  MacroListDeleteAll(mTriggerNewList,          Trigger);
+  MacroListDeleteAll(mTriggerRecordAddList,    Trigger);
+  MacroListDeleteAll(mTriggerRecordDeleteList, Trigger);
+  MacroListDeleteAll(mTriggerRecordModifyList, Trigger);
+  MacroListDeleteAll(mTriggerAggregateList,    Trigger);
+
+  if (mViewInfoList.Size()) {
+    // Maybe change to warning, clients must use ViewDelete() on all views.
+    //assert(0); // exe hang if uncommented, 07-10-09
+
+    for (MacroListIterateAll(mViewInfoList)) {
+      ViewInfo *view_info = mViewInfoList.Get();
+      assert(view_info);
+
+      delete (view_info);
+    }
+  }
+
+  if (mpAttr_RecordPtr  ) { delete mpAttr_RecordPtr;   mpAttr_RecordPtr   = 0; }
+  if (mpAttr_RecordCount) { delete mpAttr_RecordCount; mpAttr_RecordCount = 0; }
+
+  // Remaining lists will automatically clean up in their destructors.
+
+  M_UpdDestructCount(eType_Table);
+}
+
+Attribute* Table::AttributeAdd(const char* attr_name, eValueType val_type, Value *null_val, short width)
+{
+  Attribute *attr = 0;
+
+  // For now not allowed to add attributes after records exist.
+  assert (mTableRecordList.Size()==0);
+
+  // We use SHRT_MAX as an invalid position so reserve that value.
+  if (mAttributeList.Size() < SHRT_MAX) {
+    attr = new Attribute(attr_name, val_type, null_val, width);
+    assert (attr);
+
+    attr->mpTable = this;
+
+    attr->PositionSet(mAttributeList.Size()&SHRT_MAX);
+
+    mAttributeList.Add(attr, eListAddPosition_Last);
+  }
+
+  return attr;
+}
+
+bool Table::AttributesAdd(TableAttributes* attrs)
+{
+  Attribute *attr;
+  int        count;
+
+  if (attrs == 0) return FALSE;
+
+  // For now not allowed to add attributes after records exist.
+  assert (mTableRecordList.Size()==0);
+  
+  for (count=0; attrs[count].mAttributeType != eValueUnknown; count++) {
+    if (!AttributeAdd(attrs[count].mAttributeName, attrs[count].mAttributeType))
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+//bool Table::TableAdd(Table& tbl)
+//{
+//  // TBD: Compare List, attribute names and types should match.
+//
+//  // TBD: Until we have List::Last(), use this:
+//  for (mTableRecordList.First(); ! mTableRecordList.IsDone(); mTableRecordList.Next());
+//
+//  for (tbl.mTableRecordList.First(); ! tbl.mTableRecordList.IsDone(); tbl.mTableRecordList.Next())
+//  {
+//    Record* rec = tbl.mTableRecordList.GetRecord();
+//
+//    if (rec) mTableRecordList.Add(new Record(*rec));
+//  }
+//
+//  return TRUE;
+//}
+
+View* Table::ViewCreate(const char* view_name, eRecordPermissionBits perm)
+{
+  View* view = new View(view_name, this, perm);
+
+  if (view) {
+    ViewInfo *view_info = new ViewInfo(view, perm);
+    assert(view_info);
+
+    mViewInfoList.Add(view_info);
+  }
+
+  return view;
+}
+
+bool Table::ViewDelete(View* view)
+{
+  // Delete the view from the appropriate location.
+  if (mpViewOwner == view) {
+    delete view; view = 0;
+
+    mpViewOwner = 0; 
+
+    if (mViewListGroup.Size()) {
+      // Leave mViewOwnerRecPermission unchanged
+    }
+    else {
+      mViewOwnerRecPermission = eRecPerm_None;
+    }
+  }
+  else if (mViewListGroup.PositionFind(view)) {
+    View* view =  mViewListGroup.Get();
+    assert(view);
+    delete view;
+    mViewListGroup.DeleteLinkThenIterationDone();
+  }
+}
+
+// To qualify to belong to the views 'group' the view must have the
+// handle to the owner view.
+bool Table::ViewGroupAdd(View* view_for_group, View* owner_view)
+{
+  if (mpViewOwner!=0 && mpViewOwner==owner_view) {
+    mViewListGroup.Add(view_for_group);
+    return TRUE;
+  }
+  else {
+    assert(0);
+    return FALSE;
+  }
+}
+
+unsigned Table::RecordsSelect(const View* view, unsigned start, unsigned end)
+{
+  unsigned select_count = 0;
+
+  // Sanity checks.
+  if (start >= mTableRecordList.Size()
+  ||  end   >= mTableRecordList.Size())
+  {
+    assert(0);
+    return select_count=0;
+  }
+
+  RecordsSelectedByView* rec_sel_by_view;
+
+  // If first time the view is selecting some records,
+  // then create a new record list for the view.
+  bool found = FALSE;
+  for (MacroListIterateAll(mRecordListSelectedByViewList))
+  {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+
+    if (rec_sel_by_view) {
+      if (rec_sel_by_view->mpView != view) { continue;     }
+      else                                 { found = TRUE; }
+    }
+    else
+      assert(0);
+  }
+  //
+  if (!found) {
+    rec_sel_by_view = new RecordsSelectedByView;
+
+    if (rec_sel_by_view) {
+      rec_sel_by_view->mpView       = view;
+      rec_sel_by_view->mpRecordList = new List<Record>;
+
+      if (rec_sel_by_view->mpRecordList) {
+        mRecordListSelectedByViewList.Add(rec_sel_by_view);
+      }
+      else
+        assert(0);
+    }
+    else assert(0);
+  }
+  else {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+  }
+
+  // Now add the records specified to the view.
+  if (start <= end) {
+    if (mTableRecordList.PositionSet(start)) {
+      unsigned count = 0;
+      unsigned total = end - start + 1; // this will not support MAX_UNSIGNED
+
+      while (count < total) {
+        TableRecord* rec = mTableRecordList.Get();
+        rec_sel_by_view->mpRecordList->Add(new Record(rec));
+
+        mTableRecordList.Next();
+        count++;
+      }
+
+      select_count = count;
+    }
+  }
+  else {
+    assert (0); // maybe later, support both directions
+  }
+
+  return select_count;
+}
+
+unsigned Table::RecordsSelect(const View* view, Query* q)
+{
+  unsigned select_count = 0;
+
+  RecordsSelectedByView* rec_sel_by_view;
+
+  // Check if there already is a list of selected records.
+  bool found = FALSE;
+  for (MacroListIterateAll(mRecordListSelectedByViewList)) {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+
+    assert(rec_sel_by_view);
+
+    if (rec_sel_by_view->mpView == view) { found = TRUE; break; }
+  }
+
+  if (! found) {
+    // If it is the first time the view is selecting some records,
+    // then create a new record list for the view.
+    rec_sel_by_view = new RecordsSelectedByView;
+
+    if (rec_sel_by_view) {
+      rec_sel_by_view->mpView       = view;
+      rec_sel_by_view->mpRecordList = new List<Record>;
+
+      if (rec_sel_by_view->mpRecordList) {
+        mRecordListSelectedByViewList.Add(rec_sel_by_view);
+      }
+      else
+        assert(0);
+    }
+    else assert(0);
+  }
+  else {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+  }
+
+  // Now add the selected records to the view.
+  // Note that the view might already have selected some records.
+  unsigned count = 0;
+  Record rec_tmp(AttributesTotal(), TRUE);
+  //
+  for (MacroListIterateAll(mTableRecordList)) {
+    TableRecord* rec = mTableRecordList.Get();
+    rec_tmp.mpTableRecord = rec;
+
+    if (q->Match(&rec_tmp)) {
+      Record* rec_new = new Record(rec);
+      assert(rec_new);
+
+      rec_sel_by_view->mpRecordList->Add(rec_new); // matched query
+      count++;
+    }
+  }
+
+  return select_count = count;
+}
+
+bool Table::RecordsUnselect(View* view, Record* rec_unselect)
+{
+  // As the view already has the record handle it means it was already imported.
+  // We need to just remove it from the view's record list and decrement the
+  // reference count.
+  bool found = FALSE;
+
+  List<Record>& rec_list = *view->mpRecordPtrList;
+  MacroListDeleteLink(rec_list, rec_unselect, found);
+
+  if (found) rec_unselect->mpTableRecord->ReferenceCountDecrement();
+
+  return found;
+}
+
+bool Table::ViewEnable(View* view, bool is_owner)
+{
+  // The Enable operation mainly consists of checking for permissions.
+
+  // First we need to find the view's permission.
+  eRecordPermissionBits view_perm;
+
+  bool found = FALSE;
+  for (MacroListIterateAll(mViewInfoList)) {
+    ViewInfo *view_perms = mViewInfoList.Get();
+
+    if (view_perms && view_perms->mpView==view) {
+      found     = TRUE;
+      view_perm = view_perms->mViewRecPerm;
+
+      delete view_perms;
+      mViewInfoList.DeleteLinkThenIterationDone();
+
+      break;
+    }
+  }
+
+  if (!found) return FALSE;
+
+  bool tbl_perm_ok = FALSE; // unless found ok below
+
+  int mask_add    = eRecPerm_OwnerGroupOrOtherAdd;
+  int mask_delete = eRecPerm_OwnerGroupOrOtherDelete;
+  int mask_modify = eRecPerm_OwnerGroupOrOtherModify;
+  int mask_read   = eRecPerm_OwnerGroupOrOtherRead;
+
+  // 1. Check whether views record 'view_perm' violates 'mTableOpenFlags'.
+  // Violations are:
+  //   Table::!Append  View::(Owner,Group,Other)x(Add)
+  //   Table::!Delete  View::(Owner,Group,Other)x(Delete)
+  //   Table::!Modify  View::(Owner,Group,Other)x(Modify)
+  //   Table::!Read    View::(Owner,Group,Other)x(Read)
+  if ((view_perm & mask_add)    && (mTableOpenFlags & eTableOpenFlagBit_PermAppend)) tbl_perm_ok = TRUE;
+  if ((view_perm & mask_delete) && (mTableOpenFlags & eTableOpenFlagBit_PermDelete)) tbl_perm_ok = TRUE;
+  if ((view_perm & mask_modify) && (mTableOpenFlags & eTableOpenFlagBit_PermModify)) tbl_perm_ok = TRUE;
+  if ((view_perm & mask_read)   && (mTableOpenFlags & eTableOpenFlagBit_PermRead  )) tbl_perm_ok = TRUE;
+
+  // 2. Check whether views record permission violates masters view's permission (if present).
+  // Violations are (if MasterView exists, otherwise there are no violations):
+  //   View::Owner (any bit set)
+  //   View::Group (view is in  Group) x (Group bits not subset of master view Group)
+  //   View::Group (view is not Group) x (any master view Group bit set)
+  //   View::Other (Other bits not subset of master view Other)
+
+  bool view_perm_ok          = TRUE; // unless denied below
+  bool install_owner         = FALSE;
+  bool view_belongs_to_group = mViewListGroup.Exists(view);
+
+  if (!mpViewOwner) {
+    if (is_owner == FALSE) {
+      // No owner view installed and this view doesnt want to be the owner
+      // either but we must have an owner to proceed with permission checks.
+      view_perm_ok = FALSE;
+    }
+    else {
+      // No master view yet, for now we make the first view the master.
+      install_owner = TRUE;
+    }
+  }
+  else if (is_owner==TRUE && view!=mpViewOwner) {
+    // Owner already insatalled and this view wants to be the owner.
+    view_perm_ok = FALSE;
+  }
+  else {
+    // Check views 'Owner' permissions (should not be set).
+    if (view_perm & eRecPerm_OwnerAll) view_perm_ok = FALSE;
+
+    // Check views 'Group' permissions.
+    if (view_belongs_to_group) {
+      //  Not allowed to set any additional 'Group' permissions.
+      if ((view_perm | mViewOwnerRecPermission) & eRecPerm_GroupAll != mViewOwnerRecPermission & eRecPerm_GroupAll)
+      {
+        view_perm_ok = FALSE;
+      }
+    }
+    else {
+      //  Not allowed to set any 'Group' permissions.
+      if (view_perm & eRecPerm_GroupAll) view_perm_ok = FALSE;
+
+      // 3. Check views 'Other' permissions.
+      // Not allowed to set any additional 'Other' permissions.
+      if ((view_perm & eRecPerm_OtherAll) | mViewOwnerRecPermission != mViewOwnerRecPermission & eRecPerm_OtherAll)
+      {
+        view_perm_ok = FALSE;
+      }
+    }
+  }
+
+  bool perm_ok;
+  if (view_perm_ok && tbl_perm_ok) perm_ok = TRUE;
+  else                             perm_ok = FALSE;
+
+  // Finally, install the owner if so flagged.
+  if (install_owner == TRUE) {
+    mpViewOwner              = view;
+    mViewOwnerRecPermission  = view_perm;
+  }
+
+  return perm_ok;
+}
+
+bool Table::RecordsImportSelected(View* view)
+{
+  // Note: We do allow this function to be called repeatedly
+  //       to keep on adding more selected records to a view.
+
+  // First we need to find the view's permission.
+  eRecordPermissionBits view_perm;
+
+  bool found = FALSE;
+  for (MacroListIterateAll(mViewInfoList)) {
+    ViewInfo *view_perms = mViewInfoList.Get();
+
+    if (view_perms && view_perms->mpView==view) {
+      found     = TRUE;
+      view_perm = view_perms->mViewRecPerm;
+      break;
+    }
+  }
+
+  if (!found) {
+    // The view was not found in the Table's 'view create' list.
+    return FALSE;
+  }
+
+  // Next, find the list of records the view has selected
+  // (but not yet imported).
+  RecordsSelectedByView* rec_sel_by_view;
+
+  found = FALSE;
+  for (MacroListIterateAll(mRecordListSelectedByViewList)) {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+
+    if (rec_sel_by_view) {
+      if (rec_sel_by_view->mpView == view) { found = TRUE; }
+      else                                 { continue;     }
+    }
+  }
+
+  if (!found) {
+    // No record list found to import.
+    return FALSE;
+  }
+
+  if (rec_sel_by_view->mpRecordList->Size()==0) {
+    // No records found in list to be imported, however,
+    // there is no reason to treat this as an error.
+    return TRUE;
+  }
+
+  // Note that the views 'view_perm' permissions have already been checked
+  // during ViewCreate().
+  // In order to import records the view needs permission for delete, modify
+  // or read. The 'read' permission for import is obvious but 'delete' and
+  // 'modify' also implicitly require 'read' permission because these operations
+  // cannot be invoked if the view doesnt have a reference to the record.
+  // Note that permission of 'add' cannot be used to import records.
+
+  if (view_perm &
+      (  eRecPermBit_OwnerDelete| eRecPermBit_OwnerModify| eRecPermBit_OwnerRead
+       | eRecPermBit_GroupDelete| eRecPermBit_GroupModify| eRecPermBit_GroupRead
+       | eRecPermBit_OtherDelete| eRecPermBit_OtherModify| eRecPermBit_OtherRead))
+  {
+    // Ok to import records, also increment reference count.
+    List<Record> *rec_list = rec_sel_by_view->mpRecordList;
+    assert(rec_list);
+
+    for (MacroListIterateAll((*rec_list))) {
+      Record* rec = rec_list->Get();
+      assert(rec);
+
+      rec->ViewSet(view);
+      rec->mpTableRecord->ReferenceCountIncrement();
+      view->mpRecordPtrList->Add(rec);
+
+      view->AggregatesUpdate(eAggrUpdType_RecordAdd, rec);
+
+      // Lastly, check trigger on aggregates after update.
+      if (! mTriggerAggregateList.IsEmpty()) {
+        for (MacroListIterateAll(mTriggerAggregateList)) {
+          Trigger *trg = mTriggerAggregateList.Get();
+
+          if (trg->TriggerStateGet() == eTriggerState_Active)
+            if (trg->TriggerMatch(rec))
+              gScheduler->TriggerSchedule(trg);
+        }
+      }
+    }
+    mRecordListSelectedByViewList.DeleteLinkThenIterationDone();
+    delete rec_sel_by_view;
+    delete rec_list;
+
+    return TRUE;
+  }
+  else {
+    // Cannot import selected records, maybe discard them and the list
+    // holding them or dont do anything, let the view decide whether to
+    // prune the list or clear it entirely.
+
+    return FALSE;
+  }
+}
+
+bool Table::RecordImportFromTrigger(Trigger *trigger)
+{
+  // First we need to find the view's permission.
+  eRecordPermissionBits view_perm;
+
+  bool found = FALSE;
+  for (MacroListIterateAll(mViewInfoList)) {
+    ViewInfo *view_perms = mViewInfoList.Get();
+
+    if (view_perms && trigger->mpView == view_perms->mpView) {
+      found     = TRUE;
+      view_perm = view_perms->mViewRecPerm;
+      break;
+    }
+  }
+
+  if (!found) {
+    // The view was not found in the Table's 'view create' list.
+    return FALSE;
+  }
+
+  if (view_perm &
+      (  eRecPermBit_OwnerDelete| eRecPermBit_OwnerModify| eRecPermBit_OwnerRead
+       | eRecPermBit_GroupDelete| eRecPermBit_GroupModify| eRecPermBit_GroupRead
+       | eRecPermBit_OtherDelete| eRecPermBit_OtherModify| eRecPermBit_OtherRead))
+  {
+    assert(trigger->mpRecord);
+
+    trigger->mpRecord->ViewSet(mpViewOwner);
+    trigger->mpRecord->mpTableRecord->ReferenceCountIncrement();
+    trigger->mpView->mpRecordPtrList->Add(trigger->mpRecord);
+
+    trigger->mpView->AggregatesUpdate(eAggrUpdType_RecordAdd, trigger->mpRecord);
+
+    // Lastly, check trigger on aggregates after update.
+    if (! mTriggerAggregateList.IsEmpty()) {
+      for (MacroListIterateAll(mTriggerAggregateList)) {
+        Trigger *trg = mTriggerAggregateList.Get();
+
+        if (trg->TriggerStateGet() == eTriggerState_Active)
+          if (trg->TriggerMatch(trigger->mpRecord))
+            gScheduler->TriggerSchedule(trg);
+      }
+    }
+  }
+}
+
+bool Table::RecordAdd(View* view, Record* rec)
+{
+  if (rec == 0) return FALSE;
+
+  bool ret = FALSE;
+
+  // Check for 'add' permission, if ok then mark it for adding to the table.
+  if (IsOwnerView(view) && (mViewOwnerRecPermission & eRecPermBit_OwnerAdd)
+  ||  IsGroupView(view) && (mViewOwnerRecPermission & eRecPermBit_GroupAdd)
+  ||                       (mViewOwnerRecPermission & eRecPermBit_OtherAdd))
+  {
+    // In a table we dont care where the record gets added,
+    // by default it will get added at the end.
+    mTableRecordList.Add(rec->mpTableRecord);
+
+    ret = TRUE;
+  }
+  else
+    ret = FALSE;
+
+  return ret;
+}
+
+bool Table::TranRecordAdd(View* view, Record *rec)
+{
+  if (rec == 0) return FALSE;
+
+  bool ret = FALSE;
+
+  // Check for 'add' permission, if ok then mark it for adding to the table.
+  if (IsOwnerView(view) && (mViewOwnerRecPermission & eRecPermBit_OwnerAdd)
+  ||  IsGroupView(view) && (mViewOwnerRecPermission & eRecPermBit_GroupAdd)
+  ||                       (mViewOwnerRecPermission & eRecPermBit_OtherAdd))
+  {
+    mpDatabase->DBTransactionsAdd(eDBTransRecOper_RecordAdd, view, rec);
+
+    ret = TRUE;
+  }
+  else
+    ret = FALSE;
+
+  return ret;
+}
+
+bool Table::TranRecordDelete(View* view, Record* rec)
+{
+  if (rec == 0) return FALSE;
+
+  // To delete a record we will follow the following steps:
+  // 1. Check for 'delete' permission, if ok then mark it for delete.
+  // 2. Always decrement the records reference count unless it is at 0.
+  // 3. If the reference count is 0 then we add the delete operation to
+  //    the DBTransaction list where it will committed at the next commit cycle.
+  bool ret;
+
+  if (IsOwnerView(view) && (mViewOwnerRecPermission & eRecPermBit_OwnerDelete)
+  ||  IsGroupView(view) && (mViewOwnerRecPermission & eRecPermBit_GroupDelete)
+  ||                       (mViewOwnerRecPermission & eRecPermBit_OtherDelete))
+  {
+    ret = TRUE;
+
+    mpDatabase->DBTransactionsAdd(eDBTransRecOper_RecordDelete, view, rec);
+  }
+  else {
+    assert(0);
+    ret = FALSE;
+  }
+
+  return ret;
+}
+
+bool Table::TranRecordModify(View* view, Record *rec, const Attribute* attr, const Value& val)
+{
+  if (rec == 0) return FALSE;
+
+  bool ret = FALSE;
+
+  // To modify a record we will follow the following steps:
+  // 1. Check for 'modify' permission, if ok then proceed.
+
+  if (IsOwnerView(view) && (mViewOwnerRecPermission & eRecPermBit_OwnerModify)
+  ||  IsGroupView(view) && (mViewOwnerRecPermission & eRecPermBit_GroupModify)
+  ||                       (mViewOwnerRecPermission & eRecPermBit_OtherModify))
+  {
+    mpDatabase->DBTransactionsAdd(eDBTransRecOper_RecordValueModify, view, rec, attr, val);
+
+    ret = TRUE;
+  }
+  else
+    assert(0);
+}
+
+const Attribute* Table::AttributeFind(const char* attr_name)
+{
+//for (MacroListIterateAll(mAttributeList)) {
+  for (mAttributeList.First(); ! mAttributeList.IsDone(); mAttributeList.Next()) {
+    Attribute* attr = mAttributeList.Get();
+
+    if (attr && !strcmp(attr->Name(), attr_name)) {
+      attr->mpTable = this; // TBD: Why is this needed? for Joins?
+                            //      Yes, but better to use a private function.
+      return attr;
+    }
+  }
+
+  return 0;
+}
+
+const Attribute* Table::AttributeFind(short index)
+{
+  if (mAttributeList.PositionSet((unsigned)index)) {
+    Attribute* attr = mAttributeList.Get();
+    assert(attr);
+
+  //attr->mpTable = this; // TBD: Why was this needed?
+    return attr;
+  }
+
+  return 0;
+}
+
+short Table::AttributesTotal() const
+{
+  return mAttributeList.Size();
+}
+
+eValueType Table::AttributeType(short index)
+{
+  short count = 0;
+
+  for (mAttributeList.First(); ! mAttributeList.IsDone(); mAttributeList.Next())
+  {
+    Attribute *attr = mAttributeList.Get();
+
+    if (count == index) { assert(attr); return attr->mValueType; }
+    else                count++;
+  }
+
+  return eValueUnknown;
+}
+
+Trigger* Table::TriggerNew(const char* trg_name, eTriggerType type, void* trg_owner_obj, TriggerActionFnPtr fn_ptr, View *v, Query *q, Record *rec)
+{
+  Trigger *trg = new Trigger(trg_name, type, trg_owner_obj, fn_ptr, v, q, rec); 
+  assert(trg);
+
+  bool is_added;
+
+  switch (trg->TriggerType()) {
+    case eTrgRecAdd:
+      is_added = mTriggerRecordAddList.Add(trg);
+      break;
+    case eTrgRecDelete:
+      is_added = mTriggerRecordDeleteList.Add(trg);
+      break;
+    case eTrgRecModify:
+      is_added = mTriggerRecordModifyList.Add(trg);
+      break;
+    case eTrgAggregate:
+      is_added = mTriggerAggregateList.Add(trg);
+      break;
+    default:
+      assert(0);
+  }
+
+  assert (is_added);
+}
+
+bool Table::TriggerDelete(Trigger *trg)
+{
+  bool ret;
+
+  switch (trg->TriggerType()) {
+    case eTrgRecAdd:
+      MacroListDeleteElm(mTriggerRecordAddList, trg, ret);
+      break;
+    case eTrgRecDelete:
+      MacroListDeleteElm(mTriggerRecordDeleteList, trg, ret);
+      break;
+    case eTrgRecModify:
+      MacroListDeleteElm(mTriggerRecordModifyList, trg, ret);
+      break;
+    case eTrgAggregate:
+      MacroListDeleteElm(mTriggerAggregateList, trg, ret);
+      break;
+    default:
+      assert(0);
+  }
+
+  if (!ret) {
+    // Maybe it is still in the 'New' list (ie was not activated).
+    MacroListDeleteElm(mTriggerNewList, trg, ret);
+  }
+
+  assert(ret);
+
+  return ret;
+}
+
+//TBD:
+//bool Table::TriggerMatched(Trigger *trg)
+//{
+//  return mpTable->TriggerDelete(trg);
+//}
+//
+//bool Table::TriggerClear(Trigger *trg)
+//{
+//  return mpTable->TriggerDelete(trg);
+//}
+
+bool Table::Read(int flags)
+{
+  if (strlen(mpName) == 0) return FALSE;
+
+  char  filename[MAX_FILENAME_LENGTH+1];
+  short i;
+
+  // TBD: Check flags to determine in what 'mode' to open the file and whether
+  //      the operation is allowed.
+  sprintf(filename, "%s/%s", gDefaultDatabaseDirectory, mpName);
+  FILE* fp = fopen(filename, "r");
+
+  if (fp == 0) return FALSE;
+
+  // Initialize 'mAttributeList'
+  char attr_name[MAX_ATTR_NAME_LENGTH+1];
+  char attr_type[MAX_ATTR_TYPE_LENGTH+1];
+
+  // TBD: Ensure safe scan by limiting length of string scanned.
+  Attribute*  attr;
+  eValueType  type;
+  int         width;
+
+  bool done   = FALSE;
+  bool status = TRUE;
+
+  while (!done && fscanf(fp, "%s %s", attr_name, attr_type) == 2) {
+
+    type = AttributeStrToType(attr_type);
+    attr = 0;
+
+    if (type != eValueBit) {
+      attr = new Attribute(attr_name, type);
+      assert(attr);
+
+      attr->mpTable = this;
+    }
+    else {
+      if (fscanf(fp, "%d", &width) == 1) {
+        attr = new Attribute(attr_name, eValueBit, (Value*)0, (short)width);
+        assert(attr);
+
+        attr->mpTable = this;
+      }
+      else { status=FALSE; done=TRUE; }
+    }
+
+    if (attr) mAttributeList.Add(attr);
+  }
+
+  if (status == FALSE) { 
+    MacroListDeleteAll(mAttributeList, Attribute);
+
+    fclose(fp);
+    return FALSE;
+  }
+
+  short attr_total = AttributesTotal();
+
+  // Make a 'template' record for all records read in.
+  TableRecord tbl_rec_tmpl(attr_total); // use as template record
+
+  // Keep local info for bit widths.
+  short* bit_width = new short [attr_total]; M_UpdConstructCountN(eType_Short, attr_total);
+  assert(bit_width);
+
+  i = 0;
+  for (MacroListIterateAll(mAttributeList)) {
+    Attribute* attr = mAttributeList.Get();
+    assert(attr);
+
+    Value val(attr->ValueType()); M_Constructed(Value);
+
+    tbl_rec_tmpl.mpValues[i] = val; // this assignment will set the type
+
+    if (attr->ValueType() == eValueBit) bit_width[i] = attr->BitWidth();
+    else                                bit_width[i] = 0;
+
+    i++;
+  }
+
+  // Read in all the Records from the file.
+  char  buf[MAX_RECORD_LINE_LENGTH+1];
+  char* attr_ptr;
+
+  short record_count = 0;
+  short attr_sep_len = strlen(gAttributeSeparator);
+
+  // fgets reads in at most n-1 characters
+  for (status=TRUE, attr_ptr=buf;
+   fgets(buf, MAX_RECORD_LINE_LENGTH+1, fp)!=NULL && status;
+    record_count++)
+  {
+    char* last_char_ptr = buf + strlen(buf);
+    char* attr_ptr      = buf;
+
+    for (short i=0; i<attr_total; i++) {
+      char* attr_sep_ptr = strstr(attr_ptr, gAttributeSeparator);
+
+      if (attr_sep_ptr) {
+        *attr_sep_ptr = '\0';
+
+        if (! tbl_rec_tmpl.mpValues[i].Initialize(attr_ptr, bit_width[i]))
+          status = FALSE;
+
+        attr_ptr = attr_sep_ptr + attr_sep_len;
+
+        if (attr_ptr > last_char_ptr) status = FALSE;
+      }
+      else
+        status = FALSE;
+    }
+
+    if (status) mTableRecordList.Add(new TableRecord(tbl_rec_tmpl, attr_total));
+  }
+
+  if (bit_width) { delete [] bit_width; bit_width=0; M_UpdDestructCountN(eType_Short, attr_total); }
+
+  fclose(fp);
+
+  return status;
+}
+
+bool Table::Save(const char* file_name)
+{
+  short i;
+  char  filename [MAX_FILENAME_LENGTH+1];
+
+  filename[0] = '\0';
+  strcat(filename, gDefaultDatabaseDirectory);
+
+  if (file_name != 0) {
+    assert((strlen(gDefaultDatabaseDirectory) + strlen(file_name)) <= MAX_FILENAME_LENGTH);
+
+    strcat(filename, file_name);
+  }
+  else {
+    assert((strlen(gDefaultDatabaseDirectory) + strlen(mpName)) <= MAX_FILENAME_LENGTH);
+
+    // Use the name of the table by default.
+    strcat(filename, mpName);
+  }
+
+  FILE* fp = fopen(filename, "w");
+
+  assert(fp);
+
+  bool status = TRUE;
+
+  if (fp) {
+    // Save Attributes
+    for (MacroListIterateAll(mAttributeList)) {
+      Attribute *attr = mAttributeList.Get();
+
+      fprintf(fp, "%s %s ", attr->Name(), AttributeTypeToStr(attr->ValueType()));
+
+      if (attr->ValueType() == eValueBit) fprintf(fp, "%d ", attr->BitWidth());
+    }
+    fprintf(fp, "%s", gRecordSeparator);
+
+    // Save Records
+    char           buf[MAX_RECORD_LINE_LENGTH+1];
+    short          total_attr = AttributesTotal();
+    TableRecord   *rec;
+
+    for (MacroListIterateAll(mTableRecordList)) {
+      rec = mTableRecordList.Get();
+
+      for (short i=0; i<total_attr; i++) {
+        fprintf(fp, "%s%s", rec->mpValues[i].Save(buf), gRecordSeparator);
+      }
+
+      fprintf(fp, "%s%s", buf, gRecordSeparator);
+    }
+
+    fclose(fp);
+  }
+  else {
+    status = FALSE;
+  }
+
+  return status;
+}
+
+void Table::Print(char* attr_name)
+{
+  short i = SHRT_MAX;
+  short attr_index;
+
+  // Print Attributes.
+  for (MacroListIterateAll(mAttributeList)) {
+    Attribute *attr = mAttributeList.Get();
+
+    printf("%s %s ", attr->Name(), AttributeTypeToStr(attr->ValueType()));
+
+    if (attr->ValueType() == eValueBit) printf("%d ", attr->BitWidth());
+
+    if (attr_name) if (!strcmp(attr_name, attr->Name())) attr_index = i;
+  }
+  printf("%s", gRecordSeparator);
+
+  // Print Records
+  char           buf[MAX_RECORD_LINE_LENGTH+1];
+  short          total_attr = AttributesTotal();
+  TableRecord   *rec;
+
+  for (MacroListIterateAll(mTableRecordList)) {
+    rec = mTableRecordList.Get();
+
+    if (attr_index == SHRT_MAX) {
+      rec->mpValues[attr_index].Save(buf);
+      printf("%s", buf);
+    }
+    else {
+      for (short i=0; i<total_attr; i++) {
+        rec->mpValues[i].Save(buf);
+        printf("%s ", buf);
+      }
+    }
+
+    printf("%s", gRecordSeparator);
+  }
+}
+
+bool Table::AggregatesUpdate(View* view_upd, eAggregateUpdateReasonType rsn_type, Record *rec_upd, const Attribute* attr_mdfy, Value *old_val)
+{
+  assert (rsn_type == eAggrUpdType_RecordModify);
+
+  // Algo: if (record reference count is > 1)
+  //         for (all views in the table other than current view)
+  //           if (view has aggregates)
+  //             if (view has the same table-record)
+  //               update views aggregate;
+  //         // done with views when all shared records are found
+  if (rec_upd->mpTableRecord->mReferenceCount > 1) {
+    short found_count = 0;
+    for (MacroListIterateAll(mViewInfoList)) {
+      ViewInfo *view_info = mViewInfoList.Get();
+      assert(view_info);
+
+      View* view = view_info->mpView;
+      if (view != view_upd) {
+        if (view->mAggregatePtrList.Size()) {
+          for (MacroListIterateAll(*view->mpRecordPtrList)) {
+            Record* rec = view->mpRecordPtrList->Get();
+            assert(rec);
+
+            if (rec_upd->mpTableRecord == rec->mpTableRecord) {
+              view->AggregatesUpdate(eAggrUpdType_RecordModifyPropagate, rec, attr_mdfy, old_val);
+              found_count++;
+              break;
+            }
+          }
+        }
+      }
+
+      if (rec_upd->mpTableRecord->mReferenceCount == found_count) break;
+    }
+  }
+}
+
+void Table::PrintAttributeNames()
+{
+  FILE* fp = stdout;
+
+  for (MacroListIterateAll(mAttributeList)) {
+    Attribute *attr = mAttributeList.Get();
+    assert(attr);
+
+    fprintf(fp, "%s ", attr->Name());
+  }
+  fprintf(fp, "\n");
+
+  for (MacroListIterateAll(mAttributeList)) {
+    Attribute *attr = mAttributeList.Get();
+    assert(attr);
+
+    fprintf(fp, "%s", AttributeTypeToStr(attr->ValueType()));
+    if (attr->ValueType() == eValueBit) fprintf(fp, "(%d) ", attr->BitWidth());
+    else                                fprintf(fp, " ");
+  }
+  fprintf(fp, "\n");
+}
+
+// End
+@
+
+
+1.9
+log
+@Added PrintAttributeNames().
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.8 $
+d36 3
+a38 1
+  mViewOwnerRecPermission(eRecPerm_None)
+d43 3
+d49 1
+d79 3
+@
+
+
+1.8
+log
+@1. Initialize mpTable for the attribute.
+2. Switched from rec->Match(query) to query->Match(rec).
+3. No custom matching function needed for triggers to match aggregate,
+   this is embedded within the query itself now.
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.7 $
+d4 1
+d6 1
+a6 1
+#include <assert.h>
+d1057 23
+@
+
+
+1.7
+log
+@1. MatchView() not needed anymore as ViewInfo->mpView is no longer declared const.
+2. Added trigger name to TriggerNew(...).
+[2010Sep28: Implement Event's based on Trigger's in a new class: EventFromTrigger.]
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.6 $
+d89 2
+d303 1
+a303 1
+    if (rec_tmp.Match(q)) {
+d518 1
+a518 1
+            if (trg->TriggerMatchAggregate())
+d578 1
+a578 1
+          if (trg->TriggerMatchAggregate())
+d829 2
+d836 2
+@
+
+
+1.6
+log
+@Added AggregatesUpdate(...) to help implement the case when aggregates in
+other views need to be updated because a shared record is being modified.
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.5 $
+d545 1
+a545 1
+    if (view_perms && trigger->MatchView(view_perms->mpView)) {
+d724 1
+a724 1
+Trigger* Table::TriggerNew(eTriggerType type, void* trg_owner_obj, TriggerActionFnPtr fn_ptr, View *v, Query *q, Record *rec)
+d726 1
+a726 1
+  Trigger *trg = new Trigger(type, trg_owner_obj, fn_ptr, v, q, rec); 
+@
+
+
+1.5
+log
+@Removed TriggerActivate(), that logic is now in TriggerNew().
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.4 $
+d137 2
+a138 2
+    ViewInfo *view_permission = new ViewInfo(view, perm);
+    assert(view_permission);
+d140 1
+a140 1
+    mViewInfoList.Add(view_permission);
+d1013 37
+@
+
+
+1.4
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  Fixed AttributeAdd(), should have only one arg: Attribute* .
+3.  Added function AttributesAdd(StructTableAttributes attr[]).
+4.  Destructor needed to also clean up ViewInfo and Triggers.
+5.  Specify that attributes be added at eListAddPosition_Last.
+6.  Implemented AttributesAdd().
+7.  Replaced eBoolean with bool.
+8.  Renamed mViewOwner,mView,mRecordList with mpViewOwner, mpView, mpRecordList.
+9.  Replace DeleteLinkCurrent() with DeleteLinkThenIterationDone() in few cases.
+10. Delete view_perm once no longer needed in ViewEnable().
+11. Fixed init of mask_delete, mask_modify and mask_read (was typo).
+12. Added RecordsUnselect().
+13. When a trigger is invoked, schedule it instead of activating it immidiately.
+14. Added RecordAdd() which doesnt need a transaction.
+15. Added AttributesFind().
+16. Added TriggerActivate().
+17. Modified implementation to use TableRecord.
+18. Table class now manages Triggers allocation, delete (for View class).
+19. TriggerAdd() replaced with TriggerNew() and TriggerActivate().
+20. Imporved Read(), Save() and Print() functions.
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.3 $
+d724 1
+a724 1
+Trigger* Table::TriggerNew(eTriggerType type, void *trg_owner_obj, View *v, Query *q, Record *rec)
+d726 1
+a726 1
+  Trigger *trg = new Trigger(type, trg_owner_obj, v, q, rec); 
+d729 1
+a729 2
+  mTriggerNewList.Add(trg);
+}
+d731 9
+a739 33
+Trigger* Table::TriggerNew(eTriggerType type, void *trg_owner_obj, View *v, Aggregate *aggr, Query *q)
+{
+  type = eTrgAggregate; // ignore callers setting, must be set to eTrgAggregate
+
+  Trigger *trg = new Trigger(type, trg_owner_obj, v, aggr, q); 
+  assert (trg);
+
+  mTriggerNewList.Add(trg);
+
+  // Note: We never fire the trigger on TriggerAdd because the eTriggerType is
+  //       not satisfied yet (record add/delete/modify), the other conditions
+  //       of aggr and cond may already be satisfied.
+
+  return trg;
+}
+
+bool Table::TriggerActivate(Trigger* trg, TriggerActionFnPtr fn)
+{
+  assert(trg);
+
+  bool found     = FALSE;
+  bool activated = FALSE;
+
+  for (MacroListIterateAll(mTriggerNewList)) {
+    Trigger* trg_from_list = mTriggerNewList.Get();
+    assert(trg_from_list);
+
+    if (trg_from_list == trg) {
+      found = TRUE;
+
+      mTriggerNewList.DeleteLinkThenIterationDone();
+
+      trg->TriggerActionFnSet(fn);
+d741 2
+a742 42
+    }
+  }
+
+  if (found) {
+    switch (trg->TriggerType()) {
+      case eTrgRecAdd:
+        activated = mTriggerRecordAddList.Add(trg);
+        break;
+      case eTrgRecDelete:
+        activated = mTriggerRecordDeleteList.Add(trg);
+        break;
+      case eTrgRecModify:
+        activated = mTriggerRecordModifyList.Add(trg);
+        break;
+      case eTrgAggregate:
+        activated = mTriggerAggregateList.Add(trg);
+        break;
+      default:
+        assert(0);
+    }
+  }
+
+  return activated;
+}
+
+bool Table::TriggerActivate(Trigger* trg, Process* process)
+{
+  assert(trg);
+
+  bool found     = FALSE;
+  bool activated = FALSE;
+
+  for (MacroListIterateAll(mTriggerNewList)) {
+    Trigger* trg_from_list = mTriggerNewList.Get();
+    assert(trg_from_list);
+
+    if (trg_from_list == trg) {
+      found = TRUE;
+
+      mTriggerNewList.DeleteLinkThenIterationDone();
+
+      trg->TriggerProcessSet(process);
+d744 2
+a745 24
+    }
+  }
+
+  if (found) {
+    switch (trg->TriggerType()) {
+      case eTrgRecAdd:
+        activated = mTriggerRecordAddList.Add(trg);
+        break;
+      case eTrgRecDelete:
+        activated = mTriggerRecordDeleteList.Add(trg);
+        break;
+      case eTrgRecModify:
+        activated = mTriggerRecordModifyList.Add(trg);
+        break;
+      case eTrgAggregate:
+        activated = mTriggerAggregateList.Add(trg);
+        break;
+      default:
+        assert(0);
+    }
+  }
+
+  if (activated) {
+    gScheduler->ProcessBlock(process);
+d748 1
+a748 1
+  return activated;
+@
+
+
+1.3
+log
+@1. Implemented all the changes mentioned in Table.h 1.3 .
+   Note that ViewEnable() needs to be explicitly called after ViewCreate(),
+   may put this into ViewCreate() in the next version.
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.2 $
+d7 2
+d10 1
+d12 1
+d16 2
+a17 1
+#include "Table.h"
+a19 1
+//#include "SortedList.h"
+d21 14
+a34 9
+static char* DefaultDatabaseDirectory = "./";
+static char* RecordSeparator          = "\n";
+static char* AttributeSeparator       = ";";
+
+Table::Table(Database* db, const char* tbname, eTableOpenFlags flags) :
+  mDatabase       (db),
+  mName           (tbname),
+  mTableOpenFlags (flags),
+  mViewOwner      (0),
+d37 4
+a40 1
+  Read(flags);
+d46 2
+d52 7
+a58 2
+  MacroListDeleteAll(mAttributeList, Attribute);
+  MacroListDeleteAll(mRecordList,    Record);
+d62 1
+a62 1
+    assert(0);
+d68 1
+a68 1
+      delete (view_info->mView);
+d72 3
+a74 1
+  // Remaining lists will automatically clean up in their constructors.
+d77 1
+a77 1
+Attribute* Table::AttributeAdd(const char* attr_name, eValueType val_type, Value *null_val)
+d82 1
+a82 1
+  assert (mRecordList.Size());
+d85 2
+a86 2
+  if (mRecordList.Size() < SHRT_MAX) {
+    Attribute *attr = new Attribute(attr_name, val_type, null_val);
+d91 1
+a91 1
+    mAttributeList.Add(attr);
+d97 19
+a115 1
+//eBoolean Table::TableAdd(Table& tbl)
+d120 1
+a120 1
+//  for (mRecordList.First(); ! mRecordList.IsDone(); mRecordList.Next());
+d122 1
+a122 1
+//  for (tbl.mRecordList.First(); ! tbl.mRecordList.IsDone(); tbl.mRecordList.Next())
+d124 1
+a124 1
+//    Record* rec = tbl.mRecordList.GetRecord();
+d126 1
+a126 1
+//    if (rec) mRecordList.Add(new Record(*rec));
+a135 2
+  assert(view);
+
+d146 1
+a146 1
+eBoolean Table::ViewDelete(View* view)
+d149 4
+a152 2
+  if (mViewOwner == view) {
+    mViewOwner = 0; 
+d162 4
+a165 2
+    delete mViewListGroup.Get();
+    mViewListGroup.DeleteLinkCurrent();
+d171 1
+a171 1
+eBoolean Table::ViewGroupAdd(View* view_for_group, View* owner_view)
+d173 1
+a173 1
+  if (mViewOwner!=0 && mViewOwner==owner_view) {
+d183 1
+a183 1
+unsigned Table::RecordsSelect(View* view, unsigned start, unsigned end)
+d188 2
+a189 2
+  if (start >= mRecordList.Size()
+  ||  end   >= mRecordList.Size())
+d197 4
+a200 5
+  // If first time the view is selecting some records, then we initialize.
+  eBoolean found = FALSE;
+  for (mRecordListSelectedByViewList.First();
+        ! mRecordListSelectedByViewList.IsDone();
+             mRecordListSelectedByViewList.Next())
+d205 2
+a206 2
+      if (rec_sel_by_view->mView != view) { continue;     }
+      else                                { found = TRUE; }
+d211 1
+a211 1
+
+d216 2
+a217 2
+      rec_sel_by_view->mView       = view;
+      rec_sel_by_view->mRecordList = new List<Record>;
+d219 1
+a219 1
+      if (rec_sel_by_view->mRecordList) {
+d227 3
+d233 1
+a233 1
+    if (mRecordList.PositionSet(start)) {
+d238 2
+a239 2
+        Record* rec = mRecordList.Get();
+        rec_sel_by_view->mRecordList->Add(rec);
+d241 1
+a241 1
+        mRecordList.Next();
+d255 1
+a255 1
+unsigned Table::RecordsSelect(View* view, Query* q)
+d261 2
+a262 1
+  eBoolean found = FALSE;
+d268 1
+a268 1
+    if (rec_sel_by_view->mView == view) { found = TRUE; break; }
+a270 2
+  // Now add the records specified to the view.
+  // Note that the view might already have selected some records.
+d272 2
+d277 2
+a278 2
+      rec_sel_by_view->mView       = view;
+      rec_sel_by_view->mRecordList = new List<Record>;
+d280 1
+a280 1
+      if (rec_sel_by_view->mRecordList) {
+d292 2
+d295 9
+d305 1
+a305 11
+  for (mRecordList.First(); !mRecordList.IsDone(); mRecordList.Next()) {
+    Record* rec = mRecordList.Get();
+
+    if (q != 0) {
+      if (rec->Match(q)) {
+        rec_sel_by_view->mRecordList->Add(rec); // matched query
+        count++;
+      }
+    }
+    else {
+      rec_sel_by_view->mRecordList->Add(rec); // null query always matches
+d313 16
+a328 1
+eBoolean Table::ViewEnable(View* view, eBoolean is_owner)
+d335 1
+a335 1
+  eBoolean found = FALSE;
+d339 1
+a339 1
+    if (view_perms && view_perms->mView==view) {
+d342 4
+d352 1
+a352 1
+  eBoolean tbl_perm_ok = FALSE; // unless found ok below
+d355 3
+a357 3
+  int mask_delete = eRecPerm_OwnerGroupOrOtherAdd;
+  int mask_modify = eRecPerm_OwnerGroupOrOtherAdd;
+  int mask_read   = eRecPerm_OwnerGroupOrOtherAdd;
+d377 3
+a379 3
+  eBoolean view_perm_ok          = TRUE; // unless denied below
+  eBoolean install_owner         = FALSE;
+  eBoolean view_belongs_to_group = mViewListGroup.Exists(view);
+d381 1
+a381 1
+  if (!mViewOwner) {
+d388 2
+a389 10
+      if (mViewInfoList.Size())
+      {
+        // Cannot install a new owner while there are views pending/created
+        // from a previous mViewOwner
+        view_perm_ok = FALSE;
+      }
+      else {
+        // No master view yet, for now we make the first view the master.
+        install_owner = TRUE;
+      }
+d392 1
+a392 1
+  else if (is_owner==TRUE && view!=mViewOwner) {
+d421 1
+a421 1
+  eBoolean perm_ok;
+d427 2
+a428 2
+    mViewOwner              = view;
+    mViewOwnerRecPermission = view_perm;
+d434 1
+a434 1
+eBoolean Table::RecordsImportSelected(View* view)
+d442 1
+a442 1
+  eBoolean found = FALSE;
+d446 1
+a446 1
+    if (view_perms && view_perms->mView==view) {
+d467 2
+a468 2
+      if (rec_sel_by_view->mView == view) { found = TRUE; }
+      else                                { continue;     }
+d477 1
+a477 1
+  if (rec_sel_by_view->mRecordList->Size()==0) {
+d497 1
+a497 1
+    List<Record> *rec_list = rec_sel_by_view->mRecordList;
+d504 3
+a506 3
+      rec->ViewSet(mViewOwner);
+      rec->ReferenceCountIncrement();
+      view->mRecordPtrList.Add(rec);
+d515 1
+a515 1
+          if (trg->TriggerState() == eTriggerState_Active)
+d517 1
+a517 1
+              trg->TriggerActionExecute();
+d521 3
+d528 3
+a530 3
+    // Cannot import selected records, discard them and the list holding them.
+    // Dont do anything, let the view decide whether to prune the list or
+    // clear it entirely.
+d536 1
+a536 1
+eBoolean Table::RecordsImportFromTrigger(Trigger *trigger)
+d541 1
+a541 1
+  eBoolean found = FALSE;
+d545 1
+a545 1
+    if (view_perms && view_perms->mView==trigger->mView) {
+d562 1
+a562 1
+    assert(trigger->mRecord);
+d564 3
+a566 3
+    trigger->mRecord->ViewSet(mViewOwner);
+    trigger->mRecord->ReferenceCountIncrement();
+    trigger->mView->mRecordPtrList.Add(trigger->mRecord);
+d568 1
+a568 1
+    trigger->mView->AggregatesUpdate(eAggrUpdType_RecordAdd, trigger->mRecord);
+d575 1
+a575 1
+        if (trg->TriggerState() == eTriggerState_Active)
+d577 1
+a577 1
+            trg->TriggerActionExecute();
+d583 1
+a583 1
+eBoolean Table::TranRecordAdd(View* view, Record *rec)
+d587 1
+a587 1
+  eBoolean ret = FALSE;
+d589 1
+a589 4
+  // To add a record we will follow the following steps:
+  // 1. Check for 'add' permission, if ok then mark it for adding.
+  // 2. Make a copy of the record before adding it (safer but double-copy), ok?
+  // 3. If the view has 'read' permission, then increment the reference count.
+d594 11
+a604 1
+    Record *new_rec = new Record(*rec);
+d606 3
+a608 7
+    // Check if the view has 'read' permission.
+    if (IsOwnerView(view) && (mViewOwnerRecPermission & eRecPermBit_OwnerRead)
+    ||  IsGroupView(view) && (mViewOwnerRecPermission & eRecPermBit_GroupRead)
+    ||                       (mViewOwnerRecPermission & eRecPermBit_OtherRead))
+    {
+      new_rec->ReferenceCountIncrement();
+    }
+d610 8
+a617 1
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordAdd, view, new_rec);
+d622 1
+a622 1
+    assert(0);
+d627 1
+a627 1
+eBoolean Table::TranRecordDelete(View* view, Record* rec)
+d636 1
+a636 1
+  eBoolean ret;
+d644 1
+a644 1
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordDelete, view, rec);
+d654 1
+a654 1
+eBoolean Table::TranRecordModify(View* view, Record *rec, Attribute *const attr, Value& val)
+d658 1
+a658 1
+  eBoolean ret = FALSE;
+d667 1
+a667 1
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordValueModify, view, rec, attr, val);
+d675 30
+a704 1
+short Table::AttributesTotal()
+a715 1
+    assert(attr);
+d717 1
+a717 1
+    if (count == index) return attr->mValueType;
+d724 1
+a724 1
+Trigger* Table::TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, View *v, Query *q, Record *rec)
+d726 1
+a726 1
+  Trigger *trg = new Trigger(type, fn, trg_owner_obj, v, q, rec); 
+d729 1
+a729 13
+  switch (type) {
+    case eTrgRecAdd:
+      mTriggerRecordAddList.Add(trg);
+      break;
+    case eTrgRecDelete:
+      mTriggerRecordDeleteList.Add(trg);
+      break;
+    case eTrgRecModify:
+      mTriggerRecordModifyList.Add(trg);
+      break;
+    default:
+      assert(0);
+  }
+d732 1
+a732 1
+Trigger* Table::TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, View *v, Aggregate *aggr, Query *q)
+d736 1
+a736 1
+  Trigger *trg = new Trigger(type, fn, trg_owner_obj, v, aggr, q); 
+d739 1
+a739 1
+  mTriggerAggregateList.Add(trg);
+d742 2
+a743 2
+  //       not satisfied yet (record add/delete/modify), (the other conditions
+  //       of aggr and cond may already be satisfifed.
+d748 1
+a748 1
+eBoolean Table::TriggerDelete(Trigger *trg)
+d750 91
+a840 1
+  eBoolean ret;
+d859 5
+d869 12
+a880 1
+eBoolean Table::Read(eTableOpenFlags flags)
+d882 1
+a882 2
+  if (strlen(mName) == 0)
+    return FALSE;
+d884 2
+a885 1
+  char filename[MAX_FILENAME_LEN+1];
+d889 1
+a889 1
+  sprintf(filename, "%s/%s", DefaultDatabaseDirectory, mName);
+d895 60
+a954 5
+  Attribute* attr = new Attribute;
+  while (*attr<<fp)
+  {
+    mAttributeList.Add(attr);
+    fscanf(fp, AttributeSeparator);
+a955 1
+  delete attr;
+d957 11
+a967 2
+  Record* rec = new Record((View*)0);
+  while (rec->Read(fp))
+d969 21
+a989 1
+    mRecordList.Add(rec);
+d991 2
+a992 1
+  delete rec;
+d996 1
+a996 1
+  return TRUE;
+d999 1
+a999 1
+eBoolean Table::Save(FILE* fp)
+d1002 7
+d1010 1
+a1010 2
+  if (fp == 0) {
+    fp = stdout;
+d1013 1
+a1013 1
+    char filename[MAX_FILENAME_LEN+1];
+d1015 7
+a1021 2
+    // Use strncpy.
+    sprintf(filename, "%s/%s", DefaultDatabaseDirectory, mName);
+d1023 1
+a1023 2
+    FILE* fp;
+    if (strlen(mName)) fp = fopen(filename, "w");
+d1025 6
+a1030 2
+    if (fp == 0) {
+      assert(0);
+d1032 1
+a1032 1
+      return FALSE;
+d1034 6
+a1039 1
+  }
+d1041 2
+a1042 5
+  // Save Attributes
+  for (mAttributeList.First(); ! mAttributeList.IsDone(); mAttributeList.Next())
+  {
+    Attribute *attr = mAttributeList.Get();
+    assert(attr);
+d1044 3
+a1046 4
+    if (*attr>>fp) fprintf(fp, AttributeSeparator);
+    else           return FALSE;
+  }
+  fprintf(fp, RecordSeparator);
+d1048 2
+a1049 5
+  // Save Records
+  for (mRecordList.First(); ! mRecordList.IsDone(); mRecordList.Next())
+  {
+    Record *rec = mRecordList.Get();
+    assert(rec);
+d1051 4
+a1054 2
+    if (rec->Save(fp)) fprintf(fp, RecordSeparator);
+    else               return FALSE;
+d1057 1
+a1057 3
+  if (fp != stdout) fclose(fp);
+
+  return TRUE;
+d1060 1
+a1060 1
+void Table::Print(char* attrib_name)
+d1062 19
+a1080 1
+  unsigned total = mRecordList.Size();
+d1082 2
+a1083 3
+  for (mRecordList.First(); ! mRecordList.IsDone(); mRecordList.Next())
+  {
+    Record* rec = mRecordList.Get();
+d1085 3
+a1087 2
+    if (rec) {
+      rec->Print();
+d1090 4
+a1093 2
+      assert(0);
+      return;
+d1095 2
+@
+
+
+1.2
+log
+@1. Incorporated View class into Table, the Table manages all the views.
+   The following functions were added:
+   - ViewCreate(const char* view_name)
+   - ViewDelete(View* view)
+   - ViewGroupAdd(View* view_for_group, View* owner_view)
+   - RecordsSelect(View* v, unsigned start, unsigned end)
+   - RecordsSelect(View* v, Query* q)
+   - RecordsImportSelected(View* view, eRecordPermissionBits perm)
+2. Added database transaction API:
+   - TranRecordAdd(View* v, Record *rec)
+   - TranRecordDelete(View* v, Record* rec)
+   - TranRecordModify(View* v, Record *rec, short attr_pos, Value& val)
+3. Now using the 'm' prefix for class data members.
+4. Removed:
+   - DeleteRecords()
+   - operator=(Table)
+   - operator==(Table)
+   - operator!=(Table)
+   - operator<<(Table)
+   - Reset()
+   The following are now implemented via Views.
+   - operator<<(Record)
+   - Search()
+   - Iterator  API: GetRecord(), NextRecord(), GoToRecord().
+   - Aggregate API: Count(), Exists(), Sum(), Max(), Min().
+   - SubTable()
+   - Sort()
+5. Replaced operator<<(Attribute) with AttributeAdd(Attribute).
+@
+text
+@d2 1
+a2 1
+//  $Revision: 1.1 $
+d7 3
+a9 1
+#include "Table.h"
+d12 2
+a14 3
+#include "Attribute.h"
+#include "List.h"
+#include "Database.h"
+d26 1
+a26 1
+  mViewOwnerRecPermission(eRecPermNone)
+d41 2
+a42 3
+  if (mViewListNew.Size() || mViewListGroup.Size() || mViewListOther.Size())
+  {
+    // All views must be deleted before Table is.
+d44 7
+d52 2
+d56 1
+a56 1
+eBoolean Table::AttributeAdd(Attribute *attr)
+d58 2
+d61 1
+a61 5
+  if (mRecordList.Size())
+  {
+    assert(0);
+    return FALSE;
+  }
+d65 2
+a66 1
+    mAttributeList.Add(attr);
+d68 1
+a68 2
+    return TRUE;
+  }
+d70 1
+a70 10
+  return FALSE;
+}
+
+eBoolean Table::AttributeDelete(Attribute *attr)
+{
+  // For now not allowed to delete attributes after records exist.
+  if (mRecordList.Size())
+  {
+    assert(0);
+    return FALSE;
+d73 1
+a73 5
+  eBoolean ret;
+
+  MacroListDeleteElm(mAttributeList, Attribute, attr, ret);
+
+  return ret;
+d93 1
+a93 1
+View* Table::ViewCreate(const char* view_name)
+d95 3
+a97 1
+  View* view = new View(view_name, this);
+d99 6
+a104 3
+  // Table needs to remember all Views that were created.
+  if (view) mViewListNew.Add(view);
+  else      assert(0);
+d115 1
+a115 4
+    if (mViewListNew.Size()
+    ||  mViewListGroup.Size()
+    ||  mViewListOther.Size())
+    {
+d119 1
+a119 1
+      mViewOwnerRecPermission = eRecPermNone;
+a125 8
+  else if (mViewListOther.PositionFind(view)) {
+    delete mViewListOther.Get();
+    mViewListOther.DeleteLinkCurrent();
+  }
+  else if (mViewListNew.PositionFind(view)) {
+    delete mViewListNew.Get();
+    mViewListNew.DeleteLinkCurrent();
+  }
+d142 1
+a142 1
+unsigned Table::RecordsSelect(View* v, unsigned start, unsigned end)
+d146 1
+a146 7
+  // First, ensure this view is valid.
+  if (! mViewListNew.Exists(v)) {
+    assert(0);
+    return select_count=0;
+  }
+
+  // More error checks.
+d165 2
+a166 2
+      if (rec_sel_by_view->mView != v) { continue;     }
+      else                             { found = TRUE; }
+d176 1
+a176 1
+      rec_sel_by_view->mView       = v;
+d212 1
+a212 1
+unsigned Table::RecordsSelect(View* v, Query* q)
+a215 6
+  // First, ensure this view is valid.
+  if (! mViewListNew.Exists(v)) {
+    assert(0);
+    return select_count=0;
+  }
+
+d219 1
+a219 4
+  for (mRecordListSelectedByViewList.First();
+        ! mRecordListSelectedByViewList.IsDone();
+             mRecordListSelectedByViewList.Next())
+  {
+d222 3
+a224 6
+    if (rec_sel_by_view) {
+      if (rec_sel_by_view->mView != v) { continue;     }
+      else                             { found = TRUE; }
+    }
+    else
+      assert(0);
+d233 1
+a233 1
+      rec_sel_by_view->mView       = v;
+d268 1
+a268 1
+eBoolean Table::RecordsImportSelected(View* view, eRecordPermissionBits perm)
+d270 1
+a270 2
+  // Note: We do allow this function to be called repeatedly
+  //       to keep on adding more selected records to a view.
+d272 2
+a273 1
+  RecordsSelectedByView* rec_sel_by_view;
+d276 2
+a277 5
+  for (mRecordListSelectedByViewList.First();
+        ! mRecordListSelectedByViewList.IsDone();
+             mRecordListSelectedByViewList.Next())
+  {
+    rec_sel_by_view = mRecordListSelectedByViewList.Get();
+d279 4
+a282 3
+    if (rec_sel_by_view) {
+      if (rec_sel_by_view->mView != view) { continue;     }
+      else                                { found = TRUE; }
+a283 2
+    else
+      assert(0);
+d288 1
+a288 4
+  int mask_add    = eRecPermBit_OwnerAdd    | eRecPermBit_GroupAdd    | eRecPermBit_OtherAdd;
+  int mask_delete = eRecPermBit_OwnerDelete | eRecPermBit_GroupDelete | eRecPermBit_OtherDelete;
+  int mask_modify = eRecPermBit_OwnerModify | eRecPermBit_GroupModify | eRecPermBit_OtherModify;
+  int mask_read   = eRecPermBit_OwnerRead   | eRecPermBit_GroupRead   | eRecPermBit_OtherRead;
+d290 4
+a293 1
+  eBoolean tbl_perm  = FALSE;
+d295 1
+a295 1
+  // 1. Check whether views record 'perm' violates 'mTableOpenFlags'.
+d301 4
+a304 4
+  if ((perm & mask_add)    && (mTableOpenFlags & eTableOpenFlagBit_PermAppend)) tbl_perm = TRUE;
+  if ((perm & mask_delete) && (mTableOpenFlags & eTableOpenFlagBit_PermDelete)) tbl_perm = TRUE;
+  if ((perm & mask_modify) && (mTableOpenFlags & eTableOpenFlagBit_PermModify)) tbl_perm = TRUE;
+  if ((perm & mask_read)   && (mTableOpenFlags & eTableOpenFlagBit_PermRead  )) tbl_perm = TRUE;
+d306 1
+a306 1
+  // 2. Check whether views record 'perm' violates masters view's perm (if present).
+d313 3
+a315 1
+  eBoolean view_perm = TRUE; // unless denied below
+d318 4
+a321 6
+    if (mViewListNew.Size() || mViewListGroup.Size() || mViewListOther.Size())
+    {
+      // Cannot install a new owner while there are views pending/created
+      // from a previous mViewOwner (The previous mViewOwner was deleted
+      // before all other views were deleted).
+      view_perm = FALSE;
+d324 10
+a333 6
+      // No master view yet, for now, we make the first view the master.
+      // We also capture the views record permission for safety so that
+      // the user cannot accidentally change the permission afterwards.
+      mViewOwner              = view;
+      mViewOwnerRecPermission = perm;
+      view_perm               = TRUE; // set it again for readability
+d336 3
+a338 5
+  else if (view == mViewOwner) {
+    // For now dont allow this operation.
+    // In future we may allow the view owner to use this
+    // operation to change the current permissions.
+    view_perm = FALSE;
+d341 2
+a342 20
+    int mask_owner  =   eRecPermBit_OwnerAdd
+                      | eRecPermBit_OwnerDelete
+                      | eRecPermBit_OwnerModify
+                      | eRecPermBit_OwnerRead;
+
+    int mask_group  =   eRecPermBit_GroupAdd
+                      | eRecPermBit_GroupDelete
+                      | eRecPermBit_GroupModify
+                      | eRecPermBit_GroupRead;
+
+    int mask_other  =   eRecPermBit_OtherAdd
+                      | eRecPermBit_OtherDelete
+                      | eRecPermBit_OtherModify
+                      | eRecPermBit_OtherRead;
+
+    // 1. Check views 'Owner' permissions (should not be set).
+    if (perm & mask_owner) view_perm = FALSE;
+
+    // 2. Check views 'Group' permissions.
+    eBoolean view_belongs_to_group = mViewListGroup.PositionFind(view);
+d344 1
+d347 1
+a347 1
+      if ((perm | mViewOwnerRecPermission)&mask_group != mViewOwnerRecPermission&mask_group)
+d349 1
+a349 1
+        view_perm = FALSE;
+d354 8
+a361 1
+      if (perm & (mViewOwnerRecPermission&mask_group)) view_perm = FALSE;
+d363 14
+d378 16
+a393 5
+    // 3. Check views 'Other' permissions.
+    // Not allowed to set any additional 'Other' permissions.
+    if ((perm | mViewOwnerRecPermission)&mask_other != mViewOwnerRecPermission&mask_other)
+    {
+      view_perm = FALSE;
+d395 10
+d406 3
+a408 18
+    // 4. Finally, if view does not have 'Read' permission but the
+    //    mRecordListSelectedByViewList is > 0, then the 'import' is denied.
+    if (rec_sel_by_view && rec_sel_by_view->mRecordList->Size() > 0) {
+      if (view_belongs_to_group) {
+        if (!(eRecPermBit_GroupRead & perm)
+        ||  !(eRecPermBit_GroupRead & mViewOwnerRecPermission))
+        {
+          view_perm = FALSE;
+        }
+      }
+      else {
+        if (!(eRecPermBit_OtherRead & perm)
+        ||  !(eRecPermBit_OtherRead & mViewOwnerRecPermission))
+        {
+          view_perm = FALSE;
+        }
+      }
+    }
+d410 3
+a412 3
+    // Also, if the view does not belong to the 'group', add it to 'other'.
+    if (!view_belongs_to_group && tbl_perm && view_perm) {
+      mViewListOther.Add(view);
+d416 4
+a419 10
+  if (tbl_perm && view_perm) {
+    // Ok to import records, also increment reference count if read permission present.
+    if (rec_sel_by_view && rec_sel_by_view->mRecordList->Size() > 0) {
+      // Check if 'Read' permission is requested (permission is already ok).
+      if (perm & eRecPermBit_OwnerRead
+      ||  perm & eRecPermBit_GroupRead
+      ||  perm & eRecPermBit_OtherRead)
+      {
+        List<Record> *rec_list = rec_sel_by_view->mRecordList;
+        assert(rec_list);
+d421 5
+a425 5
+        for (rec_list->First(); ! rec_list->IsDone(); rec_list->Next()) {
+          Record* rec = rec_list->Get();
+          assert(rec);
+          rec->ReferenceCountIncrement();
+          rec->ViewSet(view);
+d427 35
+a461 1
+          view->mRecordPtrList.Add(rec);
+a465 14
+    // Finally, remove the view from the 'New' list and add it to
+    // the Other list if it is not already in the 'Group' list.
+    if (mViewListNew.PositionFind(view)) {
+      mViewListNew.DeleteLinkCurrent();
+
+      if (view!=mViewOwner && (! mViewListGroup.PositionFind(view))) {
+        if (! mViewListOther.Exists(view))
+          mViewListOther.Add(view);
+      }
+    }
+    else {
+      assert(0);
+    }
+
+d477 48
+a524 1
+eBoolean Table::TranRecordAdd(View* v, Record *rec)
+d532 1
+a532 1
+  // 2. Make a copy of the record before adding it (safer but double-copy), ok?.
+d534 3
+a536 3
+  if (IsOwnerView(v) && (mViewOwnerRecPermission & eRecPermBit_OwnerAdd)
+  ||  IsGroupView(v) && (mViewOwnerRecPermission & eRecPermBit_GroupAdd)
+  ||                    (mViewOwnerRecPermission & eRecPermBit_OtherAdd))
+d541 3
+a543 3
+    if (IsOwnerView(v) && (mViewOwnerRecPermission & eRecPermBit_OwnerRead)
+    ||  IsGroupView(v) && (mViewOwnerRecPermission & eRecPermBit_GroupRead)
+    ||                    (mViewOwnerRecPermission & eRecPermBit_OtherRead))
+d548 1
+a548 1
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordAdd, this, new_rec);
+d558 1
+a558 1
+eBoolean Table::TranRecordDelete(View* v, Record* rec)
+d564 3
+a566 7
+  // 2. Always decrement the records reference count.
+  // 3. If the view has record-delete permission then we set the
+  //    Record::mRecordMarkedForDeletion flag.
+  // 4. If the reference count is 0 and the mIsDeleted flag is set
+  //    then the record is actually deleted, this is accomplished
+  //    by adding the delete operation to the DBTransaction list.
+  //    where it will committed at the next commit cycle.
+a567 2
+  if (rec->ReferenceCountGet() != 0) ret = TRUE;
+  else                               ret = FALSE;
+d569 5
+a573 1
+  short ref_count = rec->ReferenceCountDecrement();
+d575 1
+a575 5
+  if (IsOwnerView(v) && (mViewOwnerRecPermission & eRecPermBit_OwnerDelete)
+  ||  IsGroupView(v) && (mViewOwnerRecPermission & eRecPermBit_GroupDelete)
+  ||                    (mViewOwnerRecPermission & eRecPermBit_OtherDelete))
+  {
+    rec->mRecordMarkedForDeletion = TRUE;
+a581 4
+  if (rec->mRecordMarkedForDeletion && ref_count==0) {
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordDelete, this, rec);
+  }
+
+d585 1
+a585 1
+eBoolean Table::TranRecordModify(View* v, Record *rec, short attr_pos, Value& val)
+d594 3
+a596 3
+  if (IsOwnerView(v) && (mViewOwnerRecPermission & eRecPermBit_OwnerModify)
+  ||  IsGroupView(v) && (mViewOwnerRecPermission & eRecPermBit_GroupModify)
+  ||                    (mViewOwnerRecPermission & eRecPermBit_OtherModify))
+d598 1
+a598 1
+    mDatabase->DBTransactionsAdd(eDBTransRecOper_RecordAdd, this, rec, attr_pos, val);
+d611 1
+a611 1
+short Table::AttributesPosition(const char* attrib_name)
+d620 2
+a621 4
+    if (!strcmp(attr->name, attrib_name))
+      return count;
+    else
+      count++;
+d624 21
+a644 1
+  return eMaxAttributes;
+d647 1
+a647 1
+eValueType Table::AttributeType(short index)
+d649 13
+a661 1
+  short count = 0;
+d663 3
+a665 4
+  for (mAttributeList.First(); ! mAttributeList.IsDone(); mAttributeList.Next())
+  {
+    Attribute *attr = mAttributeList.Get();
+    assert(attr);
+d667 15
+a681 2
+    if (count == index) return attr->type;
+    else                count++;
+d684 3
+a686 1
+  return eValueUnknown;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+//  $RCSfile:$
+//  $Revision:$
+d5 1
+d13 1
+a15 1
+//static char* DefaultDatabaseDirectory = ".database";
+d17 2
+a18 2
+static char* RecordSeparator = "\n";
+static char* AttributeSeparator = ";";
+d20 6
+a25 7
+Table::Table(const char* tbname) :
+  atFirstRecord(TRUE),
+  atLastRecord(FALSE),
+  sortAttributePos(0),
+  modified(FALSE),
+  currentRecord(0),
+  tableName(tbname)
+d27 1
+a27 1
+  Read();
+d37 2
+a38 3
+  attributes.DeleteContents();
+  records.DeleteContents();
+}
+d40 5
+a44 8
+void Table::DeleteRecords()
+{
+  modified = TRUE;
+  currentRecord = 0;
+  atFirstRecord = TRUE;
+  atLastRecord = TRUE;
+
+  records.DeleteContents();
+d47 1
+a47 1
+eBoolean Table::DeleteRecord()
+d49 6
+a54 3
+  /* Delete record */
+  short size = records.Size();
+  eBoolean result;
+d56 3
+a58 1
+  if (!size) return FALSE;
+d60 2
+a61 7
+  /* if the record to be deleted is the  */
+  /* last record then decrement current  */
+  /* Record except if last==first record */
+  if (atLastRecord && currentRecord>0)
+    result = records.Delete(currentRecord--);
+  else
+    result = records.Delete(currentRecord);
+d63 1
+a63 4
+  if (records.Size() == 0)
+    atFirstRecord = TRUE;
+
+  return result;
+d66 1
+a66 1
+Table& Table::operator=(Table& tbl)
+d68 6
+a73 6
+  /* Copy everything except the table name */
+  modified         = tbl.modified;
+  currentRecord    = tbl.currentRecord;
+  atFirstRecord    = tbl.atFirstRecord;
+  atLastRecord     = tbl.atLastRecord;
+  sortAttributePos = tbl.sortAttributePos;
+d75 1
+a75 2
+  attributes.DeleteContents();
+  DeleteRecords();
+d77 1
+a77 2
+  attributes = tbl.attributes;
+  records    = tbl.records;
+d79 1
+a79 1
+  return *this;
+d82 18
+a99 2
+/* Compares record for record in the two tables */
+eBoolean Table::operator==(Table& tbl)
+d101 1
+a101 2
+  if (Size() != tbl.Size())
+    return FALSE;
+d103 3
+a105 2
+  if (TotalAttributes() != tbl.TotalAttributes())
+    return FALSE;
+d107 2
+a108 1
+  short total = Size();
+d110 5
+a114 4
+  for (short i=0; i<total; i++)
+  {
+    Record* rec1 = GetRecord(i);
+    Record* rec2 = tbl.GetRecord(i);
+d116 21
+a136 2
+    if (*rec1 != *rec2)
+      return FALSE;
+a137 2
+
+  return TRUE;
+d140 3
+a142 1
+eBoolean Table::operator!=(Table& tbl)
+d144 6
+a149 1
+  if (*this == tbl)
+d151 1
+a151 2
+
+  return TRUE;
+d154 1
+a154 2
+/* Add attributes to the table */
+Table& Table::operator<<(Attribute &attr)
+d156 11
+a166 1
+  if (records.Size())
+d168 2
+a169 2
+    printf("Not allowed to add attributes once the Table has records\n");
+    return *this;
+d172 1
+a172 1
+  modified = TRUE;
+d174 7
+a180 1
+  attributes << attr;
+d182 14
+a195 2
+  return *this;
+}
+d197 7
+a203 13
+/* Add a record to the table */
+Table& Table::operator<<(Record &rec)
+{
+  if (rec.Valid())
+  {
+    modified = TRUE;
+    records << rec;
+    atLastRecord = FALSE;
+  }
+  else
+  {
+    printf("Record not valid:\n");
+    printf("%s\n", rec.Save(stdout));
+d206 5
+a210 2
+  return *this;
+}
+d212 3
+a214 6
+/* Add a record to the table */
+Table& Table::operator<<(Table& tbl)
+{
+  /* Check if the tables are compatible */
+  if (TotalAttributes() != tbl.TotalAttributes())
+    return *this;
+d216 3
+a218 1
+  short total = tbl.Size();
+d220 2
+a221 5
+  for (short i=0; i<total; i++)
+  {
+    Record* rec = tbl.GetRecord(i);
+    if (rec)
+      *this << *rec;
+d223 2
+a224 5
+
+  if (total)
+  {
+    modified = TRUE;
+    atLastRecord = FALSE;
+d227 1
+a227 1
+  return *this;
+d230 1
+a230 1
+Record* Table::NextRecord()
+d232 1
+a232 1
+  short total = records.Size();
+d234 5
+a238 3
+  /* Check table size */
+  if (!records.Size())
+    return 0;
+d240 1
+a240 3
+  /* Check if we are at the last record */
+  if (atLastRecord)
+    return 0;
+d242 6
+a247 5
+  /* Now there is at least one record more */
+  if (atFirstRecord)
+    atFirstRecord = FALSE;
+  else
+    currentRecord++;
+d249 7
+a255 2
+  if (currentRecord+1 == records.Size())
+    atLastRecord = TRUE;
+d257 4
+a260 2
+  return GetRecord(currentRecord);
+}
+d262 3
+a264 6
+Record* Table::GetRecord(short index)
+{
+  if (index < records.Size())
+  {
+    if (index > 0) atFirstRecord = FALSE;
+    if (index+1 == records.Size()) atLastRecord = TRUE;
+d266 10
+a275 1
+    currentRecord = index;
+a276 2
+  else
+    return 0;
+d278 1
+a278 2
+  return records[index];
+}
+d280 2
+a281 4
+eBoolean Table::GoToRecord(short index)
+{
+  if (index >= records.Size())
+    return FALSE;
+d283 11
+a293 4
+  currentRecord = index;
+
+  if (currentRecord == 0)
+    atFirstRecord = TRUE;
+d295 1
+a295 4
+  if (currentRecord+1 == records.Size())
+    atLastRecord = TRUE;
+
+  return TRUE;
+d298 1
+a298 1
+Record* Table::Search(Query &q, eSearchDirection sdir)
+d300 2
+a301 1
+  short total = records.Size();
+d303 1
+a303 2
+  if (total == 0)
+    return 0;
+d305 4
+a308 3
+  short i;
+
+  switch (sdir)
+d310 1
+a310 3
+  case eBackward:
+    if (atFirstRecord)
+      return 0;
+d312 3
+a314 6
+    if (currentRecord > 0)
+    {
+      if (atLastRecord)
+        atLastRecord = FALSE;
+      else
+        currentRecord--;
+d316 30
+d347 4
+a350 1
+    for (i=currentRecord; i>=0; i--)
+d352 53
+a404 2
+      if (i == 0)
+        atFirstRecord = TRUE;
+d406 3
+a408 9
+      Record* rec = records[i];
+      if (rec->Match(q))
+        return records[i];
+    }
+    break;
+  default:  /* Forward */
+    if (atFirstRecord)
+      atFirstRecord = FALSE;
+    else
+d410 1
+a410 4
+      if (currentRecord+1 == records.Size())
+        atLastRecord = TRUE;
+      else
+        currentRecord++;
+d413 16
+a428 6
+    while (currentRecord < total)
+    {
+      Record* rec = records[currentRecord];
+      if (rec->Match(q))
+      {
+        return records[currentRecord];
+a429 1
+      currentRecord++;
+d431 5
+a435 1
+    break;
+d438 16
+a453 2
+  return 0;
+}
+d455 4
+a458 4
+short Table::Count(Query &q)
+{
+  if (q.Operator() == eNoOperator)
+    return Size();
+d460 13
+a472 2
+  short total = records.Size();
+  short count = 0;
+d474 1
+a474 5
+  for (short i=0; i<total; i++)
+  {
+    Record* rec = records[i];
+    if (rec->Match(q))
+      count++;
+d476 4
+d481 2
+a482 1
+  return count;
+d485 1
+a485 1
+eBoolean Table::Exists(Query& q)
+d487 1
+a487 7
+  short total = records.Size();
+
+  for (short i=0; i<total; i++)
+  {
+    if (records[i]->Match(q))
+      return TRUE;
+  }
+d489 1
+a489 2
+  return FALSE;
+}
+d491 17
+a507 3
+void Table::SubTable(Table& tbl, Query& q)
+{
+  tbl.attributes = attributes;
+d509 1
+a509 1
+  short total = records.Size();
+d511 1
+a511 5
+  for (short i=0; i<total; i++)
+  {
+    Record* rec = records[i];
+    if (rec->Match(q))
+      tbl << *rec;
+d513 2
+a514 9
+}
+
+int Table::Sum(const char* attrib_name)
+{
+  if (Position(attrib_name) == eMaxAttributes)
+    return 0;
+
+  int sum = 0;
+  short total = records.Size();
+d516 1
+a516 4
+  for (short i=0; i<total; i++)
+    sum += (int)((*records[i])[attrib_name]);
+
+  return sum;
+d519 1
+a519 1
+int Table::Max(const char* attrib_name)
+d521 1
+a521 4
+  int max = INT_MIN;
+
+  if (Position(attrib_name) == eMaxAttributes)
+    return max;
+d523 12
+a534 1
+  int temp;
+d536 1
+a536 1
+  short total = records.Size();
+d538 3
+a540 1
+  for (short i=0; i<total; i++)
+d542 6
+a547 1
+    temp = (int)((*records[i])[attrib_name]);
+d549 2
+a550 1
+    if (temp > max) max = temp;
+d553 1
+a553 1
+  return max;
+d556 1
+a556 1
+int Table::Min(const char* attrib_name)
+d558 1
+a558 4
+  int min = INT_MAX;
+
+  if (Position(attrib_name) == eMaxAttributes)
+    return min;
+d560 1
+a560 1
+  int temp;
+d562 2
+a563 1
+  short total = records.Size();
+d565 3
+a567 1
+  for (short i=0; i<total; i++)
+d569 1
+a569 1
+    temp = (int)((*records[i])[attrib_name]);
+d571 1
+a571 1
+    if (temp < min) min = temp;
+d573 3
+d577 3
+a579 1
+  return min;
+d582 1
+a582 1
+short Table::Position(const char* attrib_name)
+d584 1
+a584 1
+  short total = attributes.Size();
+d586 10
+a595 3
+  for (short i=0; i<total; i++)
+    if (!strcmp(attributes[i]->name, attrib_name))
+      return i;
+d600 1
+a600 1
+eValueType Table::AttributeType(short i)
+d602 1
+a602 1
+  short total = attributes.Size();
+d604 8
+a611 2
+  if (i < total)
+    return attributes[i]->type;
+d616 1
+a616 1
+eBoolean Table::Read()
+d618 1
+a618 1
+  if (strlen(tableName) == 0)
+d623 3
+a625 1
+  sprintf(filename, "%s/%s", DefaultDatabaseDirectory, tableName);
+d630 1
+a630 1
+  // Initialize 'attributes'
+d634 1
+a634 1
+    attributes << *attr;
+d639 1
+a639 1
+  Record* rec = new Record(this);
+d642 1
+a642 1
+    records << *rec;
+d653 1
+a653 2
+  return SaveDetails(fp);
+}
+d655 1
+a655 10
+eBoolean Table::Save()
+{
+  char filename[MAX_FILENAME_LEN+1];
+
+  sprintf(filename, "%s/%s", DefaultDatabaseDirectory, tableName);
+
+  FILE* fp;
+  if (strlen(tableName))
+    fp = fopen(filename, "w");
+  else
+d657 3
+d661 2
+a662 3
+  if (fp == 0) return FALSE;
+  
+  eBoolean save = SaveDetails(fp);
+d664 2
+a665 1
+  if (fp != stdout) fclose(fp);
+d667 2
+a668 2
+  return save;
+}
+a669 10
+eBoolean Table::SaveDetails(FILE* fp)
+{
+  short i;
+  /* Save Attributes */
+  short total = attributes.Size();
+  for (i=0; i<total; i++)
+  {
+    if (*attributes[i]>>fp)
+      fprintf(fp, AttributeSeparator);
+    else
+d671 1
+a672 1
+  fprintf(fp, RecordSeparator);
+d674 2
+a675 3
+  /* Save Records */
+  total = records.Size();
+  for (i=0; i<total; i++)
+d677 5
+a681 4
+    if (records[i]->Save(fp))
+      fprintf(fp, RecordSeparator);
+    else
+      return FALSE;
+d683 1
+d685 5
+a689 55
+  return TRUE;
+}
+
+void Table::Sort(const char* attrib_name)
+{
+//
+//  /* 'sortAttributePos' is used later by the     */
+//  /* Record class to select the Value to compare */
+//  sortAttributePos = Position(attrib_name);
+
+//  SortedList<Record> sortrecs;
+
+//  short total = records.Size();
+
+//  for (short i=0; i<total; i++)
+//    sortrecs << GetRecord(i);
+
+//  records.Transfer(sortrecs);
+//
+}
+
+short Table::UniqueCount(const char* attrib_name)
+{
+//
+//  short pos = Position(attrib_name);
+
+//  SortedList<Record> sortrecs;
+
+//  short total = records.Size();
+//  if (total <= 1) return total;
+
+//  sortAttributePos = Position(attrib_name);
+
+//  short i;
+//  for (i=0; i<total; i++)
+//    sortrecs << GetRecord(i);
+
+//  Value val1, val2;
+//  Record* rec;
+//  rec = sortrecs[0];
+//  val1 = (*rec)[attrib_name];
+
+//  short uniq_count = 1;
+
+//  for (i=1; i<total; i++)
+//  {
+//    Record* rec = sortrecs[i];
+//    if (rec) val2 = (*rec)[attrib_name];
+//    else return uniq_count;
+
+//    if (val1 != val2)
+//      uniq_count++;
+
+//    val1 = val2;
+//  }
+d691 2
+a692 17
+//  return uniq_count;
+//
+  return 0;
+}
+
+eBoolean Table::Reset(const char* attrib_name, Value& reset_val)
+{
+  short pos = Position(attrib_name);
+
+  if (pos == eMaxAttributes)
+    return FALSE;
+
+  short total = records.Size();
+  for (short i=0; i<total; i++)
+  {
+    Record* rec = records[i];
+    (*rec)[pos] = reset_val;
+d695 1
+a695 1
+  modified = TRUE;
+d702 3
+a704 3
+  /* Print Records */
+  short total = Size();
+  for (short i=0; i<total; i++)
+d706 1
+a706 5
+    Record* rec = records[i];
+    Value& val = (*rec)[attrib_name];
+    printf("%s\n", (char*)val);
+  }
+}
+d708 7
+a714 8
+void Table::Show()
+{
+  short total = Size();
+
+  for (short i=0; i< total; i++)
+  {
+    Record* rec = records[i];
+    if (rec) rec->Print();
+a717 8
+eBoolean Table::IsValidIndex(short index)
+{
+  if (index < records.Size())
+    return TRUE;
+
+  return FALSE;
+}
+
+a718 2
+
+
+@

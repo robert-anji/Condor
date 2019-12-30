@@ -1,0 +1,572 @@
+This text was generated using an UNLICENSED version of Salty Brine Software's SBSPDFTXT control.
+                                                                          IEEE P1364-2005/D3
+                                                                                        (Revision of
+                                                                                IEEE Std 1364-2001)
+
+
+
+
+Draft Standard for Verilog® Hardware
+Description Language
+
+
+Sponsor
+Design Automation Standards Committee
+of the
+IEEE Computer Society
+
+
+
+Abstract: The Verilog® Hardware Description Language (HDL) is defined in this standard. Verilog
+HDL is a formal notation intended for use in all phases of the creation of electronic systems. Be-
+cause it is both machine readable and human readable, it supports the development, verification,
+synthesis, and testing of hardware designs; the communication of hardware design data; and the
+maintenance, modification, and procurement of hardware. The primary audiences for this standard
+are the implementors of tools supporting the language and advanced users of the language.
+Keywords: computer, computer languages, digital systems, electronic systems, hardware, hard-
+ware description languages, hardware design, HDL, PLI, programming language interface, Verilog
+HDL, Verilog PLI, Verilog®
+
+
+
+
+                                                                                                  i
+Copyright © 2004 IEEE. All rights reserved.
+Introduction (unchanged)
+
+(This introduction is not part of IEEE P1364-2005, Draft Standard for Verilog® Hardware Description Langauge.)
+
+
+The Verilog® Hardware Description Language (Verilog HDL) became an IEEE standard in 1995 as IEEE
+Std 1364-1995. It was designed to be simple, intuitive, and effective at multiple levels of abstraction in a
+standard textual format for a variety of design tools, including verification simulation, timing analysis, test
+analysis, and synthesis. It is because of these rich features that Verilog has been accepted to be the language
+of choice by an overwhelming number of IC designers.
+
+
+Verilog contains a rich set of built-in primitives, including logic gates, user-definable primitives, switches,
+and wired logic. It also has device pin-to-pin delays and timing checks. The mixing of abstract levels is
+essentially provided by the semantics of two data types: nets and variables. Continuous assignments, in
+which expressions of both variables and nets can continuously drive values onto nets, provide the basic
+structural construct. Procedural assignments, in which the results of calculations involving variable and net
+values can be stored into variables, provide the basic behavioral construct. A design consists of a set of mod-
+ules, each of which has an I/O interface, and a description of its function, which can be structural, behav-
+ioral, or a mix. These modules are formed into a hierarchy and are interconnected with nets.
+
+
+The Verilog language is extensible via the Programming Language Interface (PLI) and the Verilog Proce-
+dural Interface (VPI) routines. The PLI/VPI is a collection of routines that allows foreign functions to access
+information contained in a Verilog HDL description of the design and facilitates dynamic interaction with
+simulation. Applications of PLI/VPI include connecting to a Verilog HDL simulator with other simulation
+and CAD systems, customized debugging tasks, delay calculators, and annotators.
+
+
+The language that influenced Verilog HDL the most was HILO-2, which was developed at Brunel University
+in England under a contract to produce a test generation system for the British Ministry of Defense. HILO-2
+successfully combined the gate and register transfer levels of abstraction and supported verification simula-
+tion, timing analysis, fault simulation, and test generation.
+
+
+In 1990, Cadence Design Systems placed the Verilog HDL into the public domain and the independent Open
+Verilog International (OVI) was formed to manage and promote Verilog HDL. In 1992, the Board of Direc-
+tors of OVI began an effort to establish Verilog HDL as an IEEE standard. In 1993, the first IEEE Working
+Group was formed and after 18 months of focused efforts Verilog became an IEEE standard as IEEE Std
+1364-1995.
+
+
+After the standardization process was complete the 1364 Working Group started looking for feedback from
+1364 users worldwide so the standard could be enhanced and modified accordingly. This led to a five year
+effort to get a much better Verilog standard in IEEE Std 1364-2001.
+
+
+Objective of the IEEE Std 1364-2001 effort
+
+The starting point for the IEEE 1364 Working Group for this standard was the feedback received from the
+IEEE Std 1364-1995 users worldwide. It was clear from the feedback that users wanted improvements in all
+aspects of the language. Users at the higher levels wanted to expand and improve the language at the RTL
+and behavioral levels, while users at the lower levels wanted improved capability for ASIC designs and
+signoff. It was for this reason that the 1364 Working Group was organized into three task forces: Behavioral,
+ASIC, and PLI.
+
+
+ii                                                                        Copyright © 2004 IEEE. All rights reserved.
+The clear directive from the users for these three task forces was to start by solving some of the following
+problems:
+
+
+    -- Consolidate existing IEEE Std 1364-1995
+    -- Verilog Generate statement
+    -- Multi-dimensional arrays
+    -- Enhanced Verilog file I/O
+    -- Re-entrant tasks
+    -- Standardize Verilog configurations
+    -- Enhance timing representation
+    -- Enhance the VPI routines
+
+
+Achievements
+
+Over a period of four years the 1364 Verilog Standards Group (VSG) has produced five drafts of the LRM.
+The three task forces went through the IEEE Std 1364-1995 LRM very thoroughly and in the process of con-
+solidating the existing LRM have been able to provide nearly three hundred clarifications and errata for the
+Behavioral, ASIC, and PLI sections. In addition, the VSG has also been able to agree on all the enhance-
+ments that were requested (including the ones stated above).
+
+
+Three new sections have been added. Clause 13, "Configuring the contents of a design," deals with configu-
+ration management and has been added to facilitate both the sharing of Verilog designs between designers
+and/or design groups and the repeatability of the exact contents of a given simulation session. Clause 15,
+"Timing checks," has been broken out of Clause 17, "System tasks and functions," and details more fully
+how timing checks are used in specify blocks. Clause 16, "Backannotation using the Standard Delay Format
+(SDF)," addresses using back annotation (IEEE Std 1497-1999) within IEEE Std 1364-2001.
+
+
+Extreme care has been taken to enhance the VPI routines to handle all the enhancements in the Behavioral
+and other areas of the LRM. Minimum work has been done on the PLI routines and most of the work has
+been concentrated on the VPI routines. Some of the enhancements in the VPI are the save and restart, simu-
+lation control, work area access, error handling, assign/deassign and support for array of instances, generate,
+and file I/O.
+
+
+Work on this standard would not have been possible without funding from the CAS society of the IEEE and
+Open Verilog International.
+
+
+The IEEE Std 1364-2001 Verilog Standards Group organization
+
+Many individuals from many different organizations participated directly or indirectly in the standardization
+process. The main body of the IEEE Std 1364-2001 working group is located in the United States, with a
+subgroup in Japan (EIAJ/1364HDL).
+
+
+The members of the IEEE Std 1364-2001 working group had voting privileges and all motions had to be
+approved by this group to be implemented. The three task forces focused on their specific areas and their
+recommendations were eventually voted on by the IEEE Std 1364-2001 working group.
+
+
+                                                                                                            iii
+Copyright © 2004 IEEE. All rights reserved.
+Participants--IEEE P1364-2005/D3
+
+At the time IEEE P1364-2005/D3 was completed, the IEEE 1364 Working Group had the following mem-
+bership:
+                                     Michael T. Y. (Mac) McNamara, Chair
+                                          Shalom Bresticker, Editor
+                                           Stefen Boyd, Web Master
+                                                Ennis Hawk
+   Kurt Baty                                                                    Mehdi Mohtashemi
+                                                Richard Ho
+   Dennis Brophy                                                                Anders Nordstrom
+                                                Atsushi Kasuya
+   Clifford E. Cummings                                                         Karen Pieper
+                                                Jay Lawrence
+   Charles Dawson                                                               Brad Pierce
+                                                Andrew Lynch
+   Tom Fitzpatrick                                                              Steven Sharp
+                                                James A. Markevitch
+   Krishna Garlapati                                                            Alec Stanculescu
+                                                Dennis Marsa
+   Ronald Goodstein                                                             Stuart Sutherland
+                                                Francoise Martinolle
+   Keith Gover                                                                  Chong Guan Tan
+                                                                                Gordon Vreugdenhil
+
+
+The Errata Task Force had the following membership:
+                                                  Karen Pieper, Chair
+                                                Stefen Boyd, Vice Chair
+                                                Jay Lawrence
+   Kurt Baty                                                                   Mehdi Mohtashemi
+                                                Andrew Lynch
+   Shalom Bresticker                                                           Anders Nordstrom
+                                                James A. Markevitch
+   Dennis Brophy                                                               Brad Pierce
+                                                Dennis Marsa
+   Clifford E. Cummings                                                        David Roberts
+                                                Francoise Martinolle
+   Charles Dawson                                                              Steven Sharp
+                                                Michael T. Y. (Mac) McNamara
+   Ted Elkind                                                                  David Smith
+                                                Elliot Mednick
+   Tom Fitzpatrick                                                             Stuart Sutherland
+                                                Don Mills
+   Ronald Goodstein                                                            Gordon Vreugdenhil
+
+
+
+The Behavioral Task Force had the following membership:
+                                                  Steven Sharp, Chair
+                                                Ennis Hawk
+   Kurt Baty                                                                   Mehdi Mohtashemi
+                                                Atsushi Kasuya
+   Stefen Boyd                                                                 Karen Pieper
+                                                Jay Lawrence
+   Dennis Brophy                                                               Brad Pierce
+                                                Francoise Martinolle
+   Clifford E. Cummings                                                        Alec Stanculescu
+                                                Michael T. Y. (Mac) McNamara
+   Tom Fitzpatrick                                                             Stuart Sutherland
+                                                Don Mills
+   Ronald Goodstein                                                            Gordon Vreugdenhil
+
+
+The PLI Task Force had the following membership:
+                                               Charles Dawson, Co-Chair
+                                              Stuart Sutherland, Co-Chair
+                                                Francoise Martinolle
+   Steven Dovich                                                               Nisa Parikh
+   Dennis Marsa                                                                David Roberts
+
+
+
+
+                                                                                                     iv
+Copyright © 2004 IEEE. All rights reserved.
+Contents
+  1.    Overview .............................................................................................................................................. 1
+
+        1.1      Objectives of this standard......................................................................................................... 1
+        1.2      Conventions used in this standard.............................................................................................. 1
+        1.3      Syntactic description.................................................................................................................. 2
+        1.4      Contents of this standard............................................................................................................ 2
+        1.5      Header file listings ..................................................................................................................... 4
+        1.6      Examples .................................................................................................................................... 5
+        1.7      Prerequisites ............................................................................................................................... 5
+
+  2.    Lexical conventions ............................................................................................................................. 6
+
+        2.1      Lexical tokens ............................................................................................................................ 6
+        2.2      White space................................................................................................................................ 6
+        2.3      Comments .................................................................................................................................. 6
+        2.4      Operators .................................................................................................................................... 6
+        2.5      Numbers ..................................................................................................................................... 6
+                 2.5.1 Integer constants ........................................................................................................... 7
+                 2.5.2 Real constants ............................................................................................................. 10
+                 2.5.3 Conversion .................................................................................................................. 10
+        2.6      Strings ...................................................................................................................................... 11
+                 2.6.1 String variable declaration .......................................................................................... 11
+                 2.6.2 String manipulation..................................................................................................... 11
+                 2.6.3 Special characters in strings........................................................................................ 11
+        2.7      Identifiers, keywords, and system names ................................................................................ 12
+                 2.7.1 Escaped identifiers ...................................................................................................... 12
+                 2.7.2 Generated identifiers................................................................................................... 13
+                 2.7.3 Keywords .................................................................................................................... 13
+                 2.7.4 System tasks and functions ......................................................................................... 13
+                 2.7.5 Compiler directives..................................................................................................... 14
+        2.8      Attributes.................................................................................................................................. 14
+                 2.8.1 Examples..................................................................................................................... 15
+                 2.8.2 Syntax ......................................................................................................................... 16
+
+  3.    Data types........................................................................................................................................... 19
+
+        3.1      Value set................................................................................................................................... 19
+        3.2      Nets and variables .................................................................................................................... 19
+                 3.2.1 Net declarations .......................................................................................................... 19
+                 3.2.2 Variable declarations .................................................................................................. 21
+        3.3      Vectors ..................................................................................................................................... 22
+                 3.3.1 Specifying vectors....................................................................................................... 22
+                 3.3.2 Vector net accessibility ............................................................................................... 23
+        3.4      Strengths .................................................................................................................................. 23
+                 3.4.1 Charge strength ........................................................................................................... 23
+                 3.4.2 Drive strength.............................................................................................................. 23
+        3.5      Implicit declarations................................................................................................................. 24
+        3.6      Net initialization....................................................................................................................... 24
+        3.7      Net types .................................................................................................................................. 24
+                 3.7.1 Wire and tri nets.......................................................................................................... 24
+                 3.7.2 Wired nets ................................................................................................................... 25
+
+
+
+                                                                                                                                                               v
+Copyright © 2004 IEEE. All rights reserved.
+             3.7.3 Trireg net..................................................................................................................... 25
+             3.7.4 Tri0 and tri1 nets......................................................................................................... 29
+             3.7.5 Supply nets.................................................................................................................. 30
+        3.8 Regs.......................................................................................................................................... 30
+        3.9 Integers, reals, times, and realtimes ......................................................................................... 30
+             3.9.1 Operators and real numbers ........................................................................................ 32
+             3.9.2 Conversion .................................................................................................................. 32
+        3.10 Arrays....................................................................................................................................... 32
+             3.10.1 Net arrays .................................................................................................................... 33
+             3.10.2 reg and variable arrays ................................................................................................ 33
+             3.10.3 Memories .................................................................................................................... 33
+        3.11 Parameters ................................................................................................................................ 34
+             3.11.1 Module parameters...................................................................................................... 34
+             3.11.2 Local parameters - localparam.................................................................................... 36
+             3.11.3 Specify parameters...................................................................................................... 36
+        3.12 Name spaces............................................................................................................................. 38
+
+  4.    Expressions ........................................................................................................................................ 39
+
+        4.1      Operators .................................................................................................................................. 39
+                 4.1.1 Operators with real operands ...................................................................................... 40
+                 4.1.2 Operator precedence ................................................................................................... 41
+                 4.1.3 Using integer numbers in expressions ........................................................................ 42
+                 4.1.4 Expression evaluation order........................................................................................ 42
+                 4.1.5 Arithmetic operators ................................................................................................... 43
+                 4.1.6 Arithmetic expressions with regs and integers ........................................................... 44
+                 4.1.7 Relational operators .................................................................................................... 45
+                 4.1.8 Equality operators ....................................................................................................... 46
+                 4.1.9 Logical operators ........................................................................................................ 47
+                 4.1.10 Bit-wise operators ....................................................................................................... 47
+                 4.1.11 Reduction operators .................................................................................................... 48
+                 4.1.12 Shift operators............................................................................................................. 49
+                 4.1.13 Conditional operator ................................................................................................... 50
+                 4.1.14 Concatenations............................................................................................................ 51
+        4.2      Operands .................................................................................................................................. 52
+                 4.2.1 Vector bit-select and part-select addressing ............................................................... 52
+                 4.2.2 Array and memory addressing .................................................................................... 54
+                 4.2.3 Strings ......................................................................................................................... 55
+        4.3      Minimum, typical, and maximum delay expressions .............................................................. 57
+        4.4      Expression bit lengths .............................................................................................................. 58
+                 4.4.1 Rules for expression bit lengths.................................................................................. 58
+                 4.4.2 An example of an expression bit-length problem ....................................................... 59
+                 4.4.3 Example of self-determined expressions .................................................................... 60
+        4.5      Signed expressions................................................................................................................... 61
+                 4.5.1 Rules for expression types .......................................................................................... 61
+                 4.5.2 Steps for evaluating an expression.............................................................................. 61
+                 4.5.3 Steps for evaluating an assignment............................................................................. 62
+                 4.5.4 Handling X and Z in signed expressions .................................................................... 62
+        4.6      Assignments and truncation..................................................................................................... 62
+
+  5.    Scheduling semantics......................................................................................................................... 64
+
+        5.1      Execution of a model ............................................................................................................... 64
+        5.2      Event simulation ...................................................................................................................... 64
+
+
+                                                                                                                                                            vi
+Copyright © 2004 IEEE. All rights reserved.
+        5.3      The stratified event queue........................................................................................................ 64
+        5.4      The Verilog simulation reference model ................................................................................. 65
+                 5.4.1 Determinism................................................................................................................ 66
+                 5.4.2 Nondeterminism.......................................................................................................... 66
+        5.5      Race conditions........................................................................................................................ 66
+        5.6      Scheduling implication of assignments ................................................................................... 66
+                 5.6.1 Continuous assignment ............................................................................................... 67
+                 5.6.2 Procedural continuous assignment.............................................................................. 67
+                 5.6.3 Blocking assignment................................................................................................... 67
+                 5.6.4 Nonblocking assignment............................................................................................. 67
+                 5.6.5 Switch (transistor) processing..................................................................................... 67
+                 5.6.6 Port connections.......................................................................................................... 68
+                 5.6.7 Functions and tasks ..................................................................................................... 68
+
+  6.    Assignments ....................................................................................................................................... 69
+
+        6.1      Continuous assignments .......................................................................................................... 69
+                 6.1.1 The net declaration assignment................................................................................... 70
+                 6.1.2 The continuous assignment statement ........................................................................ 70
+                 6.1.3 Delays ......................................................................................................................... 72
+                 6.1.4 Strength ....................................................................................................................... 72
+        6.2      Procedural assignments............................................................................................................ 73
+                 6.2.1 Variable declaration assignment ................................................................................. 73
+                 6.2.2 Variable declaration syntax......................................................................................... 74
+
+  7.    Gate and switch level modeling......................................................................................................... 75
+
+        7.1      Gate and switch declaration syntax.......................................................................................... 75
+                 7.1.1 The gate type specification ......................................................................................... 77
+                 7.1.2 The drive strength specification.................................................................................. 77
+                 7.1.3 The delay specification ............................................................................................... 78
+                 7.1.4 The primitive instance identifier................................................................................. 78
+                 7.1.5 The range specification ............................................................................................... 78
+                 7.1.6 Primitive instance connection list ............................................................................... 79
+        7.2      and, nand, nor, or, xor, and xnor gates..................................................................................... 81
+        7.3      buf and not gates ...................................................................................................................... 82
+        7.4      bufif1, bufif0, notif1, and notif0 gates..................................................................................... 83
+        7.5      MOS switches .......................................................................................................................... 84
+        7.6      Bidirectional pass switches ...................................................................................................... 86
+        7.7      CMOS switches ....................................................................................................................... 86
+        7.8      pullup and pulldown sources ................................................................................................... 87
+        7.9      Logic strength modeling .......................................................................................................... 88
+        7.10     Strengths and values of combined signals ............................................................................... 89
+                 7.10.1 Combined signals of unambiguous strength ............................................................... 89
+                 7.10.2 Ambiguous strengths: sources and combinations ....................................................... 90
+                 7.10.3 Ambiguous strength signals and unambiguous signals .............................................. 95
+                 7.10.4 Wired logic net types .................................................................................................. 99
+        7.11     Strength reduction by nonresistive devices............................................................................ 102
+        7.12     Strength reduction by resistive devices.................................................................................. 102
+        7.13     Strengths of net types............................................................................................................. 102
+                 7.13.1 tri0 and tri1 net strengths .......................................................................................... 102
+                 7.13.2 trireg strength ............................................................................................................ 102
+                 7.13.3 supply0 and supply1 net strengths ............................................................................ 102
+        7.14     Gate and net delays ................................................................................................................ 103
+
+
+                                                                                                                                                         vii
+Copyright © 2004 IEEE. All rights reserved.
+                 7.14.1 min:typ:max delays................................................................................................... 104
+                 7.14.2 trireg net charge decay .............................................................................................. 105
+
+  8.    User-defined primitives (UDPs) ...................................................................................................... 107
+
+        8.1      UDP definition ....................................................................................................................... 107
+                 8.1.1 UDP header............................................................................................................... 109
+                 8.1.2 UDP port declarations............................................................................................... 109
+                 8.1.3 Sequential UDP initial statement .............................................................................. 109
+                 8.1.4 UDP state table ......................................................................................................... 109
+                 8.1.5 Z values in UDP........................................................................................................ 110
+                 8.1.6 Summary of symbols ................................................................................................ 110
+        8.2      Combinational UDPs ............................................................................................................. 111
+        8.3      Level-sensitive sequential UDPs ........................................................................................... 112
+        8.4      Edge-sensitive sequential UDPs ............................................................................................ 112
+        8.5      Sequential UDP initialization ................................................................................................ 113
+        8.6      UDP instances........................................................................................................................ 115
+        8.7      Mixing level-sensitive and edge-sensitive descriptions......................................................... 116
+        8.8      Level-sensitive dominance..................................................................................................... 117
+
+  9.    Behavioral modeling........................................................................................................................ 118
+
+        9.1      Behavioral model overview ................................................................................................... 118
+        9.2      Procedural assignments.......................................................................................................... 119
+                 9.2.1 Blocking procedural assignments ............................................................................. 119
+                 9.2.2 The nonblocking procedural assignment .................................................................. 121
+        9.3      Procedural continuous assignments ....................................................................................... 125
+                 9.3.1 The assign and deassign procedural statements........................................................ 125
+                 9.3.2 The force and release procedural statements ............................................................ 126
+        9.4      Conditional statement ............................................................................................................ 127
+                 9.4.1 If-else-if construct..................................................................................................... 128
+        9.5      Case statement ....................................................................................................................... 129
+                 9.5.1 Case statement with don't-cares ............................................................................... 131
+                 9.5.2 Constant expression in case statement...................................................................... 132
+        9.6      Looping statements ................................................................................................................ 133
+        9.7      Procedural timing controls..................................................................................................... 135
+                 9.7.1 Delay control............................................................................................................. 136
+                 9.7.2 Event control............................................................................................................. 136
+                 9.7.3 Named events............................................................................................................ 137
+                 9.7.4 Event or operator....................................................................................................... 138
+                 9.7.5 Implicit event_expression list ................................................................................... 138
+                 9.7.6 Level-sensitive event control .................................................................................... 140
+                 9.7.7 Intra-assignment timing controls .............................................................................. 140
+        9.8      Block statements .................................................................................................................... 143
+                 9.8.1 Sequential blocks ...................................................................................................... 144
+                 9.8.2 Parallel blocks........................................................................................................... 145
+                 9.8.3 Block names.............................................................................................................. 146
+                 9.8.4 Start and finish times ................................................................................................ 146
+        9.9      Structured procedures ............................................................................................................ 147
+                 9.9.1 Initial construct ......................................................................................................... 148
+                 9.9.2 Always construct....................................................................................................... 148
+
+10.     Tasks and functions.......................................................................................................................... 150
+
+
+
+                                                                                                                                                     viii
+Copyright © 2004 IEEE. All rights reserved.
+        10.1 Distinctions between tasks and functions .............................................................................. 150
+        10.2 Tasks and task enabling ......................................................................................................... 150
+             10.2.1 Task declarations ...................................................................................................... 151
+             10.2.2 Task enabling and argument passing ........................................................................ 152
+             10.2.3 Task memory usage and concurrent activation......................................................... 154
+        10.3 Functions and function calling............................................................................................... 156
+             10.3.1 Function declarations ................................................................................................ 156
+             10.3.2 Returning a value from a function ............................................................................ 158
+             10.3.3 Calling a function...................................................................................................... 158
+             10.3.4 Function rules............................................................................................................ 158
+             10.3.5 Use of constant functions.......................................................................................... 160
+
+11.     Disabling of named blocks and tasks............................................................................................... 161
+
+12.     Hierarchical structures ..................................................................................................................... 164
+
+        12.1 Modules.................................................................................................................................. 164
+             12.1.1 Top-level modules .................................................................................................... 166
+             12.1.2 Module instantiation ................................................................................................. 166
+             12.1.3 Generated instantiation ............................................................................................. 168
+        12.2 Overriding module parameter values..................................................................................... 178
+             12.2.1 defparam statement ................................................................................................... 179
+             12.2.2 Module instance parameter value assignment .......................................................... 180
+             12.2.3 Parameter dependence .............................................................................................. 184
+        12.3 Ports ....................................................................................................................................... 184
+             12.3.1 Port definition ........................................................................................................... 184
+             12.3.2 List of ports ............................................................................................................... 185
+             12.3.3 Port declarations........................................................................................................ 185
+             12.3.4 List of ports declarations........................................................................................... 188
+             12.3.5 Connecting module instance ports by ordered list.................................................... 188
+             12.3.6 Connecting module instance ports by name ............................................................. 189
+             12.3.7 Real numbers in port connections............................................................................. 190
+             12.3.8 Connecting dissimilar ports ...................................................................................... 191
+             12.3.9 Port connection rules................................................................................................. 191
+             12.3.10 Net types resulting from dissimilar port connections ............................................... 192
+             12.3.11 Connecting signed values via ports........................................................................... 193
+        12.4 Hierarchical names ................................................................................................................ 193
+        12.5 Upwards name referencing .................................................................................................... 196
+        12.6 Scope rules ............................................................................................................................ 198
+
+13.     Configuring the contents of a design ............................................................................................... 200
+
+        13.1 Introduction ............................................................................................................................ 200
+             13.1.1 Library notation ........................................................................................................ 200
+             13.1.2 Basic configuration elements.................................................................................... 201
+        13.2 Libraries ................................................................................................................................. 201
+             13.2.1 Specifying libraries - the library map file ................................................................. 201
+             13.2.2 Using multiple library mapping files ........................................................................ 203
+             13.2.3 Mapping source files to libraries............................................................................... 203
+        13.3 Configurations........................................................................................................................ 203
+             13.3.1 Basic configuration syntax........................................................................................ 203
+             13.3.2 Hierarchical configurations....................................................................................... 206
+        13.4 Using libraries and configs .................................................................................................... 207
+             13.4.1 Precompiling in a single-pass use-model.................................................................. 207
+
+
+                                                                                                                                                          ix
+Copyright © 2004 IEEE. All rights reserved.
+             13.4.2 Elaboration-time compiling in a single-pass use-model........................................... 207
+             13.4.3 Precompiling using a separate compilation tool ....................................................... 207
+             13.4.4 Command line considerations................................................................................... 207
+        13.5 Configuration examples ......................................................................................................... 208
+             13.5.1 Default configuration from library map file ............................................................. 208
+             13.5.2 Using the default clause ............................................................................................ 208
+             13.5.3 Using the cell clause ................................................................................................. 209
+             13.5.4 Using the instance clause .......................................................................................... 209
+             13.5.5 Using a hierarchical config ....................................................................................... 209
+        13.6 Displaying library binding information ................................................................................. 210
+        13.7 Library mapping examples .................................................................................................... 210
+             13.7.1 Using the command line to control library searching............................................... 210
+             13.7.2 File path specification examples............................................................................... 210
+             13.7.3 Resolving multiple path specifications ..................................................................... 211
+
+14.     Specify blocks.................................................................................................................................. 212
+
+        14.1 Specify block declaration....................................................................................................... 212
+        14.2 Module path declarations....................................................................................................... 213
+             14.2.1 Module path restrictions ........................................................................................... 214
+             14.2.2 Simple module paths................................................................................................. 214
+             14.2.3 Edge-sensitive paths.................................................................................................. 215
+             14.2.4 State-dependent paths ............................................................................................... 217
+             14.2.5 Full connection and parallel connection paths.......................................................... 221
+             14.2.6 Declaring multiple module paths in a single statement ............................................ 222
+             14.2.7 Module path polarity................................................................................................. 223
+        14.3 Assigning delays to module paths.......................................................................................... 224
+             14.3.1 Specifying transition delays on module paths .......................................................... 225
+             14.3.2 Specifying x transition delays................................................................................... 226
+             14.3.3 Delay selection.......................................................................................................... 227
+        14.4 Mixing module path delays and distributed delays................................................................ 228
+        14.5 Driving wired logic ................................................................................................................ 229
+        14.6 Detailed control of pulse filtering behavior ........................................................................... 230
+             14.6.1 Specify block control of pulse limit values............................................................... 231
+             14.6.2 Global control of pulse limit values.......................................................................... 232
+             14.6.3 SDF annotation of pulse limit values........................................................................ 232
+             14.6.4 Detailed pulse control capabilities ............................................................................ 233
+
+15.     Timing checks.................................................................................................................................. 239
+
+        15.1 Overview ................................................................................................................................ 239
+        15.2 Timing checks using a stability window................................................................................ 242
+             15.2.1 $setup ........................................................................................................................ 243
+             15.2.2 $hold ......................................................................................................................... 244
+             15.2.3 $setuphold ................................................................................................................. 245
+             15.2.4 $removal ................................................................................................................... 247
+             15.2.5 $recovery................................................................................................................... 248
+             15.2.6 $recrem ..................................................................................................................... 249
+        15.3 Timing checks for clock and control signals ......................................................................... 250
+             15.3.1 $skew ........................................................................................................................ 251
+             15.3.2 $timeskew ................................................................................................................. 252
+             15.3.3 $fullskew................................................................................................................... 254
+             15.3.4 $width ....................................................................................................................... 256
+             15.3.5 $period ...................................................................................................................... 257
+
+
+                                                                                                                                                         x
+Copyright © 2004 IEEE. All rights reserved.
+This text was generated using an UNLICENSED version of Salty Brine Software's SBSPDFTXT control.

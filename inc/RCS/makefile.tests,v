@@ -1,0 +1,32 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@# @;
+
+
+1.1
+date	2011.12.20.17.33.51;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@A makefile for compiling the tests.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@Test_Stack:
+	make TARGET=TestStack TARGET_SRC=tests OBJS="bin/obj/ProcessExecuteReason.o bin/obj/Enum.o"
+
+test:
+	@@if [ ! -z "${TEST}" ]; then \
+      make TARGET=${TEST} TARGET_SRC=tests; \
+    fi
+@

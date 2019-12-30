@@ -1,0 +1,138 @@
+head	1.4;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2010.09.13.23.15.19;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.13.04.03;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.17.23.46.58;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@Database transaction that needs a handle to a Table, Record, Value and attribute position.
+@
+
+
+1.4
+log
+@1. Made destructor virtual (to fix memory leak).
+@
+text
+@// $RCSfile: DBTransactionRecValue.h,v $
+// $Revision: 1.3 $
+
+#ifndef DBTransactionRecValueClass
+#define DBTransactionRecValueClass
+
+#include "Database.h"
+#include "DBTransaction.h"
+
+class Attribute;
+class Table;
+class Value;
+class View;
+
+class DBTransactionRecValue : public DBTransaction
+{
+  friend class Database;
+
+public:
+  DBTransactionRecValue(eDBTransactionOperation tran_oper, View *view, Record* rec, const Attribute* attr, const Value &val);
+  virtual ~DBTransactionRecValue();
+
+private:
+  Table*             mpTable;   // mTable actually not needed now, maybe for triggers
+  View*              mpView;
+  Record*            mpRecord;
+  const Attribute*   mpAttribute;
+  Value*             mpValue;
+};
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@1. Fixed member prefix (ie added 'mp' and 'm').
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+a16 1
+public:
+d19 1
+d21 1
+a21 1
+  ~DBTransactionRecValue();
+@
+
+
+1.2
+log
+@1. Class needs member View, not Table, changed (Table kept for future use).
+2. Replaced attribute position (short) with Attribute object.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a11 1
+class Record;
+d20 1
+a20 1
+  DBTransactionRecValue(eDBTransactionOperation tran_oper, View *view, Record* rec, Attribute *const attr, Value &val);
+d24 5
+a28 5
+  Table              *mTable;   // mTable actually not needed now, maybe for triggers
+  View               *mView;
+  Record             *mRecord;
+  Attribute *const    mAttribute;
+  Value              *mValue;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d10 1
+d14 1
+d21 1
+a21 1
+  DBTransactionRecValue(eDBTransactionOperation tran_oper, Table* tbl, Record* rec, short attr_pos, Value &val);
+d25 5
+a29 4
+  Table         *mTable;   // mTable actually not needed now, maybe for triggers
+  Record        *mRecord;
+  short          mAttrPosition;
+  Value         *mValue;
+@

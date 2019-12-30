@@ -1,0 +1,2590 @@
+head	1.8;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.8; strict;
+comment	@ * @;
+
+
+1.8
+date	2011.12.20.17.24.54;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.12.03.18.00.45;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.14.21.44.27;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.13.11.50;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.22.14.43;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.8
+log
+@1. Made default 'add position' eListAddPosition_Last instead
+   of eListAddPosition_AfterCurrent.
+2. Added option to mark iteration as done for List and ListIterator.
+3. Changed Get() to return 0 when iteration has gone past first/last/done.
+@
+text
+@// $RCSfile: List.h,v $
+// $Revision: 1.7 $
+
+#ifndef LIST_CLASS
+#define LIST_CLASS
+
+// Template for a simple list of pointers. Classes that want
+// to use this list need to define a copy constructor.
+
+#include <stdio.h>
+#include <assert.h>
+
+#include "Global.h"
+
+M_ExternConstructDestructCountInt;
+
+#define MacroListDeleteAll(list, Type)                \
+  for (list.First(); ! list.IsDone(); list.Next()) {  \
+    Type *elm = list.Get();                           \
+    assert(elm);                                      \
+    delete elm;                                       \
+  }                                                   \
+  list.DeleteLinkAll();
+
+#define MacroListDeleteLink(list, elm, ret)   \
+  ret = list.PositionFind(elm);               \
+  if (ret) { list.DeleteLinkThenNext(); }
+
+#define MacroListDeleteElm(list, elm, ret)    \
+  ret = list.PositionFind(elm);               \
+  if (ret) { delete list.Get(); list.DeleteLinkThenNext(); }
+
+#define MacroListIterateAll(list)             \
+  (list).First(); ! (list).IsDone(); (list).Next()
+
+#define MacroListIterateAllReverse(list)      \
+  (list).Last(); ! (list).IsDone(); (list).Prev()
+
+// Shortened macros, using only M_ prefix.
+#define M_ListIterateAll(list)                \
+  (list).First(); ! (list).IsDone(); (list).Next()
+
+#define M_ListDeleteAll(list, type) MacroListDeleteAll(list, type)
+
+#define M_ListIterateAndDelete(list, del_link)\
+  (list).First(); ! (list).IsDone();          \
+   (del_link) ? (list).DeleteLinkThenNext() : (list).Next()
+
+enum eListLinkTransferType {
+  eListLinkTransferType_FromCurrentToBeforeCurrent,
+  eListLinkTransferType_FromCurrentToAfterCurrent
+};
+
+enum eBucket          { eFirstBucket, eLastBucket };
+enum eAddDirection    { eSouth, eNorth, eEast, eWest };
+
+enum eList_SplitPosition {
+  eList_SplitBeforeIterator,
+  eList_SplitAfterIterator
+};
+
+enum eListIteratorPolicyAfterDelete {
+  eListIteratorPolicyAfterDelete_Prev,
+  eListIteratorPolicyAfterDelete_Next,
+  eListIteratorPolicyAfterDelete_Invalidate,
+  eListIteratorPolicyAfterDelete_Assert0
+};
+
+enum eListAddPosition {
+  eListAddPosition_First,
+  eListAddPosition_BeforeCurrent,
+  eListAddPosition_AfterCurrent,
+  eListAddPosition_Last,
+  eListAddPosition_NoChange
+};
+
+enum eListCurrentLinkAfterUnlink {
+  eListCurrentLinkAfterUnlink_Prev,
+  eListCurrentLinkAfterUnlink_Next,
+  eListCurrentLinkAfterUnlink_Default
+};
+
+template<class T> class ListIterator;
+
+#define eLinkAfterUnlink eListCurrentLinkAfterUnlink
+
+template<class T>
+class List
+{
+public:
+  List();
+  ~List();
+
+  // Add elements to list (for simplicity and uniformity, use only pointers)
+  bool  Add(T* elm, eListAddPosition add_position=eListAddPosition_Last, ListIterator<T>* iter=0);
+  T*    Get(); // Retrieves the 'current' element
+
+  // Re-link between lists and iterators.
+  bool  RelinkTo(List<T>*           list, eListAddPosition pos, eLinkAfterUnlink next);
+  bool  RelinkTo(ListIterator<T>*   iter, eListAddPosition pos, eLinkAfterUnlink next);
+  //
+  bool  RelinkFrom(List<T>*         list, eListAddPosition pos, eLinkAfterUnlink next);
+  bool  RelinkFrom(ListIterator<T>* iter, eListAddPosition pos, eLinkAfterUnlink next);
+  //
+  bool  RelinkFromTo(ListIterator<T>* itr1, ListIterator<T>* itr2, eListAddPosition pos, eLinkAfterUnlink next);
+
+  // Delete functions.
+  void DeleteLinkAll      ();
+  bool DeleteLinkThenNext ();
+  bool DeleteLinkThenPrev ();
+  bool DeleteLinkThenIterationDone();
+
+  // Position the current element of the list, use this to iterate over list.
+  bool First   ();        // Iteration can be accomplished as follows:
+  bool Prev    ();        // for (First(); !IsDone(); Next())
+  bool Next    ();        //   item_ptr = Get();
+  bool Last    ();        // for (Last();  !IsDone() ; Prev())
+  bool IsLast  () const;  //   item_ptr = Get();
+  bool IsEmpty () const;
+  bool IsDone  () const;
+
+  bool ListIteratorDelete(ListIterator<T>* iter, bool delete_all=FALSE);
+
+  // ListIterator.
+  ListIterator<T>* ListIteratorNew();
+
+  // Utilities:
+  bool PositionFind    (const T* elm);
+  bool PositionSet     (ListIterator<T>* iter);
+  bool PositionSet     (unsigned position);
+  bool PositionSetForIterator (ListIterator<T>* iter);
+  bool PositionSave    (); // not allowed to save an illegal (0) position
+  bool PositionRestore (); // false if saved position no longer exists
+  void Split(List<T>& list, eList_SplitPosition pos);
+  bool Unlink(eListCurrentLinkAfterUnlink pos=eListCurrentLinkAfterUnlink_Next, ListIterator<T>* iter=0);
+
+  struct _Link {
+    _Link() : next(0), prev(0), mElem(0) { M_UpdConstructCount(eType_Link); }
+   ~_Link()                              { M_UpdDestructCount (eType_Link); }
+
+    struct _Link* next;
+    struct _Link* prev;
+    T*            mElem;
+  };
+  typedef struct _Link Link;
+
+  // Queries:
+  bool     Exists(const T* elm) { return PositionFind(elm); }
+  unsigned Size(void) const     { return mSize;             }
+  Link*    CurrentLinkGet()     { return mpCurrentLink;     }
+  bool     First(void*& link)   { link=mpFirst; return (link!=0) ? TRUE: FALSE; }
+  bool     Last (void*& link)   { link=mpLast;  return (link!=0) ? TRUE: FALSE; }
+  
+  // Debug:
+  short Print();
+
+private:
+  Link*     mpFirst;       // 0 only if list is empty
+  Link*     mpLast;        //            "
+  Link*     mpCurrentLink; //            "
+  Link*     mpUnlinked;    //            "
+  unsigned  mSize;         //            "
+  bool      mAttemptedPrevForFirstElem;
+  bool      mAttemptedNextForLastElem;
+  bool      mIterationMarkedAsDone;
+  //
+  // Needed to save/restore the current links position.
+  bool      mAttemptedPrevForFirstElemSaved;
+  bool      mAttemptedNextForLastElemSaved;
+  bool      mIterationMarkedAsDoneSaved;
+  Link*     mpCurrentLinkSaved;
+  //
+  // Needed to support Iterators:
+  short     mListIteratorCount;
+  //
+  #define LIST_MAX_ITERATORS  20
+  ListIterator<T>** mpListIteratorList;
+  
+  // Private member functions.
+  bool DeleteLinkCurrent(eListCurrentLinkAfterUnlink pos_after_unlink);
+  bool StoreInFreeListIteratorEntry(ListIterator<T>* iter);
+  void InformIteratorsOfUnlink(Link* deleted_link, eListCurrentLinkAfterUnlink pos_after_unlink, ListIterator<T>* iter);
+  bool AddCommon(T* elm, eListAddPosition add_position, Link* new_link=0, ListIterator<T>* iter=0);
+  bool Unlink(Link* unlink, eListCurrentLinkAfterUnlink pos_after_unlink, ListIterator<T>* iter=0);
+};
+
+template<class T>
+List<T>::List() :
+  mpLast                          (0),
+  mpFirst                         (0),
+  mAttemptedPrevForFirstElem      (FALSE),
+  mAttemptedNextForLastElem       (FALSE),
+  mIterationMarkedAsDone          (FALSE),
+  mpCurrentLink                   (0),
+  mpUnlinked                      (0),
+  mSize                           (0),
+  mListIteratorCount              (0),
+  mpCurrentLinkSaved              (0),
+  mAttemptedPrevForFirstElemSaved (0),
+  mAttemptedNextForLastElemSaved  (0),
+  mIterationMarkedAsDoneSaved     (0)
+{
+  mpListIteratorList = new ListIterator<T>* [LIST_MAX_ITERATORS];
+
+  for (int i=0; i<LIST_MAX_ITERATORS; i++) mpListIteratorList[i] = 0;
+
+  M_UpdConstructCount(eType_List);
+}
+
+template<class T>
+List<T>::~List()
+{
+  // The list class does not know whether the pointers it stores are shared and
+  // so it can only delete the links, the link elements need to be always
+  // explicitly deleted by the client if necessary.
+  DeleteLinkAll();
+
+  delete [] mpListIteratorList; mpListIteratorList = 0;
+
+  M_UpdDestructCount(eType_List);
+}
+
+template<class T>
+bool List<T>::First()
+{
+  // Clear the 'attempt' flags.
+  mAttemptedPrevForFirstElem = FALSE;
+  mAttemptedNextForLastElem  = FALSE;
+  mIterationMarkedAsDone     = FALSE;
+
+  if (mpFirst) {
+    mpCurrentLink = mpFirst;
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+template<class T>
+bool List<T>::Prev()
+{
+  if (!mpCurrentLink || mpCurrentLink==mpFirst) {
+    mAttemptedPrevForFirstElem = TRUE;
+    return FALSE;
+  }
+  else {
+    mpCurrentLink = mpCurrentLink->prev;
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+template<class T>
+bool List<T>::Next()
+{
+  if (mpCurrentLink==0 || mpCurrentLink==mpLast) {
+    mAttemptedNextForLastElem = TRUE;
+
+    return FALSE;
+  }
+  else {
+    mpCurrentLink = mpCurrentLink->next;
+    return TRUE;
+  }
+
+  assert(0);
+}
+
+template<class T>
+bool List<T>::Last()
+{
+  // Clear the 'attempt' flags.
+  mAttemptedPrevForFirstElem = FALSE;
+  mAttemptedNextForLastElem  = FALSE;
+
+  if (Size() == 0) return FALSE;
+
+  mpCurrentLink = mpLast;
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::IsLast() const
+{
+  // Note: also returns true if list is empty.
+  return (mpCurrentLink == mpLast);
+}
+
+template<class T>
+bool List<T>::IsDone() const
+{
+  if (mSize==0 || mAttemptedPrevForFirstElem || mAttemptedNextForLastElem || mIterationMarkedAsDone)
+    // Note: Also returning done if list is empty.
+    return TRUE;
+  else
+    return FALSE;
+}
+
+template<class T>
+bool List<T>::IsEmpty() const
+{
+  if (mSize) return FALSE;
+  else       return TRUE;
+}
+
+template<class T>
+short List<T>::Print()
+{
+  Link* link;
+  short count=0;
+
+  for (link=mpFirst; link!=0; link=link->next) {
+    printf("%d: %x\n", count, (unsigned)link->mElem); // TBD: Fix for 64 bit
+    count++;
+  }
+
+  return count;
+}
+
+template<class T>
+T* List<T>::Get()
+{
+  if (mAttemptedNextForLastElem
+  ||  mAttemptedPrevForFirstElem
+  ||  mIterationMarkedAsDone
+  || !mpCurrentLink)
+  {
+    return 0;
+  }
+
+  return mpCurrentLink->mElem;
+}
+
+template<class T>
+bool List<T>::RelinkTo(List<T>* list, eListAddPosition pos_add, eLinkAfterUnlink pos_after_unlink)
+{
+  if (mpCurrentLink == 0) return FALSE; // no current link to unlink
+
+  Link* unlink = mpCurrentLink;
+
+  if (unlink == list->mpCurrentLink) {
+    // Can happen when we are attempting to unlink from the same list.
+    return TRUE;
+  }
+  else {
+    if (Unlink(pos_after_unlink))
+      list->AddCommon((T*)0, pos_add, unlink);
+  }
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::RelinkTo(ListIterator<T>* iter, eListAddPosition pos_add, eLinkAfterUnlink pos_after_unlink)
+{
+  // The  logic is almost identical to the RelinkTo(List<T>, ...) case.
+
+  if (mpCurrentLink == 0) return FALSE; // no current link to unlink
+
+  Link* unlink = mpCurrentLink;
+
+  if (unlink == (Link*)(iter->mpCurrentLink)) {
+    // Can happen when the iterator is from this list.
+    return TRUE;
+  }
+  else {
+    if (Unlink(pos_after_unlink))
+      iter->mpList->AddCommon((T*)0, pos_add, unlink, iter);
+  }
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::RelinkFrom(List<T>* list, eListAddPosition pos_add, eLinkAfterUnlink pos_after_unlink)
+{
+  if (list->mpCurrentLink == 0) return FALSE; // no current link to unlink
+
+  Link* unlink = list->mpCurrentLink;
+
+  if (unlink == mpCurrentLink) {
+    // Can happen when we are attempting to unlink from the same list.
+    return TRUE;
+  }
+  else {
+    if (list->Unlink(pos_after_unlink))
+      AddCommon((T*)0, pos_add, unlink);
+  }
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::RelinkFrom(ListIterator<T>* iter, eListAddPosition pos_add, eLinkAfterUnlink pos_after_unlink)
+{
+  if (iter->mpCurrentLink == 0) return FALSE; // no current link to unlink
+
+  Link* unlink = (Link*)(iter->mpCurrentLink);
+
+  if (unlink == mpCurrentLink) {
+    // Can happen when the iterator is from this list.
+    return TRUE;
+  }
+  else {
+    if (iter->mpList->Unlink(pos_after_unlink, iter))
+      AddCommon((T*)0, pos_add, unlink);
+  }
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::RelinkFromTo(ListIterator<T>* itr1, ListIterator<T>* itr2, eListAddPosition pos_add, eLinkAfterUnlink pos_after_unlink)
+{
+  if (itr1->mpCurrentLink == 0) return FALSE; // no current link to unlink
+
+  Link* unlink = (Link*)(itr1->mpCurrentLink);
+  Link* relink = (Link*)(itr2->mpCurrentLink);
+
+  if (unlink == relink) {
+    return TRUE;
+  }
+  else {
+    if (itr1->mpList->Unlink(pos_after_unlink, itr1))
+      AddCommon((T*)0, pos_add, unlink, itr2);
+  }
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::Add(T* elm, eListAddPosition add_position, ListIterator<T>* iter)
+{
+  return AddCommon(elm, add_position, (Link*)0, iter);
+}
+
+template<class T>
+bool List<T>::AddCommon(T* elm, eListAddPosition add_position, Link* new_link, ListIterator<T>* iter)
+{
+  if (!new_link) {
+    new_link = new Link;
+    assert(new_link);
+
+    new_link->mElem = elm;
+  }
+
+  new_link->next  = 0;
+
+  Link* curr_link_saved;
+
+  // If the 'Add' is for an iterator then save the current link,
+  // it will be restored after the Add operation.
+  if (iter) {
+    curr_link_saved = mpCurrentLink;
+    mpCurrentLink   = (Link*)(iter->mpCurrentLink);
+  }
+  // All other logic for the 'add' operation (below) remains the same.
+
+  switch (add_position) {
+    case eListAddPosition_First:
+    {
+      new_link->prev = 0;
+
+      if (mpFirst) {
+        new_link->next = mpFirst;
+        //
+        mpFirst->prev = new_link;
+        mpFirst = new_link;
+      }
+      else {
+        mpFirst = mpLast = new_link;
+        new_link->next = 0;
+      }
+    }
+    break;
+    case eListAddPosition_BeforeCurrent:
+    {
+      if (mpCurrentLink==0) {
+        mpFirst = mpLast = mpCurrentLink = new_link;
+        new_link->prev = 0;
+      }
+      else if (mpCurrentLink==mpFirst && mpCurrentLink==mpLast) {
+        new_link->prev = 0;
+        new_link->next = mpLast;
+        //
+        mpFirst      = new_link;
+        mpLast->prev = new_link;
+      }
+      else if (mpCurrentLink==mpFirst) {
+        new_link->prev = 0;
+        new_link->next = mpFirst;
+        //
+        mpFirst->prev = new_link;
+        mpFirst       = new_link;
+      }
+      else if (mpCurrentLink==mpLast) {
+        mpLast->prev->next = new_link;
+        //
+        new_link->prev = mpLast->prev;
+        new_link->next = mpLast;
+        //
+        mpLast->prev = new_link;
+      }
+      else {
+        new_link->prev = mpCurrentLink->prev;
+        new_link->next = mpCurrentLink;
+        //
+        mpCurrentLink->prev->next = new_link;
+        mpCurrentLink->prev       = new_link;
+      }
+      break;
+    }
+    break;
+    case eListAddPosition_AfterCurrent:
+    {
+      if (mpCurrentLink==0) {
+        mpFirst = mpLast = mpCurrentLink = new_link;
+        new_link->prev = 0;
+      }
+      else if (mpCurrentLink==mpFirst && mpCurrentLink==mpLast) {
+        new_link->prev = mpFirst;
+        //
+        mpFirst->next  = new_link;
+        mpLast         = new_link;
+      }
+      else if (mpCurrentLink==mpFirst) {
+        new_link->prev = mpFirst;
+        new_link->next = mpFirst->next;
+        //
+        mpFirst->next->prev = new_link;
+        mpFirst->next       = new_link;
+      }
+      else if (mpCurrentLink==mpLast) {
+        new_link->prev = mpLast;
+        mpLast->next   = new_link;
+        mpLast         = new_link;
+      }
+      else {
+        new_link->prev = mpCurrentLink;
+        new_link->next = mpCurrentLink->next;
+        //
+        mpCurrentLink->next->prev = new_link;
+        mpCurrentLink->next       = new_link;
+      }
+      break;
+    }
+    break;
+    case eListAddPosition_Last:
+    {
+      if (mpLast) {
+        new_link->prev = mpLast;
+        //
+        mpLast->next   = new_link;
+        mpLast         = new_link;
+      }
+      else {
+        mpFirst = mpLast = new_link;
+        new_link->prev = 0;
+      }
+    }
+    break;
+  }
+
+  mSize++;
+
+  // If we added to the end of the list then we can no longer claim
+  // to have attempted 'next' for the last element of the list.
+  if (new_link == mpLast) mAttemptedNextForLastElem = FALSE;
+
+  // Similarly, if we added to the start of the list then we can no longer
+  // claim to have attempted 'prev' for the first element of the list.
+  if (new_link == mpFirst) mAttemptedPrevForFirstElem = FALSE;
+
+  if (iter) {
+    // Restore the lists current link unless it had no entries
+    // (ie mpCurrentLink=0), in that case we cannot allow
+    // mpCurrentLink to remain at 0 as that implies an empty list.
+
+    if (curr_link_saved) mpCurrentLink = curr_link_saved;
+    else                 mpCurrentLink = new_link;
+  }
+
+  return TRUE;
+}
+
+// Detach the current link from the list without deleting it.
+template<class T>
+bool List<T>::Unlink(eLinkAfterUnlink pos_after_unlink, ListIterator<T>* iter)
+{
+  if (iter == 0) return Unlink(mpCurrentLink,                pos_after_unlink);
+  else           return Unlink((Link*)(iter->mpCurrentLink), pos_after_unlink, iter);
+}
+
+template<class T>
+bool List<T>::Unlink(Link* unlink, eLinkAfterUnlink pos_after_unlink, ListIterator<T>* iter)
+{
+  if (mpCurrentLink == 0) return FALSE; // no entries in the list
+
+  // An iterator is not allowed to unlink a lists current link, check.
+  if (iter!=0 && unlink==mpCurrentLink)
+    assert(0);
+
+  InformIteratorsOfUnlink(unlink, pos_after_unlink, iter);
+
+  if (unlink==mpFirst && unlink==mpLast) {
+    mpCurrentLink = mpFirst = mpLast = 0;
+
+    assert(iter==0);
+  }
+  else if (unlink == mpFirst) {
+    // No need to update mpLast.
+    // Update mpFirst (and unlink).
+    mpFirst       = mpFirst->next;
+    mpFirst->prev = 0;
+
+    // Update mpCurrent.
+    if (unlink == mpCurrentLink) {
+      if (pos_after_unlink == eListCurrentLinkAfterUnlink_Next) {
+        mpCurrentLink = mpFirst;
+      }
+      else if (pos_after_unlink == eListCurrentLinkAfterUnlink_Prev) {
+        mpCurrentLink = mpFirst; // cannot go to prev
+
+        mAttemptedPrevForFirstElem = TRUE;
+      }
+      else assert(0);
+    }
+  }
+  else if (unlink == mpLast) {
+    // No need to update mpFirst.
+    // Update mpLast (this also unlinks).
+    mpLast       = mpLast->prev;
+    mpLast->next = 0;
+
+    // Update mpCurrent.
+    if (unlink == mpCurrentLink) {
+      if (pos_after_unlink == eListCurrentLinkAfterUnlink_Next) {
+        mpCurrentLink = mpLast; // cannot really go to next
+
+        mAttemptedNextForLastElem = TRUE;
+      }
+      else if (pos_after_unlink == eListCurrentLinkAfterUnlink_Prev) {
+        mpCurrentLink       = mpCurrentLink->prev;
+        mpCurrentLink->next = 0;
+      }
+      else assert(0);
+    }
+  }
+  else {
+    // No need to update mpFirst.
+    // No need to update mpLast.
+    // Update mpCurrentLink (this also unlinks).
+
+    if (unlink == mpCurrentLink) {
+      if (pos_after_unlink == eListCurrentLinkAfterUnlink_Next)
+        mpCurrentLink = mpCurrentLink->next;
+      else if (pos_after_unlink == eListCurrentLinkAfterUnlink_Prev)
+        mpCurrentLink = mpCurrentLink->prev;
+      else assert(0);
+    }
+
+    unlink->prev->next = unlink->next;
+    unlink->next->prev = unlink->prev;
+  }
+
+  mSize--;
+
+  return TRUE;
+}
+
+template<class T>
+bool List<T>::DeleteLinkThenIterationDone()
+{
+  // After delete the current link position is a 'dont-care'.
+  mIterationMarkedAsDone = TRUE;
+
+  return DeleteLinkCurrent(eListCurrentLinkAfterUnlink_Next);
+}
+
+template<class T>
+bool List<T>::DeleteLinkThenNext()
+{
+  return DeleteLinkCurrent(eListCurrentLinkAfterUnlink_Next);
+}
+
+template<class T>
+bool List<T>::DeleteLinkThenPrev()
+{
+  return DeleteLinkCurrent(eListCurrentLinkAfterUnlink_Prev);
+}
+
+// This is a private member function called only by
+//   DeleteLinkThenNext(), and
+//   DeleteLinkThenPrev()
+template<class T>
+bool List<T>::DeleteLinkCurrent(eListCurrentLinkAfterUnlink pos_after_unlink)
+{
+  if (!mpCurrentLink) return FALSE;
+
+  Link* link_to_delete = mpCurrentLink;
+
+  bool flag = Unlink(mpCurrentLink, pos_after_unlink);
+  assert(flag);
+
+  // After Unlink the value of mpCurrentLink would have been updated,
+  // therefore, we cannot do 'delete mpCurrentLink;'
+  delete link_to_delete;
+
+  return flag;
+}
+
+template <class T>
+void List<T>::DeleteLinkAll()
+{
+  mpCurrentLink = mpFirst;
+
+  while (mpFirst) DeleteLinkThenNext();
+}
+
+// Tries to find elm and set the Iterator at that
+// position otherwise it leaves the Iterator unchanged.
+template<class T>
+bool List<T>::PositionFind(const T* elm)
+{
+  Link* link;
+  bool  found = FALSE;
+
+  for (link=mpFirst; link != 0; link=link->next) {
+    if (link->mElem == elm) { found = TRUE; break; }
+  }
+
+  if (found) {
+    mpCurrentLink = link;
+
+    // Clear the 'Attempt' flags.
+    mAttemptedPrevForFirstElem = FALSE;
+    mAttemptedNextForLastElem  = FALSE;
+    mIterationMarkedAsDone     = FALSE;
+  }
+
+  return found;
+}
+
+template<class T>
+bool List<T>::PositionSet(ListIterator<T>* iter)
+{
+  Link* ptr;
+  // TBD: Check if iter is valid.
+
+  // PREV:
+  //void* ptr = (void*)iter->mpCurrentLink;
+  //iter->mpCurrentLink  = (ListIterator::Link*)mpCurrentLink;
+  if ((ptr = (Link*)iter->mpCurrentLink)==0 && mSize!=0) {
+    // An iterator is not allowed to set the position of the current
+    // link 'mpCurrentLink' to 0 if the list has entries in it.
+    return FALSE;
+  }
+  else {
+    mpCurrentLink      = (Link*)iter->mpCurrentLink;
+    mpCurrentLinkSaved = 0; // safer/cleaner to not copy over the Saved position
+
+    mAttemptedPrevForFirstElem = iter->mAttemptedPrevForFirstElem;
+    mAttemptedNextForLastElem  = iter->mAttemptedNextForLastElem;
+    mIterationMarkedAsDone     = iter->mIterationMarkedAsDone;
+  }
+}
+
+// Tries to find elm at 'position' and sets the Iterator to
+// that position otherwise it leaves the Iterator unchanged.
+template<class T>
+bool List<T>::PositionSet(unsigned position)
+{
+  Link*    link;
+  bool     found = FALSE;
+  unsigned count = 0;
+
+  for (link=mpFirst; link!=0; link=link->next) {
+    if (position == count) { found = TRUE; break; }
+    else                   { count++;             }
+  }
+
+  if (found) {
+    mpCurrentLink = link;
+
+    // Clear the 'Attempt' flags.
+    mAttemptedPrevForFirstElem = FALSE;
+    mAttemptedNextForLastElem  = FALSE;
+    mIterationMarkedAsDone     = FALSE;
+  }
+
+  return found;
+}
+
+template <class T>
+bool List<T>::PositionSetForIterator(ListIterator<T>* iter)
+{
+  iter->mAttemptedPrevForFirstElem = mAttemptedPrevForFirstElem;
+  iter->mAttemptedNextForLastElem  = mAttemptedNextForLastElem;
+  iter->mIterationMarkedAsDone     = mIterationMarkedAsDone;
+  iter->CurrentLinkSet((void*)mpCurrentLink);
+
+  return TRUE;
+}
+
+// Save the Iterator position (Iterator must be non-null).
+template<class T>
+bool List<T>::PositionSave()
+{
+  if (mpCurrentLink) {
+    mpCurrentLinkSaved              = mpCurrentLink;
+    mAttemptedPrevForFirstElemSaved = mAttemptedPrevForFirstElem;
+    mAttemptedNextForLastElemSaved  = mAttemptedNextForLastElem;
+    mIterationMarkedAsDoneSaved     = mIterationMarkedAsDone;
+
+    return TRUE;
+  }
+
+  // Not allowed to save the position when mpCurrentLink is 0.
+  return FALSE;
+}
+
+// Restore the Iterator position.
+// After Restore the saved position is invalidated, therefore user must call
+// Restore again if the Saved position is still needed.
+// The Restore fails if:
+// a) Saved was not first called
+// b) Saved position was deleted.
+template<class T>
+bool List<T>::PositionRestore()
+{
+  // Not allowed to Restore a position if it has not been saved.
+  if (!mpCurrentLinkSaved) return FALSE;
+
+  mpCurrentLink = mpCurrentLinkSaved;
+
+  mpCurrentLinkSaved         = 0;
+  mAttemptedPrevForFirstElem = mAttemptedPrevForFirstElemSaved;
+  mAttemptedNextForLastElem  = mAttemptedNextForLastElemSaved;
+  mIterationMarkedAsDone     = mIterationMarkedAsDoneSaved;
+
+  return TRUE;
+}
+
+// Split 'this' list at mpCurrentLink such that mpCurrentLink is either
+// the last link in the current list or first link of the passed in 'list'.
+template<class T>
+void List<T>::Split(List<T>& list, eList_SplitPosition pos)
+{
+  if (pos == eList_SplitBeforeIterator) {
+    assert(0); // not yet supported
+  }
+
+  // Subsequent logic will split after link mpCurrentLink.
+
+  if (mpCurrentLink == 0)
+  {
+    // Current list is either empty or iterator is past the first/last element.
+    return;
+  }
+
+  // if 'list.mpLast' is set then the passed in list already has entries, check:
+  if (list.mpLast) list.mpLast->next = mpCurrentLink->next; // had entries, append.
+  else             list.mpFirst      = mpCurrentLink->next; // List is empty.
+
+  list.mSize += mSize - 1;
+  mSize = 1;
+
+  list.mpLast      = mpLast;
+
+  // In both above cases we can leave the following untouched in each list:
+  //   mAttemptedPrevForFirstElem
+  //   mAttemptedNextForLastElem
+  //   mpCurrentLinkSaved
+  //   mListIteratorCount
+
+  // Truncate current list to mpCurrentLink.
+  mpLast           = mpCurrentLink;
+  mpLast->next     = 0;
+
+  // Invalidate 'Saved' links.
+  mpCurrentLinkSaved     = 0; // otherwise re-scan to ensure its valid
+}
+
+template <class T>
+ListIterator<T>* List<T>::ListIteratorNew()
+{
+  ListIterator<T>* iter;
+
+  if (mListIteratorCount+1 < LIST_MAX_ITERATORS) {
+    iter = new ListIterator<T>(*this);
+    assert(iter);
+
+    assert (StoreInFreeListIteratorEntry(iter));
+
+    mListIteratorCount++;
+  }
+
+  return iter;
+}
+
+template <class T>
+bool List<T>::ListIteratorDelete(ListIterator<T>* iter, bool delete_all)
+{
+  int last_entry = mListIteratorCount-1;
+
+  if (delete_all) {
+    for (int i=0, j=0; i<LIST_MAX_ITERATORS && j<mListIteratorCount; i++) {
+      if (mpListIteratorList[i] != 0) {
+        delete mpListIteratorList[i];
+        mpListIteratorList[i] = 0;
+        j++;
+      }
+    }
+
+    return TRUE;
+  }
+  else {
+    for (int i=0; i<mListIteratorCount; i++) {
+      if (mpListIteratorList[i] == iter) {
+        delete mpListIteratorList[i];
+
+        if (i != last_entry) {
+          mpListIteratorList[i] = mpListIteratorList[last_entry];
+        }
+        mpListIteratorList[last_entry] = 0;
+        mListIteratorCount--;
+
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
+}
+
+template <class T>
+bool List<T>::StoreInFreeListIteratorEntry(ListIterator<T>* iter)
+{
+  for (int i=0; i<LIST_MAX_ITERATORS; i++) {
+    if (mpListIteratorList[i] == 0) {
+      mpListIteratorList[i] = iter;
+
+      return TRUE;
+    }
+  }
+
+  assert(0);
+
+  return FALSE;
+}
+
+template <class T>
+void List<T>::InformIteratorsOfUnlink(Link* deleted_link, eListCurrentLinkAfterUnlink pos_after_unlink, ListIterator<T>* iter)
+{
+  for (int i=0; mListIteratorCount && i<LIST_MAX_ITERATORS; i++) {
+    if (mpListIteratorList[i] != 0) {
+      if (mpListIteratorList[i] != iter) mpListIteratorList[i]->InformOfUnlink(deleted_link);
+      else                               mpListIteratorList[i]->InformOfUnlink(deleted_link, pos_after_unlink);
+    }
+  }
+}
+
+template<class T>
+class ListIterator
+{
+  friend class List<T>;
+
+public:
+  ListIterator(List<T> & list);
+  ~ListIterator();
+
+  bool First();
+  bool Prev();
+  bool Next();
+  bool Last();
+  bool IsLast()  const;
+  bool IsEmpty() const;
+  bool IsDone()  const;
+
+  T*   Get();
+  bool PositionSet(List<T>* list);
+  bool PositionSet(ListIterator<T>* iter);
+  bool PositionSave();
+  bool PositionRestore();
+
+  struct _Link {
+    struct _Link* next;
+    struct _Link* prev;
+    T*            mElem;
+  };
+  typedef struct _Link Link;
+
+  void InformOfUnlink(void* unlink, eListCurrentLinkAfterUnlink pos_after_unlink=eListCurrentLinkAfterUnlink_Default);
+  Link* CurrentLinkGet() { return mpCurrentLink; }
+  void  CurrentLinkSet(void* link) { mpCurrentLink = (Link*)link; }
+
+  eListIteratorPolicyAfterDelete mListIteratorDeletePolicy;
+
+private:
+  List<T>*  mpList;
+  Link*     mpCurrentLink;
+  bool      mAttemptedNextForLastElem;
+  bool      mAttemptedPrevForFirstElem;
+  bool      mIterationMarkedAsDone;
+  bool      mIteratorLinkValid;
+  //
+  Link*     mpCurrentLinkSaved;
+  bool      mAttemptedNextForLastElemSaved;
+  bool      mAttemptedPrevForFirstElemSaved;
+  bool      mIterationMarkedAsDoneSaved;
+};
+
+template<class T>
+ListIterator<T>::ListIterator(List<T>& list) :
+  mpList                          (&list),
+  mpCurrentLink                   ((Link*)list.CurrentLinkGet()),
+  mAttemptedNextForLastElem       (FALSE),
+  mAttemptedPrevForFirstElem      (FALSE),
+  mIterationMarkedAsDone          (FALSE),
+  mIteratorLinkValid              (TRUE),
+  //
+  mpCurrentLinkSaved              (0),
+  mAttemptedNextForLastElemSaved  (FALSE),
+  mAttemptedPrevForFirstElemSaved (FALSE),
+  mIterationMarkedAsDoneSaved     (FALSE),
+  //
+  mListIteratorDeletePolicy       (eListIteratorPolicyAfterDelete_Invalidate)
+{
+  M_UpdConstructCount(eType_ListIterator);
+}
+
+template<class T>
+ListIterator<T>::~ListIterator()
+{
+  M_UpdDestructCount(eType_ListIterator);
+}
+
+template<class T>
+T* ListIterator<T>::Get()
+{
+  if (mAttemptedNextForLastElem
+  ||  mAttemptedPrevForFirstElem
+  ||  mIterationMarkedAsDone
+  || !mpCurrentLink)
+  {
+    return 0;
+  }
+
+  return mpCurrentLink->mElem;
+}
+
+template<class T>
+bool ListIterator<T>::First()
+{
+  mAttemptedNextForLastElem  = FALSE;
+  mAttemptedPrevForFirstElem = FALSE;
+
+  void* ptr;
+  bool ret = mpList->First(ptr);
+
+  mpCurrentLink = (Link*)ptr;
+
+  return ret;
+}
+
+template<class T>
+bool ListIterator<T>::Prev()
+{
+  if (!mpCurrentLink || mpCurrentLink->prev == 0) 
+  {
+    mAttemptedPrevForFirstElem = TRUE;
+
+    return FALSE;
+  }
+  else {
+    mpCurrentLink = mpCurrentLink->prev;
+    
+    return TRUE;
+  }
+
+  assert(0); // should not reach here
+}
+
+template<class T>
+bool ListIterator<T>::Next()
+{
+  if (mpCurrentLink==0 || mpCurrentLink->next == 0) 
+  {
+    mAttemptedNextForLastElem = TRUE;
+
+    return FALSE;
+  }
+  else {
+    mpCurrentLink = mpCurrentLink->next;
+
+    return TRUE;
+  }
+
+  assert(0); // should not reach here
+}
+
+template<class T>
+bool ListIterator<T>::Last()
+{
+  mAttemptedNextForLastElem  = FALSE;
+  mAttemptedPrevForFirstElem = FALSE;
+
+  void* ptr;
+  bool ret = mpList->Last(ptr);
+
+  mpCurrentLink = (Link*)ptr;
+
+  return ret;
+}
+
+template<class T>
+bool ListIterator<T>::IsLast() const
+{
+  Link* last;
+  void* ptr;
+
+  mpList->Last(ptr);
+
+  last = (Link*)ptr;
+
+  if (mpCurrentLink == last) return TRUE;
+  else                       return FALSE;
+}
+
+template<class T>
+bool ListIterator<T>::IsEmpty() const
+{
+  return (mpList->Size() == 0);
+}
+
+template<class T>
+bool ListIterator<T>::IsDone() const
+{
+  return (IsEmpty() || mAttemptedPrevForFirstElem || mAttemptedNextForLastElem || mIterationMarkedAsDone);
+}
+
+template<class T>
+bool ListIterator<T>::PositionSet(List<T>* list)
+{
+  return list->PositionSetForIterator(this);
+}
+
+template<class T>
+bool ListIterator<T>::PositionSet(ListIterator<T>* iter)
+{
+  if (!iter->mIteratorLinkValid) return FALSE;
+
+  mpCurrentLink              = iter->mpCurrentLink;
+  mAttemptedNextForLastElem  = iter->mAttemptedNextForLastElemSaved;
+  mAttemptedPrevForFirstElem = iter->mAttemptedPrevForFirstElemSaved;
+  mIterationMarkedAsDone     = iter->mIterationMarkedAsDoneSaved;
+}
+
+template<class T>
+bool ListIterator<T>::PositionSave()
+{
+  // The current link must be valid to save its position.
+  // Also, we use 0 as an invalid mpCurrentLinkSaved.
+  if (mpCurrentLink == 0) return FALSE;
+
+  if (!mIteratorLinkValid) return FALSE;
+
+  mpCurrentLinkSaved              = mpCurrentLink;
+  mAttemptedNextForLastElemSaved  = mAttemptedNextForLastElem;
+  mAttemptedPrevForFirstElemSaved = mAttemptedPrevForFirstElem;
+  mIterationMarkedAsDoneSaved     = mIterationMarkedAsDone;
+
+  return TRUE;
+}
+
+template<class T>
+bool ListIterator<T>::PositionRestore()
+{
+  //  Check if restore position is valid.
+  if (mpCurrentLinkSaved != 0) {
+    mpCurrentLink              = mpCurrentLinkSaved;
+    mAttemptedNextForLastElem  = mAttemptedNextForLastElemSaved;
+    mAttemptedPrevForFirstElem = mAttemptedPrevForFirstElemSaved;
+    mIterationMarkedAsDone     = mIterationMarkedAsDoneSaved;
+
+    mpCurrentLinkSaved              = 0;
+    mAttemptedNextForLastElemSaved  = 0;
+    mAttemptedPrevForFirstElemSaved = 0;
+  }
+}
+
+template <class T>
+void ListIterator<T>::InformOfUnlink(void* unlink, eListCurrentLinkAfterUnlink pos_after_unlink)
+{
+  if ((void*)mpCurrentLink == unlink)
+  {
+    if (pos_after_unlink == eListCurrentLinkAfterUnlink_Default) {
+      switch (mListIteratorDeletePolicy) {
+        case eListIteratorPolicyAfterDelete_Prev:       if (!Prev()) Next();        break;
+        case eListIteratorPolicyAfterDelete_Next:       if (!Next()) Prev();        break;
+        case eListIteratorPolicyAfterDelete_Invalidate: mIteratorLinkValid = FALSE; break;
+        case eListIteratorPolicyAfterDelete_Assert0:    assert(0);
+        default:                                        assert(0);
+      }
+    }
+    else {
+      switch (pos_after_unlink) {
+        case eListCurrentLinkAfterUnlink_Next: if (!Next()) Prev(); break;
+        case eListCurrentLinkAfterUnlink_Prev: if (!Prev()) Next(); break;
+        default:                               assert(0);
+      }
+    }
+  }
+}
+
+#endif
+
+// End
+@
+
+
+1.7
+log
+@Fixed bug when adding an entry after the current entry.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+a24 2
+#define M_ListDeleteAll(list, type) MacroListDeleteAll(list, type)
+
+d36 4
+d43 2
+a48 3
+#define MacroListIterateAllReverse(list)      \
+  (list).Last(); ! (list).IsDone(); (list).Prev()
+
+d95 1
+a95 1
+  bool  Add(T* elm, eListAddPosition add_position=eListAddPosition_AfterCurrent, ListIterator<T>* iter=0);
+d165 1
+d170 1
+d193 1
+d200 2
+a201 1
+  mAttemptedNextForLastElemSaved  (0)
+d229 1
+d296 1
+a296 1
+  if (mSize==0 || mAttemptedPrevForFirstElem || mAttemptedNextForLastElem)
+d327 9
+a335 2
+  if (mpCurrentLink)   return mpCurrentLink->mElem;
+  else                 return 0;
+d604 2
+a605 1
+  if (iter!=0 and unlink==mpCurrentLink) assert(0);
+d679 2
+d742 1
+d768 1
+d792 1
+d803 1
+d817 1
+d843 1
+d1008 1
+d1014 1
+d1023 1
+d1029 1
+d1045 9
+a1053 2
+  if (mpCurrentLink)   return mpCurrentLink->mElem;
+  else                 return 0;
+d1143 1
+a1143 1
+  return (IsEmpty() || mAttemptedPrevForFirstElem || mAttemptedNextForLastElem);
+d1160 1
+d1175 1
+d1188 1
+@
+
+
+1.6
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d521 2
+a522 1
+        mpFirst->next  = new_link;
+d591 1
+a591 1
+  if (iter!=0 and unlink==mpCurrentLink) return FALSE;
+@
+
+
+1.5
+log
+@1.  Added macros to track constructor & destructor calls (catch memory leaks).
+2.  Use new macro naming convention (prefix M_ instead of Macro_).
+3.  Added enum eListIteratorPolicyAfterDelete_Invalidate.
+4.  Added enum eListIteratorPolicyAfterDelete_Assert0.
+5.  Removed enum eListIteratorPolicyAfterDelete_UseListPolicy.
+6.  Added enum eListAddPosition_NoChange.
+7.  Added functions to relink between List and List/ListIterators.
+8.  Added pos_after_unlink arg to List::Unlink().
+9.  Added constructor/destructor for Link (to track memory).
+10. Fixed First() and Last() not returning a boolean value.
+11. Fixed ListIterators not getting cleaned up in List destructor.
+12. Removed LinkTransferFrom().
+13. Found and fixed some bugs when adding/deleting list elements.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+a12 1
+#include "DefinesAndEnum.h"
+d48 8
+@
+
+
+1.4
+log
+@1. Added a ListIterator.
+2. Made List doubly linked.
+3. Fixed member prefix (ie added 'mp' and 'm').
+4. Added #define MacroListDeleteLink(list, elm, ret).
+5. Added enums: eList_SplitPosition, eListIteratorPolicyAfterDelete
+   and eListAddPosition
+6. Added functions:  bool DeleteLinkThenNext(unlink_only),
+   bool DeleteLinkThenPrev (unlink_only),
+   bool DeleteLinkThenIterationDone(unlink_only),
+   void Split(List<T>& list, eList_SplitPosition pos),
+   bool LinkTransferFrom(List<T>& list, eListLinkTransferType transfer_type),
+   void Unlink().
+7. Removed mSortVal.
+8. Added mAttemptedPrevForFirstElem and mAttemptedNextForLastElem to support
+   correct iteration.
+9. Added support to add a new element at first/last/next/previous position.
+@
+text
+@d16 3
+a18 1
+#define MacroListDeleteAll(list, type)                \
+d20 3
+a22 2
+    type *elm = list.Get();                           \
+    if (elm) delete elm;                              \
+d26 4
+a29 2
+#define MacroListDeleteLink(list, elm, ret)                  \
+  ret = list.PositionFind(elm);                              \
+d32 2
+a33 2
+#define MacroListDeleteElm(list, elm, ret)                   \
+  ret = list.PositionFind(elm);                              \
+d39 1
+a39 1
+#define M_ListIterateAll(list)             \
+d42 5
+a46 1
+#define MacroListIterateAllReverse(list)             \
+a54 1
+  eListIteratorPolicyAfterDelete_UseListPolicy,
+d57 2
+a58 1
+  eListIteratorPolicyAfterDelete_Invalidate
+d65 8
+a72 1
+  eListAddPosition_Last
+d77 2
+d87 11
+a97 2
+  bool  Add(T* elm, eListAddPosition add_position=eListAddPosition_AfterCurrent);
+  T*    Get();
+d101 3
+a103 3
+  bool DeleteLinkThenNext (bool unlink_only=FALSE);
+  bool DeleteLinkThenPrev (bool unlink_only=FALSE);
+  bool DeleteLinkThenIterationDone(bool unlink_only=FALSE);
+d105 1
+a105 1
+  // Iterate over list.
+d127 1
+a127 1
+  bool LinkTransferFrom(List<T>& list, eListLinkTransferType transfer_type);
+d130 3
+d143 5
+a147 2
+  bool     First(void*& link)   { return link=mpFirst;      }
+  bool     Last (void*& link)   { return link=mpLast;       }
+d153 1
+d155 2
+a156 2
+  bool      mAttemptedPrevForFirstElem; // CONTOLD: Revisit logic, should one be
+  bool      mAttemptedNextForLastElem;  //       cleared when other is set?
+a168 6
+  // Private enums.
+  enum eIteratorDirectionAfterDelete {
+    eIteratorDirectionAfterDelete_Prev,
+    eIteratorDirectionAfterDelete_Next
+  };
+
+d170 1
+a170 1
+  bool DeleteLinkCurrent(eIteratorDirectionAfterDelete dir, bool unlink_only=FALSE);
+d172 3
+a174 2
+  bool Unlink();
+  void InformIteratorsOfDelete(Link* deleted_link);
+d184 1
+d194 2
+d205 4
+d214 1
+a214 1
+  // Clear these flags.
+d260 14
+d298 1
+a298 1
+bool List<T>::Last()
+d300 2
+a301 1
+  if (Size() == 0) return FALSE;
+d303 4
+a306 1
+  mpCurrentLink = mpLast;
+d308 1
+a308 4
+  mAttemptedPrevForFirstElem = FALSE;
+  mAttemptedNextForLastElem  = FALSE;
+
+  return TRUE;
+d319 20
+a338 1
+bool List<T>::Add(T* elm, eListAddPosition add_position)
+d340 1
+a340 1
+  Link *new_link = new Link;
+d342 88
+a429 1
+  if (!new_link) return FALSE;
+a430 1
+  new_link->mElem = elm;
+d433 10
+d446 2
+a448 1
+        new_link->prev = 0;
+d451 1
+d456 1
+d459 1
+d464 1
+d470 2
+a471 1
+        mpFirst = new_link;
+d475 1
+a475 1
+        new_link->next = mpFirst->next;
+d477 2
+a478 1
+        mpFirst = new_link;
+d483 1
+a483 1
+        new_link->prev = mpCurrentLink->prev;
+d497 1
+d502 1
+d525 2
+a526 1
+        mpCurrentLink->next = new_link;
+d530 1
+d541 1
+d544 1
+d557 4
+a560 2
+  return TRUE;
+}
+d562 3
+a564 8
+// Remove a link from the list. The link is not deleted because it
+// will be reused in another list.
+// Currently the Unlink operation can only move the Iteration pointer to
+// the next element, there is no option to go to the previous link.
+template<class T>
+bool List<T>::Unlink()
+{
+  bool unlink_only;
+d566 1
+a566 15
+  return DeleteLinkThenNext(unlink_only = TRUE);
+}
+
+template<class T>
+bool List<T>::DeleteLinkThenIterationDone(bool unlink_only)
+{
+  // Can choose either: eIteratorDirectionAfterDelete_Next
+  //                or  eIteratorDirectionAfterDelete_Prev.
+  return DeleteLinkCurrent(eIteratorDirectionAfterDelete_Next, unlink_only);
+}
+
+template<class T>
+bool List<T>::DeleteLinkThenNext(bool unlink_only)
+{
+  return DeleteLinkCurrent(eIteratorDirectionAfterDelete_Next, unlink_only);
+d569 1
+d571 1
+a571 1
+bool List<T>::DeleteLinkThenPrev(bool unlink_only)
+d573 2
+a574 1
+  return DeleteLinkCurrent(eIteratorDirectionAfterDelete_Prev, unlink_only);
+a576 3
+// This is a private member function called only by
+//   DeleteLinkThenNext(), and
+//   DeleteLinkThenPrev()
+d578 1
+a578 1
+bool List<T>::DeleteLinkCurrent(eIteratorDirectionAfterDelete dir, bool unlink_only)
+d580 1
+a580 1
+  if (!mpCurrentLink) return FALSE;
+d582 2
+a583 21
+  Link* deleted_link;
+  bool  deleted = FALSE;
+  
+  // To delete the current item there are now 4 cases:
+  // - current item is the first item and total items = 1
+  // - current item is the first item and total items > 1
+  // - current item is the last  item and total item  > 1
+  // - current item is between first and last item
+
+  deleted_link = mpCurrentLink; // save value to inform iterators
+
+  // In all cases, clear 'saved' if it is going to be deleted.
+  if (mpCurrentLinkSaved == mpCurrentLink) mpCurrentLinkSaved = 0;
+
+  // We dont use mSize to check for one element because the list could
+  // be non-empty but past the last or first element in which case
+  // there is no 'current' entry.
+  if (mpCurrentLink==mpFirst && mpCurrentLink==mpLast)
+  {
+    // Exactly one entry.
+    mpFirst = mpLast = 0; mSize = 0;
+d585 1
+a585 1
+    if (!unlink_only) delete mpCurrentLink;
+d587 2
+a588 1
+    mpCurrentLink = 0;
+d590 1
+a590 6
+    if (dir == eIteratorDirectionAfterDelete_Next)
+      mAttemptedNextForLastElem  = TRUE;
+    else
+      mAttemptedPrevForFirstElem = TRUE;
+
+    deleted = TRUE;
+d592 5
+a596 3
+  else if (mpCurrentLink == mpFirst) {
+    // More than one entry, need to delete first.
+    mpFirst = mpCurrentLink->next;
+d598 7
+a604 1
+    if (!unlink_only) delete mpCurrentLink;
+d606 3
+a608 2
+    if (dir == eIteratorDirectionAfterDelete_Next) {
+      mpCurrentLink = mpFirst;
+d610 11
+a620 4
+    else {
+      // dir is previous.
+      mpCurrentLink              = 0;
+      mAttemptedPrevForFirstElem = TRUE;
+d622 7
+a628 1
+      deleted = TRUE;
+d631 12
+a642 2
+  else if (mpCurrentLink == mpLast) {
+    // More than one entry, need to delete last and update mpLast
+d644 3
+a646 1
+    Link* link_prev = mpLast->prev;
+d648 1
+a648 1
+    if (!unlink_only) delete mpLast;
+d650 2
+a651 2
+    mpLast              = link_prev;
+    mpLast->next        = 0;
+d653 6
+a658 8
+    if (dir == eIteratorDirectionAfterDelete_Next) {
+      mpCurrentLink             = 0;
+      mAttemptedNextForLastElem = TRUE;
+    }
+    else {
+      /* Prev */
+      mpCurrentLink = mpLast;
+    }
+d660 5
+a664 4
+    deleted = TRUE;
+  }
+  else {
+    // More than one entry, entry for delete is neither first or last.
+d666 5
+a670 1
+    mpCurrentLink->prev->next = mpCurrentLink->next;
+d672 7
+a678 3
+    Link* link_prev = mpCurrentLink->prev;
+
+    if (!unlink_only) delete mpCurrentLink;
+d680 1
+a680 2
+    if (dir == eIteratorDirectionAfterDelete_Next) mpCurrentLink = link_prev->next;
+    else         /* Prev */                        mpCurrentLink = link_prev;
+d682 2
+a683 2
+    deleted = TRUE;
+  }
+d685 3
+a687 1
+  if (deleted) InformIteratorsOfDelete(deleted_link);
+d689 1
+a689 1
+  return deleted;
+a857 43
+template<class T>
+bool List<T>::LinkTransferFrom(List<T>& list, eListLinkTransferType transfer_type)
+{
+  // Current links must be valid to accomplish a transfer
+  if (!mpCurrentLink || !list.mpCurrentLink) return FALSE;
+
+  Link* link_unlinked;
+
+  // Note that mpCurrentLink does not get modified, the current link in'list'
+  // is unlinked and added either before or after the current link in this list.
+  switch (transfer_type) {
+    case eListLinkTransferType_FromCurrentToBeforeCurrent:
+      link_unlinked = list.mpCurrentLink;
+      list.Unlink();
+
+      link_unlinked->next = mpCurrentLink;
+
+      if (mpCurrentLink == mpFirst) mpFirst                   = link_unlinked;
+      else                          mpCurrentLink->prev->next = link_unlinked;
+
+      break;
+    case eListLinkTransferType_FromCurrentToAfterCurrent:
+      link_unlinked         = list.mpCurrentLink;
+      list.Unlink();
+
+      link_unlinked->next   = mpCurrentLink->next;
+      link_unlinked->prev   = mpCurrentLink;
+
+      mpCurrentLink->next = link_unlinked;
+
+      if (mpCurrentLink == mpLast) mpLast = mpCurrentLink->next;
+
+      break;
+    default:
+      // No Unlink possible.
+      return FALSE;
+  }
+
+  mSize++;
+
+  return TRUE;
+}
+
+d864 1
+a864 1
+    iter              = new ListIterator<T>(*this);
+d867 1
+a867 1
+    StoreInFreeListIteratorEntry(iter);
+d881 6
+a886 3
+    for (int i=0; i<mListIteratorCount; i++) {
+      delete mpListIteratorList[i];
+      mpListIteratorList[i] == 0;
+d897 1
+a897 1
+          mpListIteratorList[i] == mpListIteratorList[last_entry];
+d899 1
+a899 1
+        mpListIteratorList[last_entry] == 0;
+d915 1
+a915 1
+      mpListIteratorList[i] == iter;
+d927 1
+a927 1
+void List<T>::InformIteratorsOfDelete(Link* deleted_link)
+d931 2
+a932 16
+      if ((void*)mpListIteratorList[i]->mpCurrentLink == (void*)deleted_link)
+      {
+        switch (mpListIteratorList[i]->mListIteratorDeletePolicy) {
+          case eListIteratorPolicyAfterDelete_UseListPolicy:
+            mpListIteratorList[i]->PositionSet(this);
+            break;
+          case eListIteratorPolicyAfterDelete_Prev:
+            Prev();
+          case eListIteratorPolicyAfterDelete_Next:
+            Next();
+          case eListIteratorPolicyAfterDelete_Invalidate:
+            mpListIteratorList[i]->mIteratorLinkValid = FALSE;
+          default:
+            assert(0);
+        }
+      }
+a939 1
+public:
+d942 1
+d967 1
+d971 2
+a982 2
+  //
+  eListIteratorPolicyAfterDelete mListIteratorDeletePolicy;
+d999 1
+d1005 1
+d1032 1
+a1032 1
+  if (mpCurrentLink || mpCurrentLink->prev == 0) 
+d1038 5
+a1042 2
+  
+  mpCurrentLink = mpCurrentLink->prev;
+d1126 1
+a1126 1
+  assert(mpCurrentLink);
+d1128 1
+a1128 1
+  if (!mIteratorLinkValid == 0) return FALSE;
+d1152 24
+@
+
+
+1.3
+log
+@1. Removed 'type' from macro MacroListDeleteElm(list, elm, ret).
+2. Added macro MacroListIterateAll(list).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d7 2
+a8 4
+// Template for a simple list. Classes that want
+// to use this list need to define the following
+//     a) A copy constructor and
+//     b) a Print(FILE*) member function.
+d11 1
+d13 1
+d23 4
+d29 1
+a29 1
+  if (ret) { delete list.Get(); list.DeleteLinkCurrent(); }
+d32 28
+a59 1
+  list.First(); ! list.IsDone(); list.Next()
+a64 1
+
+d69 2
+a70 2
+  List& Add(T* elm);
+  List& operator<<(T* elm) { return Add(elm); }
+d72 5
+a76 1
+  T* Get();
+d79 7
+a85 7
+  eBoolean First();   // Iteration can be accomplished as follows:
+  eBoolean Next();    // for (First(); !IsDone(); Next()) {
+  eBoolean IsLast();  //   item_ptr = Get();
+  eBoolean IsEmpty(); // }
+  eBoolean IsDone();
+  // TBD (next line)\
+  eBoolean Last();
+d87 1
+d89 2
+a90 3
+  // Delete functions.
+  eBoolean DeleteLinkAll();
+  eBoolean DeleteLinkCurrent();
+d93 8
+a100 12
+  eBoolean PositionFind(T* elm);
+  eBoolean PositionSet(unsigned position);
+  void     PositionSave();
+  void     PositionRestore();
+  //
+  eBoolean Exists(T* elm) { return PositionFind(elm); }
+
+  // Inquire size of List
+  unsigned Size(void) { return mSize; }
+
+  // Print List
+  void Dump(FILE* fp);
+d104 2
+a105 2
+    int sortval;
+    T* elem;
+d109 7
+d117 29
+a145 5
+  Link      *mFirst;
+  Link      *mLast;
+  Link      *mIterationLink;
+  Link      *mIterationLinkSaved;
+  unsigned  mSize;
+d150 10
+a159 5
+  mFirst(0),
+  mLast(0),
+  mIterationLink(0),
+  mIterationLinkSaved(0),
+  mSize(0)
+d161 3
+a163 1
+  // Empty
+a171 1
+  eBoolean delete_entry;
+d176 1
+a176 1
+eBoolean List<T>::First()
+d178 7
+a184 2
+  if (mFirst) {
+    mIterationLink = mFirst;
+d187 2
+a188 2
+  else
+    return FALSE;
+d192 1
+a192 1
+eBoolean List<T>::Next()
+d194 6
+a199 3
+  if (mIterationLink) {
+    // Allow mIterationLink to become 0 after visiting the last link
+    mIterationLink = mIterationLink->next;
+d208 1
+a208 1
+eBoolean List<T>::IsLast()
+d210 4
+a213 3
+  if (mIterationLink) {
+    if (mIterationLink->next == 0) return TRUE;
+    else                           return FALSE;
+d216 2
+a217 2
+    // We return FALSE if the list is empty or past the last element.
+    return FALSE;
+d219 9
+d231 1
+a231 1
+eBoolean List<T>::IsDone()
+d233 5
+a237 2
+  if (mIterationLink == 0) return TRUE;
+  else                     return FALSE;
+d241 1
+a241 1
+eBoolean List<T>::IsEmpty()
+d248 13
+d263 2
+a264 2
+  if (mIterationLink) return mIterationLink->elem;
+  else                return 0;
+d268 1
+a268 1
+List<T>& List<T>::Add(T* elm)
+d272 4
+a275 5
+  if (!new_link) {
+    assert(0);
+  }
+  else {
+    new_link->elem = elm;
+d277 2
+a278 1
+    switch (mSize)
+d280 72
+a351 5
+    case 0:
+      mFirst = new_link;
+      mLast  = new_link;
+
+      mFirst->next = 0;
+a352 5
+    default:
+      // Add as last element
+      mLast->next = new_link;
+      mLast       = new_link;
+      mLast->next = 0;
+d354 38
+d393 7
+a399 2
+    mSize++;
+  }
+d401 4
+a404 1
+  return *this;
+d408 1
+a408 1
+eBoolean List<T>::DeleteLinkCurrent()
+d410 2
+a411 1
+  if (!mIterationLink) return FALSE;
+d413 10
+a422 1
+  eBoolean deleted = FALSE;
+d427 1
+a427 1
+  // - current item is the last  item
+d430 9
+a438 1
+  if (mIterationLink==mFirst && mIterationLink==mLast)
+d441 1
+a441 1
+    mFirst = mLast = 0; mSize = 0;
+d443 1
+a443 1
+    delete mIterationLink;
+d445 6
+a450 1
+    mIterationLink = 0;
+d454 1
+a454 1
+  else if (mIterationLink == mFirst) {
+d456 1
+a456 1
+    mFirst = mIterationLink->next;
+d458 1
+a458 1
+    delete mIterationLink;
+d460 7
+a466 1
+    mIterationLink = mFirst;
+d468 2
+a469 1
+    deleted = TRUE;
+d471 2
+a472 4
+  else if (mIterationLink == mLast) {
+    // More than one entry, need to delete last and update mLast
+    Link* link = mFirst;
+    while (link->next != mLast) link = link->next;
+d474 1
+a474 2
+    mLast = link;
+    mLast->next = 0; // mLast now updated
+d476 1
+a476 1
+    delete mIterationLink;
+d478 11
+a488 1
+    mIterationLink = 0; // deleting last puts iterator past the end
+a493 2
+    Link* link = mFirst;
+    while (link->next != mIterationLink) link = link->next;
+d495 3
+a497 1
+    link->next = mIterationLink->next;
+d499 1
+a499 1
+    delete mIterationLink;
+d501 2
+a502 1
+    mIterationLink = link->next;
+d507 2
+d513 1
+a513 1
+eBoolean List<T>::DeleteLinkAll()
+d515 1
+a515 1
+  if (!mFirst) return FALSE;
+d517 2
+a518 1
+  Link* link_tmp;
+d520 7
+a526 4
+  while (mFirst)
+  {
+    link_tmp = mFirst;
+    mFirst   = mFirst->next;
+d528 2
+a529 1
+    delete link_tmp; link_tmp = 0;
+d532 2
+a533 1
+  mFirst = mLast = mIterationLink = 0; mSize = 0;
+d535 6
+a540 1
+  return TRUE;
+d544 1
+a544 1
+eBoolean List<T>::PositionFind(T* elm)
+d546 2
+a547 1
+  eBoolean found = FALSE;
+d549 7
+a555 2
+  for (First(); !IsDone(); Next()) {
+    if (Get() == elm) { found = TRUE; break; }
+d557 3
+d561 3
+a563 1
+  return found;
+d566 2
+d569 1
+a569 1
+eBoolean List<T>::PositionSet(unsigned position)
+d571 2
+a572 1
+  eBoolean found = FALSE;
+d575 2
+a576 2
+  for (First(); !IsDone(); Next()) {
+    if (count == position) { found = TRUE; break; }
+d580 8
+d591 382
+d974 1
+a974 1
+void List<T>::PositionSave()
+d976 11
+a986 1
+  mIterationLinkSaved = mIterationLink;
+d990 1
+a990 1
+void List<T>::PositionRestore()
+d992 26
+a1017 2
+  mIterationLink      = mIterationLinkSaved;
+  mIterationLinkSaved = 0;
+@
+
+
+1.2
+log
+@1. Can no longer delete List elements (objects) from List implementation
+   because we have started using classes with private destructors.
+   Provided following macros instead:
+   - MacroListDeleteAll(list, type)
+   - MacroListDeleteElm(list, type, elm, ret)
+   Previous Delete API was : DeleteContents() and Delete(short index),
+   new API is (also macros): DeleteLinkAll()  and DeleteLintCurrent().
+2. Removed AddSorted(), GetSorted().
+3. Removed Transfer(List).
+4. Removed operator=(List).
+5. Added iterate API: First(), Next(), IsLast(), IsEmpty() and IsDone().
+6. Renamed private members to use 'm' prefix.
+7. Added Position API: PositionFind(T* elm), PositionSet(ushort pos),
+                       PositionSave(), PositionRestore().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d23 2
+a24 2
+#define MacroListDeleteElm(list, type, elm, ret)          \
+  ret = list.PositionFind(elm);                           \
+d27 3
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d7 6
+a12 4
+/* Template for a simple list. Classes that want */
+/* to use this list need to define the following */
+/*     a) A copy constructor and                 */
+/*     b) a Print(FILE*) member function.        */
+d16 11
+d35 1
+a35 7
+  /* Empty list. Client must take responsibility for */
+  /* deleting elements that are put on the list.     */
+  void DeleteContents();
+  eBoolean Delete(short index);
+
+  /* Add elements */
+  List& Add(T& elm);
+d37 1
+a37 3
+  List& operator<<(T& elm);
+  List& operator<<(T* elm);
+  List& AddSorted(T& elm, int sortval);
+d39 1
+a39 3
+  /* Retrieve elements */
+  T* operator[](short i);
+  T* GetSorted(int sortval);
+d41 21
+a61 3
+  /* Transfer pointers to elements from 'list' to  */
+  /* current list, used for rearranging (eg: sort) */
+  eBoolean Transfer(List& list);
+d63 2
+a64 2
+  /* Copy list */
+  void operator=(List& list);
+d66 1
+a66 4
+  /* Inquire size of list */
+  short Size(void) { return size; }
+
+  /* Print List */
+d76 6
+a81 11
+protected:
+  /* Delete allocated 'Link' structures */
+  void DeleteLinks();
+
+  Link *first;
+  Link *last;
+  Link *cachedLink;
+  Link *tempLink;
+  short cachedIndex;
+  short size;
+  
+d86 5
+a90 5
+  first(0),
+  last(0),
+  size(0),
+  cachedIndex(0),
+  cachedLink(0)
+d98 5
+a102 1
+  DeleteLinks();
+d106 1
+a106 1
+T* List<T>::operator[](short index)
+d108 3
+a110 19
+  if (index >= size) return 0;
+
+  Link* link=first;
+
+  /* Check cached link */
+  if (index == cachedIndex)
+  {
+    if (cachedIndex == 0)
+      cachedLink = first;
+
+    cachedIndex++;
+    Link* temp = cachedLink;
+    cachedLink = cachedLink->next;
+    if (cachedLink == NULL)
+    {
+      cachedLink = first;
+      cachedIndex  = 0;
+    }
+    return temp->elem;
+d112 3
+d116 6
+a121 4
+  /* If the cached link could not be used then */
+  /* we need to iterate over the entire list.  */
+  for (short i=0; i<index && i<size; i++)
+    link = link->next;
+d123 1
+a123 10
+  /* update cached values */
+  cachedLink = link->next;
+  cachedIndex = index+1;
+
+  /* Was this the last link ?     */
+  /* then reset the cached values */
+  if (cachedLink == NULL)
+  {
+    cachedLink = first;
+    cachedIndex  = 0;
+d126 1
+a126 1
+  return link->elem;
+d130 1
+a130 1
+List<T>& List<T>::operator<<(T& elm)
+d132 3
+a134 12
+  /* always add to 'last',   */
+  /* first remains invariant */
+
+  T* tempt = new T(elm);
+
+  if (size==0)
+  {
+    last = new Link;
+    last->elem = tempt;
+    last->next = 0;
+    first = last;
+    size = 1;
+d136 3
+a138 13
+  else
+  {
+    /* Safety */
+    if (size < SHRT_MAX)
+      size++;
+    else
+      return *this;
+
+    last->next = new Link;
+    last = last->next;
+
+    last->elem = tempt;
+    last->next = 0;
+a139 2
+
+  return *this;
+d143 1
+a143 1
+List<T>& List<T>::operator<<(T* elm)
+d145 2
+a146 1
+  return Add(elm);
+d150 1
+a150 1
+eBoolean List<T>::Transfer(List<T>& list)
+d152 2
+a153 14
+  if (size != list.size)
+    return FALSE;
+
+  tempLink = first;
+  list.tempLink = list.first;
+
+  for (short i=0; i<size && tempLink; i++)
+  {
+    tempLink->elem = list.tempLink->elem;
+    tempLink = tempLink->next;
+    list.tempLink = list.tempLink->next;
+  }
+
+  return TRUE;
+a155 1
+#ifdef LISTDUMP
+d157 1
+a157 1
+void List<T>::Dump(FILE* fp)
+d159 2
+a160 9
+  Link *link = first;
+
+  for (short i=0; i<size; i++)
+  {
+    link->elem->Print(fp);
+    link = link->next;
+  }
+
+  fprintf(fp, "\n");
+a161 1
+#endif
+d164 1
+a164 1
+List<T>& List<T>::AddSorted(T& elm, int sortval)
+d166 1
+a166 3
+  /* Reset cachedLink */
+  cachedLink = first;
+  cachedIndex = 0;
+d168 5
+a172 2
+  Link *newlink, *prev, *ptr;
+  short found;
+d174 1
+a174 17
+  newlink = (Link*)0;
+  found = 0;
+
+  switch (size)
+  {
+  case 0:
+    found = 1;
+    first = last = new Link;
+    first->next = 0;
+    first->elem = new T(elm);
+    first->sortval = sortval;
+    break;
+  default:
+    ptr = first;
+    int i;
+    prev = 0;
+    for (i=0; i<size; i++)
+d176 11
+a186 27
+      /* Logic for sort in ascending order */
+      if (sortval <= ptr->sortval)
+      {
+        if (sortval == ptr->sortval)
+          return *this;    // sortval must be unique
+
+        found = 1;
+        newlink = new Link;
+        /* If there was a prev link update it */
+        if (prev) prev->next = newlink;
+
+        /* newlink always inserted before ptr */
+        /* because sortval is < ptr->sortval  */
+        /* ptr->next remains the same         */
+
+        newlink->next = ptr;
+        newlink->elem = new T(elm);
+        newlink->sortval = sortval;
+
+        if (i == 0) first = newlink;
+        break;
+      }
+      else
+      {
+        prev = ptr;
+        ptr = ptr->next;
+      }
+a187 10
+  }
+
+  if (!found)
+  {
+    /* Add as last element */
+    newlink = new Link;
+
+    newlink->next = 0;
+    newlink->elem = new T(elm);
+    newlink->sortval = sortval;
+d189 1
+a189 2
+    last->next = newlink;
+    last = newlink;
+a191 2
+  size++;
+
+d196 1
+a196 1
+List<T>& List<T>::Add(T& elm)
+d198 1
+a198 3
+  /* Reset cachedLink */
+  cachedLink = first;
+  cachedIndex = 0;
+d200 7
+a206 1
+  Link *newlink = (Link*)0;
+d208 1
+a208 1
+  switch (size)
+d210 8
+a217 14
+  case 0:
+    first = last = new Link;
+    first->next = 0;
+    first->elem = new T(elm);
+    break;
+  default:
+    /* Add as last element */
+    newlink = new Link;
+
+    newlink->elem = new T(elm);
+
+    last->next = newlink;
+    last = newlink;
+    last->next = 0;
+d219 3
+d223 1
+a223 1
+  size++;
+d225 13
+a237 2
+  return *this;
+}
+d239 1
+a239 4
+template<class T>
+List<T>& List<T>::Add(T* elm)
+{
+  Link *newlink = (Link*)0;
+d241 1
+a241 16
+  switch (size)
+  {
+  case 0:
+    first = last = new Link;
+    first->next = 0;
+    first->elem = elm;
+    break;
+  default:
+    /* Add as last element */
+    newlink = new Link;
+
+    newlink->elem = elm;
+
+    last->next = newlink;
+    last = newlink;
+    last->next = 0;
+d243 4
+d248 1
+a248 1
+  size++;
+d250 1
+a250 8
+  return *this;
+}
+
+template<class T>
+T* List<T>::GetSorted(int sortval)
+{
+  int i;
+  Link* link=first;
+d252 1
+a252 4
+  for (i=0; i<size; i++)
+  {
+    if (link->sortval == sortval)
+      return link->elem;
+d254 1
+a254 1
+    link = link->next;
+d257 1
+a257 1
+  return 0;
+d260 2
+a261 2
+template<class T>
+eBoolean List<T>::Delete(short index)
+d263 1
+a263 1
+  if (index >= size) return FALSE;
+d265 1
+a265 2
+  Link* link=first;
+  Link* prevlink=0;
+d267 1
+a267 1
+  for (short i=0; i<index; i++)
+d269 4
+a272 2
+    prevlink = link;
+    link = link->next;
+d275 1
+a275 11
+  if (link == first)
+    first = link->next;
+  else
+    prevlink->next = link->next;
+
+  if (link == last)
+    last = prevlink;
+
+  delete link->elem;
+  delete link;
+  size--;
+d281 1
+a281 1
+void List<T>::DeleteContents()
+d283 1
+a283 1
+  Link* link = first;
+d285 2
+a286 4
+  while (link)
+  {
+    delete link->elem;
+    link = link->next;
+d289 1
+a289 1
+  DeleteLinks();
+d293 1
+a293 1
+void List<T>::operator=(List<T>& list)
+d295 7
+a301 3
+  /* Assume client has performed   */
+  /* DeleteContents() if necessary */
+  DeleteLinks();
+d303 1
+a303 2
+  for (short i=0; i<list.size; i++)
+    *this << *(list[i]);
+d307 1
+a307 1
+void List<T>::DeleteLinks()
+d309 2
+a310 1
+  Link* link;
+d312 5
+a316 12
+  while (first)
+  {
+    link = first->next;
+    delete first;
+    first = link;
+  }
+
+  first = 0;
+  last = 0;
+  size = 0;
+  cachedIndex = 0;
+  cachedLink = 0;
+a318 1
+
+@

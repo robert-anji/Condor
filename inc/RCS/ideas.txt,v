@@ -1,0 +1,263 @@
+head	1.3;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2011.12.20.17.39.19;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.15.42.26;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.03.22.43;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@Overdue checkin of ideas.
+@
+text
+@$RCSfile: ideas.txt,v $
+$Revision: 1.1 $
+
+                   Verification Challenge
+                   ----------------------
+                   comprehensive stimulus
+                      controllability
+                       observeability
+                        transparency
+                         flexibility
+                         reusability
+                          usability
+
+Index:
+ 1. Verification_Goals.
+ 2. Verification_Environment_Structure.
+ 3. Implementation.
+ 4. Database_Advantages.
+ 5. Trigger.
+ 6. Misc.
+ 7. Implementation_using_threads.
+ 8. Builtin_Simulator_Advantages.
+ 9. VIP_Protocols.
+10. VerifyRight website.
+11. VerificationChallenge.
+
+1. Verification_Goals:
+  a) Unified Environment and Structure for all SOC's.
+  b) Maximum code reuse by decoupling common functionality from protocols.
+  c) Code coherency due to small team implementation (ideally one).
+  d) Code simplicity via Layering and Symmetry.
+  e) Iterative development strategy
+  f) System should enhance/complement other strategies (SVA, Vera, e,
+     TestBuilder, SystemVerilog).
+
+2. Verification_Environment_Structure:
+
+Layer         Name                Notes 
+-----------------------------------------------------------------------------
+ L1       Random Tests
+                |
+                |
+ L2      Directed Tests
+                |
+                |
+ L3         Environment   Configuration, Utilities
+              Manager     Configuration, Utilities
+                |
+                |
+ L4          Drivers      Bus  = PCIE, SATA, AHB, AXI, FC, HypTr, 802.3 etc.
+                |         Other= Arbiter, DMA, Cache, InterruptHandler etc.
+                |
+ L5          Database     Tables, Queries, Triggers
+                |
+                |
+ L6           Models      One corresponding to each Drivers.
+                |
+                |
+ L7            Rtl        SOC
+
+ Using this structure and referring back to the 'Verification Challenge':
+ - stimulus        is provided by L1 and L2,
+ - controllability is provided by L3 and L4,
+ - observeability  is provided by L5.
+ - transparency    is provided by L5.
+ - reusability     is provided by L4, L5, and L6.
+ - flexibility     is provided by L3 and L5.
+ - usability       is provided by L3, L4, L5.
+
+3. Implementation:
+  Layers L3 to L6 comprise the Verification Engine. This will be implemented 
+  using C++ . The System Verilog standard claims 'No performance penalty' when
+  linking C++ code with system verilog!
+  
+4. Database_Advantages:
+  Advantages:
+  - All information is centralized and shared, enhances observability.
+  - Database is independent of Project, i.e. re-usable.
+  - Clean separation between algorithms and data.
+  - Easy/convenient access via queries.
+  - Results of queries are themselves stored in the Database
+  - Easily extensible (more Tables, Queries).
+  - Easy to extract performance & statistics using Aggregate functions.
+  - Simpler learning curve.
+  - Archive any Database Table (persistance).
+  - Many database tables can be put into version control (config info etc.).
+  - Record and Playback stimulus from Database.
+  - Elegant information retrieval: tbl.Search(q1<10 && (q2==0 || q3=="Hello"));
+  - Complex searches (regex): tbl.Match(q1, q2, q3, "q1 q2+ q1|q3");
+  - Allow 'backward' query, ie match from last record backward, useful for logs.
+  - Interactive simulation/debug by updating and observing relevant tables.
+  - Faster debug by investigating data generated and stored in tables.
+  - Trigger, behaves like transaction level assertions.
+
+  Derived advantages:
+  - Reuse of stimulus from Database avoids resolving constraints.
+  - Queries can be precompiled, put in a library, shared.
+  - Equivalence checking (comparing tables between runs).
+  - Functional coverage collection via queries and/or triggers.
+  - Store non Verification Engine data also (customer info, simulation info).
+  - Easier 'end-to-end' checks for full chip or SOC simulations.
+  - Create extensive verification reports.
+  - Database provides the advantage of 'indirection' (ability to intercede).
+  - Example of useful interceding is: populate tables from perl.
+  - Permit importing external tabular data from Specs.
+  - Easily annotate transactions (table entries) by adding an attribute.
+  - Reduce log file I/O, only output table info to file on errors, else flush.
+  - Dump signals only on error.
+  - Improve log file quality/size by allowing filtering by msg type, module etc.
+  - When packaged in VIP, can protect functionality(lib) but make data visible.
+  - Maximize use of available RAM. Database can grab available RAM at runtime.
+  - For debug, vast information in database can be refined and searched.
+
+  Disadvantages:
+  ??? (Cant think of any major disadvantage that is unique to database use).
+
+=============================================================================
+A DATABASE ASSISTS THE VERIFICATION ENGINEER MUCH LIKE GOOGLE HELPS WEB USERS
+=============================================================================
+
+5. Trigger:
+  Advantages:
+  - Extensible, any number of Triggers can be added to the Database.
+  - Triggers like Queries can be made to examine multiple Tables.
+  - Triggers can take on any complexity.
+  - Triggers provide instant information feedback to the Environment.
+  - Triggers help automate the Environment (TestPlan, Simulation control).
+  - Triggers can be used as a synchronization mechanism (condition variables).
+
+6. Misc:
+  - Try to place as much configurability into text files that can be read into
+    the database.
+  - Instead of using C++ templates, use a perl script to convert a template to
+    a particular instantiation. This avoids the uncomfortable 'template' syntax
+    in the code as well as in compiler or runtime messages.
+
+7. Implementation_using_threads:
+  - Avoids needing system verilog license
+  - Should run very fast
+  - Every component that can get blocked is put into a thread
+  - A 'clock' thread broadcasts a condition to all components
+  - Multiple clock designs is still possible using multiple clock threads
+  - A test-case can either block on the clock condition or an asynchronous
+    trigger condition from the database.
+
+8. Builtin_Simulator_Advantages.
+  - License free
+  - Full visibility into Scheduler actions (eg: debug race conditions)
+  - Easier debug when stepping through code as all code is in a single thread
+
+9. VIP_Protocols:
+  - USB 3.0 .
+  - PCIE 2.0 .
+  - Serial interfaces like I2C, UART, I2S etc.
+  - AXI, AHB, APB etc.
+  - SATA.
+  - SPI IV.
+  - DDR.
+  - Ethernet.
+  - Gigabit.
+  - Wireless (names?).
+
+10. VerifyRight website:
+  Possible content for the web-site:
+  - Introduction (company info)
+  - Goal (simplify verification)
+  - Implementation (C++ based Bfm's)
+  - Products (VIP's and services)
+  - Evaluate VIPs.
+  - Share (Unix tools like make, sh, perl, vim, tags etc.)
+  - Verification news
+  - Contribute (looking for coders)
+  - Resources (books, web-sites)
+  - Learn (provide basic tutorials on verification tools and methods)
+  - Forum (allow users to submit questions and opinions)
+
+11. VerificationChallenge:
+  - Third party Verification IP.
+  - Tool (simulator) issues.
+  - Ability to model dut behavior cycle accurate.
+  - Large number of possible permutations to test.
+  - Stability of test case across configurations.
+  - Human error (understanding spec. as well as in the testbench code).
+  - Dut complexity.
+  - Debug time (where waveform debug takes much longer than log).
+  - Resources (cpu and licenses).
+  - Clarity of documentation, too many documentation sources.
+  - Insufficient observability infrastructure in the testbench.
+  - Lack of co-ordination between tb components (especially error injection)
+  - Difficulty debugging scrambled or encrypted data.
+  - Lack of 100% team co-ordination to solve issues.
+  - Missing functionality (due to deadlines), expensive to add later.
+  - Functions that are more specific instead of more general (reduces reuse).
+  - Reuse efficiency is low (works only for similar projects).
+
+# End
+@
+
+
+1.2
+log
+@Changes for release: C1_80
+@
+text
+@d15 11
+a25 7
+1. Verification_Goals:
+2. Verification_Environment_Structure:
+3. Implementation:
+4. Database_Advantages:
+5. Trigger:
+6. Misc
+7. Implementation_using_threads:
+d92 2
+d108 2
+d112 1
+d146 50
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d101 3
+a103 1
+  - Reduce log file I/O, only output details (in table) to log if errors.
+@

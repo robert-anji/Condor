@@ -1,0 +1,254 @@
+head	1.4;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.13.12.51;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.23.12.36;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Replaced eBoolean with bool.
+2. Made many access functions const.
+3. Fixed member prefix (ie added 'mp' and 'm').
+@
+text
+@// $RCSfile: MyString.h,v $
+// $Revision: 1.3 $
+
+#ifndef StringClass
+#define StringClass
+
+#include "Global.h"
+
+enum eStringSize
+{
+  eStringInitSize = 0,
+  eStringIncrSize = 256
+};
+
+class String
+{
+public:
+  /* Constructors */
+  String();
+  String(char* str);
+  String(const char* str);
+  String(const String& str);
+  /* Constructors to create sub-strings */
+  String(String& str, short startpos);
+  String(String& str, short startpos, short endpos);
+  String(String& str, char* startstr);
+  String(String& str, String& startstr);
+
+  ~String();
+
+  /* Basic functions */
+  int Length(void) const;
+  void Clear(void);
+  char Getc(int pos) const;
+  bool Chop();    // remove trailing '\n' if present
+  bool Chop(short n);  // remove last 'n' characters
+
+  /* Append and Prepend */
+  void Prepend(char* str);
+  void Append(const String& str);
+  void Append(char* str);
+  void Append(char c);
+  void Append(const char* str);
+
+  /* Insert */
+  void Insert(char* str, int pos);
+  void Insert(char c, int pos);
+  void Insert(char c, int pos, int count);
+
+  /* Replace */
+  short Replace(char c, char d);
+  short Replace(char* str1, const char* str2);
+  short Replace(char* str1, const char* str2, int n);
+  bool  Replace(char c, int pos);
+
+  /* Search */
+  int Position(char c)                    const;
+  int Position(char c, int n)             const;
+  int Position(const char* str)           const;
+  int Position(const char* str, int n)    const;
+  int Position(int pos, char c)           const;
+  int Position(int pos, char c, int n)    const;
+  int Position(int pos, const char* str)  const;
+  int Position(int pos, const char* str, int n) const;
+  //
+  short Occurences(char c)                const;
+  short Occurences(char* str)             const;
+  short Occurences(const char* str)       const;
+  //
+  bool  Find(char c)                      const;
+  bool  Find(char* str)                   const;
+  bool  Find(const char* str)             const;
+  bool  Find(String& str)                 const;
+
+  /* Overloaded operators */
+//operator char*()        const;
+  operator const char*()  const;
+
+  String& operator<<(char        c);
+  String& operator<<(char*       str);
+  String& operator<<(const char* str);
+  String& operator<<(String&     str);
+  // Convert number to string, append
+  String& operator<<(short    i);
+  String& operator<<(int      i);
+  String& operator<<(unsigned i);
+  //
+  String& operator+ (const char*   str);
+  bool    operator==(const String& str) const;
+  bool    operator==(const char*   str) const;
+  bool    operator==(      char*   str) const;
+  bool    operator!=(const String& str) const;
+  bool    operator!=(const char*   str) const;
+  String& operator= (const String& str);
+  String& operator= (const char*   str);
+  String& operator= (char          c);
+
+  // Inline
+//void Print(FILE* fp) { fprintf(fp, "%s\n", string); }
+
+private:
+  void IncrSize(void);
+
+  char* mpChar;
+  short mSize;
+};
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@1. Set eStringInitSize to 0 so that String constructors will not allocate
+   memory unless necessary (input char* or String provided).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d22 1
+a22 1
+  String(String& str);
+d32 1
+a32 1
+  int Length(void);
+d34 3
+a36 3
+  char Getc(int pos);
+  eBoolean Chop();    // remove trailing '\n' if present
+  eBoolean Chop(short n);  // remove last 'n' characters
+d40 1
+a40 1
+  void Append(String& str);
+d54 1
+a54 1
+  eBoolean Replace(char c, int pos);
+d57 17
+a73 15
+  int Position(char c);
+  int Position(char c, int n);
+  int Position(char* str);
+  int Position(char* str, int n);
+  int Position(int pos, char c);
+  int Position(int pos, char c, int n);
+  int Position(int pos, char* str);
+  int Position(int pos, char* str, int n);
+  short Occurences(char c);
+  short Occurences(char* str);
+  short Occurences(const char* str);
+  eBoolean Find(char c);
+  eBoolean Find(char* str);
+  eBoolean Find(const char* str);
+  eBoolean Find(String& str);
+d76 5
+a80 4
+  operator char*();
+  operator const char*();
+  String& operator<<(char c);
+  String& operator<<(char* str);
+d82 15
+a96 13
+  String& operator<<(String &str);
+  String& operator<<(short i);  // Convert number to string and append
+  String& operator<<(int i);    //                  ||
+  String& operator<<(unsigned i);  //                  ||
+  String& operator+(const char* str);
+  int operator==(String& str);
+  int operator==(const char* str);
+  String& operator=(String& str);
+  String& operator=(const char* str);
+  String& operator=(char* str);
+  String& operator=(char c);
+  int operator!=(String& str);
+  int operator!=(const char* str);
+d104 1
+a104 1
+  char* mString;
+@
+
+
+1.2
+log
+@1. Renamed private data members to use 'm' prefix.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d11 1
+a11 1
+  eStringInitSize = 1,
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d99 2
+a100 2
+  char* string;
+  int size;
+@

@@ -1,0 +1,619 @@
+head	1.8;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.8
+date	2011.12.04.01.55.58;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.08.16.17.58.13;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.22.17.54.58;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.15.35;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.16.14.26.11;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.8
+log
+@Added placeholder for Hash().
+@
+text
+@// $RCSfile: Value.h,v $
+// $Revision: 1.7 $
+
+#ifndef ValueClass
+#define ValueClass
+
+#include <stdio.h>
+
+#include "Attribute.h"
+#include "DBDefines.h"
+#include "Global.h"
+#include "String.h"
+#include "Enum.h"
+
+class Bit;
+
+class Value
+{
+  friend class Table;
+
+public:
+  Value();
+  Value(eValueType      type);
+  Value(const Value    &v);
+  Value(short           v);
+  Value(unsigned short  v);
+  Value(int             v);
+  Value(unsigned int    v);
+  Value(char            v);
+  Value(const String    *v);
+  Value(const String   &v);
+  Value(const char     *v);
+  Value(const char* &   v);
+  Value(const Bit      *v);
+  Value(const Bit      &v);
+  Value(void           *v);
+
+  unsigned Hash();
+
+  ~Value();
+
+  Value& operator++();     // prefix
+  Value& operator++(int);  // postfix
+  Value& operator--();
+  Value& operator--(int);
+  Value& operator+ (const Value& val);
+  Value& operator+=(const Value& val);
+  Value& operator- (const Value& val);
+  Value& operator-=(const Value& val);
+  Value& operator* (const Value& val);
+  Value& operator/ (const Value& val);
+
+//Value& operator+ (short s);
+//Value& operator+=(short s);
+//Value& operator- (short s);
+//Value& operator-=(short s);
+//Value& operator* (short s);
+//Value& operator/ (short s);
+
+  Value& operator+ (unsigned u);
+  Value& operator+=(unsigned u);
+  Value& operator- (unsigned u);
+  Value& operator-=(unsigned u);
+  Value& operator* (unsigned u);
+  Value& operator/ (unsigned u);
+
+//Value& operator=(Value  v);
+  Value& operator=(const Value& v);
+  Value& operator=(short);
+  Value& operator=(unsigned short);
+  Value& operator=(int);
+  Value& operator=(unsigned int);
+  Value& operator=(char);
+  Value& operator=(const char*);
+  Value& operator=(Bit&);
+  Value& operator=(void*);
+
+  bool operator==(const Value& v) const;
+  bool operator!=(const Value& v) const;
+  bool operator> (const Value& v) const;
+  bool operator< (const Value& v) const;
+  bool operator<=(const Value& v) const;
+  bool operator>=(const Value& v) const;
+
+  bool operator==(short v) const;
+  bool operator!=(short v) const;
+  bool operator> (short v) const;
+  bool operator< (short v) const;
+  bool operator<=(short v) const;
+  bool operator>=(short v) const;
+
+  bool operator==(unsigned v) const;
+  bool operator!=(unsigned v) const;
+  bool operator> (unsigned v) const;
+  bool operator< (unsigned v) const;
+  bool operator<=(unsigned v) const;
+  bool operator>=(unsigned v) const;
+
+  bool operator==(int v) const;
+  bool operator!=(int v) const;
+  bool operator> (int v) const;
+  bool operator< (int v) const;
+  bool operator<=(int v) const;
+  bool operator>=(int v) const;
+
+  bool operator==(unsigned short v) const;
+  bool operator!=(unsigned short v) const;
+  bool operator> (unsigned short v) const;
+  bool operator< (unsigned short v) const;
+  bool operator<=(unsigned short v) const;
+  bool operator>=(unsigned short v) const;
+
+  bool operator==(char* v) const;
+  bool operator!=(char* v) const;
+  bool operator> (char* v) const;
+  bool operator< (char* v) const;
+  bool operator<=(char* v) const;
+  bool operator>=(char* v) const;
+
+  bool operator==(const char* v) const;
+  bool operator!=(const char* v) const;
+  bool operator> (const char* v) const;
+  bool operator< (const char* v) const;
+  bool operator<=(const char* v) const;
+  bool operator>=(const char* v) const;
+
+  bool operator==(Bit& b) const;
+  bool operator!=(Bit& b) const;
+  bool operator> (Bit& b) const;
+  bool operator< (Bit& b) const;
+  bool operator<=(Bit& b) const;
+  bool operator>=(Bit& b) const;
+
+  Condition& operator==(const Attribute& attr) const;
+  Condition& operator!=(const Attribute& attr) const;
+  Condition& operator> (const Attribute& attr) const;
+  Condition& operator< (const Attribute& attr) const;
+  Condition& operator<=(const Attribute& attr) const;
+  Condition& operator>=(const Attribute& attr) const;
+
+  bool operator==(void *v) const;
+  bool operator!=(void *v) const;
+
+  bool operator==(bool v) const;
+  bool operator!=(bool v) const;
+
+  bool operator!() const;
+
+  // Get Bit value
+  void ValueCopyGet(Bit& bit);
+
+  // Compare() used by List<> to sort
+  eCompare Compare(Value& val);
+
+  // Cast value to another type.
+  operator short();
+  operator unsigned short();
+  operator int();
+  operator unsigned int();
+  operator char();
+  operator char*();
+  operator const char*();
+  operator Bit();
+
+  // Need a function to set the msb, lsb for Bit value
+  void        SetMsbLsb(short msb, short lsb) const;
+
+  eValueType  ValueType() const { return mType; }
+
+  operator void*()  { return (void*)mpValVoid; }
+  operator Value*() const;
+
+  // Utilities:
+  void   ValueTypeSet(eValueType type);
+  void   SetToMax();
+  void   SetToMin();
+  void   Print(FILE* fp=0);
+  char*  Save(char buf[MAX_RECORD_LINE_LENGTH+1]) const;
+
+private:
+  // Functions:
+  void   ValueFree();
+  bool   Initialize(const char* line, short bit_width=0);
+
+  // Data:
+  eValueType         mType;
+  bool               mNewCalled;
+
+  union {
+    char         mValChar;
+    char*        mpValChar;
+    const char*  mpValConstCharConst;
+    void*        mpValVoid;
+    unsigned     mValUnsigned;
+    int          mValInt;
+    String*      mpValString;
+    Bit*         mpValBit;
+  };
+};
+
+#endif
+
+// End
+@
+
+
+1.7
+log
+@1. Allow comparison with Attributes to return Condition objects that can
+   be added to Queries.
+2. Removed Match(query), all matching API has moved to Query.
+3. Made SetMsbLsb() and ValueGet() const functions.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d38 2
+@
+
+
+1.6
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d7 1
+a7 1
+#include <stdio.h> // needed for FILE*
+d9 1
+a15 1
+class Query;
+a39 2
+  bool Match(Query *q);
+
+d132 7
+d164 1
+a164 1
+  void        SetMsbLsb(short msb, short lsb);
+d166 1
+a166 1
+  eValueType  ValueType() { return mType; }
+@
+
+
+1.5
+log
+@1. Moved friend declarations to the top of the class.
+2. Added ValueCopyGet(val) to get a copy of a value.
+3. Added operator for casting to Value* .
+4. Modified Initialize() arg to const char* from char[] .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d9 1
+a12 1
+#include "DefinesAndEnum.h"
+@
+
+
+1.4
+log
+@1. Made Table class a friend.
+2. Replaced eBoolean with bool.
+3. Made some input args const.
+4. Added member mValVoidPtr.
+5. Added comparison with void* .
+6. Added comparison with bool.
+7. Added cast to Bit.
+8. Removed eSign enum.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d10 1
+a10 1
+#include "MyString.h"
+a18 1
+public:
+d21 1
+d142 3
+d163 2
+a164 1
+  operator void*() { return (void*)mpValVoid; }
+d176 1
+a176 1
+  bool   Initialize(char buf[MAX_RECORD_LINE_LENGTH+1], short bit_width=0);
+@
+
+
+1.3
+log
+@1. Moved enums eValueType and eOperator to DefinesAndEnum.h .
+2. Added constructor Value(eValueType type).
+3. Added function: eBoolean Match(Query *q) to compare a single value with
+   a query.
+4. Added arithmetic overload operators for argument: unsigned.
+5. Added two utilities: SetToMax() and SetToMin().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d20 2
+d23 14
+a36 13
+  Value(eValueType     type);
+  Value(Value&         v);
+  Value(short          v);
+  Value(unsigned short v);
+  Value(int            v);
+  Value(unsigned int   v);
+  Value(char           v);
+  Value(String*        v);
+  Value(String&        v);
+  Value(char*          v);
+  Value(const char*    v);
+  Value(Bit*           v);
+  Value(Bit&           v);
+d40 1
+a40 1
+  eBoolean Match(Query *q);
+d45 7
+a51 6
+  Value& operator+ (Value& val);
+  Value& operator+=(Value& val);
+  Value& operator- (Value& val);
+  Value& operator-=(Value& val);
+  Value& operator* (Value& val);
+  Value& operator/ (Value& val);
+d68 1
+a68 1
+  Value& operator=(Value& v);
+a73 1
+  Value& operator=(char*);
+d76 60
+d137 4
+a140 55
+  eBoolean operator==(Value& v);
+  eBoolean operator!=(Value& v);
+  eBoolean operator> (Value& v);
+  eBoolean operator< (Value& v);
+  eBoolean operator<=(Value& v);
+  eBoolean operator>=(Value& v);
+
+  eBoolean operator==(short v);
+  eBoolean operator!=(short v);
+  eBoolean operator> (short v);
+  eBoolean operator< (short v);
+  eBoolean operator<=(short v);
+  eBoolean operator>=(short v);
+
+  eBoolean operator==(unsigned v);
+  eBoolean operator!=(unsigned v);
+  eBoolean operator> (unsigned v);
+  eBoolean operator< (unsigned v);
+  eBoolean operator<=(unsigned v);
+  eBoolean operator>=(unsigned v);
+
+  eBoolean operator==(int v);
+  eBoolean operator!=(int v);
+  eBoolean operator> (int v);
+  eBoolean operator< (int v);
+  eBoolean operator<=(int v);
+  eBoolean operator>=(int v);
+
+  eBoolean operator==(unsigned short v);
+  eBoolean operator!=(unsigned short v);
+  eBoolean operator> (unsigned short v);
+  eBoolean operator< (unsigned short v);
+  eBoolean operator<=(unsigned short v);
+  eBoolean operator>=(unsigned short v);
+
+  eBoolean operator==(char* v);
+  eBoolean operator!=(char* v);
+  eBoolean operator> (char* v);
+  eBoolean operator< (char* v);
+  eBoolean operator<=(char* v);
+  eBoolean operator>=(char* v);
+
+  eBoolean operator==(const char* v);
+  eBoolean operator!=(const char* v);
+  eBoolean operator> (const char* v);
+  eBoolean operator< (const char* v);
+  eBoolean operator<=(const char* v);
+  eBoolean operator>=(const char* v);
+
+  eBoolean operator==(Bit& b);
+  eBoolean operator!=(Bit& b);
+  eBoolean operator> (Bit& b);
+  eBoolean operator< (Bit& b);
+  eBoolean operator<=(Bit& b);
+  eBoolean operator>=(Bit& b);
+d145 1
+d153 1
+d156 3
+a158 3
+  void SetMsbLsb(short msb, short lsb);
+  eBoolean operator>>(FILE* fp);
+  eValueType Type() { return mType; }
+d160 1
+a160 1
+  operator void*() { return (void*)this; }
+d163 5
+a167 3
+  void SetToMax();
+  void SetToMin();
+  void Print();
+d172 1
+d176 1
+a176 1
+  eBoolean           mNewCalled;
+d179 8
+a186 6
+    char        valChar;
+    char*       valPtrChar;
+    const char* valPtrConstChar;
+    unsigned    valUnsigned;
+    String      *valPtrStr;
+    Bit         *valPtrBit;
+a187 2
+
+  eSign sign;
+@
+
+
+1.2
+log
+@1. Added 'operator=(Bit& b)'
+2. Added enum eOperator
+3. Aligned declarations
+4. Renamed private members to use 'm' prefix.
+5. Removed Set().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d12 1
+d15 1
+a15 22
+
+enum eValueType {
+  eValueUnknown,
+  eValueBit,
+  eValueChar,
+  eValueCharPtr,
+  eValueConstCharPtr,
+  eValueString,
+  eValueUnsigned,
+};
+
+enum eOperator {
+  eNoOperator,
+  eLessThan,
+  eGreaterThan,
+  eEqualTo,
+  eNotEqualTo,
+  eGreaterThanOrEqualTo,
+  eLessThanOrEqualTo,
+  eLikeOperator,
+  eInvalidOperator
+};
+d21 1
+d37 2
+d49 15
+d147 4
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d11 3
+a13 1
+#include "Bit.h"
+d20 1
+d25 12
+d41 2
+a42 2
+  Value(Value& v);
+  Value(short v);
+d44 10
+a53 7
+  Value(int v);
+  Value(unsigned int v);
+  Value(char v);
+  Value(String* v);
+  Value(String& v);
+  Value(char* v);
+  Value(const char* v);
+d56 1
+a56 3
+  eBoolean Set(eValueType, char* str);
+
+  Value& operator++();  // prefix
+d59 1
+a59 1
+  Value& operator+(Value& val);
+d61 1
+a61 1
+  Value& operator-(Value& val);
+d63 2
+a64 2
+  Value& operator*(Value& val);
+  Value& operator/(Value& val);
+d74 1
+d78 2
+a79 2
+  eBoolean operator>(Value& v);
+  eBoolean operator<(Value& v);
+d85 2
+a86 2
+  eBoolean operator>(short v);
+  eBoolean operator<(short v);
+d92 2
+a93 2
+  eBoolean operator>(unsigned v);
+  eBoolean operator<(unsigned v);
+d99 2
+a100 2
+  eBoolean operator>(int v);
+  eBoolean operator<(int v);
+d106 2
+a107 2
+  eBoolean operator>(unsigned short v);
+  eBoolean operator<(unsigned short v);
+d113 2
+a114 2
+  eBoolean operator>(char* v);
+  eBoolean operator<(char* v);
+d120 2
+a121 2
+  eBoolean operator>(const char* v);
+  eBoolean operator<(const char* v);
+d125 7
+d143 2
+d146 1
+a146 1
+  eValueType Type() { return type; }
+d152 6
+a157 2
+  eValueType type;
+  eBoolean   newCalled;
+d162 1
+@

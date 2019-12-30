@@ -1,0 +1,257 @@
+head	1.3;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2011.12.20.17.27.47;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.12.04.01.52.18;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.06.26.15.54.17;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Initial Stack class, still needs a bit of work.
+@
+
+
+1.3
+log
+@Added default constructor.
+@
+text
+@// $RCSfile: Stack.h,v $
+// $Revision: 1.2 $
+
+#ifndef StackClass
+#define StackClass
+
+#include <assert.h>
+
+#include "Global.h"
+
+M_ExternConstructDestructCountInt;
+
+template <class T>
+class Stack
+{
+public:
+  Stack(unsigned max_entries=64);
+ ~Stack();
+
+  bool Push(T& elem);
+  T&   Pop ();
+  bool Find(T& elem);
+
+  unsigned Size() const { return mEntries; }
+
+private:
+  T*       mpEntries;
+  unsigned mEntriesMax;
+  unsigned mEntries;
+  unsigned mHeadPtr;
+  unsigned mTailPtr;
+};
+
+template <class T>
+Stack<T>::Stack(unsigned max_entries) :
+  mEntriesMax  (max_entries),
+  mEntries     (0),
+  mpEntries    (0),
+  mHeadPtr     (0),
+  mTailPtr     (0)
+{
+  if (mEntriesMax) {
+    mpEntries = new T [mEntriesMax];
+    assert(mpEntries);
+  }
+
+  M_UpdConstructCount(eType_Stack);
+}
+
+template <class T>
+Stack<T>::~Stack()
+{
+  delete [] mpEntries; mpEntries = 0;
+
+  M_UpdDestructCount(eType_Stack);
+}
+
+// Note:
+// When T is a pointer then we need to invoke Push() with an intermediate
+// reference variable as shown below:
+// > stack_pp = new Stack<ProcessExecuteReason*>(10);
+// > ProcessExecuteReason  per[10];
+// > ProcessExecuteReason* ptr;
+// > stack_pp->Push(ptr=&per[u]);
+// Directly using &per[u] will not compile:
+// > stack_pp->Push(&per[u]); // does not compile
+//
+template <class T>
+bool Stack<T>::Push(T& elem)
+{
+  // IMPR: allow stack to grow dynamically (resize).
+  assert(mEntries < mEntriesMax);
+
+  mpEntries[mHeadPtr++] = elem;
+
+  if (mHeadPtr == mEntriesMax) mHeadPtr = 0;
+
+  mEntries++;
+
+  return TRUE;
+}
+
+template <class T>
+T& Stack<T>::Pop()
+{
+  assert(mEntries);
+
+  unsigned tail = mTailPtr;
+
+  mEntries--;
+  mTailPtr++;
+
+  if (mTailPtr == mEntriesMax)
+    mTailPtr = 0;
+
+  return mpEntries[tail];
+}
+
+template <class T>
+bool Stack<T>::Find(T& elem)
+{
+  unsigned u, t;
+
+  for (u=0, t=mTailPtr; u<mEntries; u++) {
+    if (mpEntries[t] == elem) return TRUE;
+
+    if (t++ == mEntriesMax) t = 0;
+  }
+
+  return FALSE;
+}
+
+#endif
+
+// End
+@
+
+
+1.2
+log
+@Completed initial implementation of Stack (but without dynamic resize).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d11 2
+d17 1
+a17 2
+  Stack();
+  Stack(unsigned max_entries);
+a34 16
+Stack<T>::Stack() :
+  mEntriesMax  (100),
+  mEntries     (0),
+  mpEntries    (0),
+  mHeadPtr     (0),
+  mTailPtr     (0)
+{
+  if (mEntriesMax) {
+    mpEntries = new T [mEntriesMax];
+    assert(mpEntries);
+  }
+
+  M_UpdConstructCount(eType_Stack);
+}
+
+template <class T>
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d7 2
+d19 5
+a23 7
+  T    Pop   ();
+  bool Push  (T  elem);
+  bool Exists(T elem);
+
+  T*   PtrPop   ();
+  bool PtrPush  (T* elem);
+  bool PtrExists(T* elem);
+d28 3
+a32 2
+// CONT: Improve implementation to use a linked list if
+//       max entries is not specified in the constructor.
+d35 10
+a44 4
+  mEntriesMax               (100),
+  mpEntries                 (0)
+{
+  if (mEntriesMax) mpEntries = new T [mEntriesMax];
+d51 10
+a60 4
+  mEntriesMax               (max_entries),
+  mpEntries                 (0)
+{
+  if (mEntriesMax) mpEntries = new T [mEntriesMax];
+d73 12
+a84 2
+template <class T>
+T Stack<T>::Pop()
+d86 8
+a93 2
+  return mpEntries[0];
+}
+a94 3
+template <class T>
+bool Stack<T>::Exists(T elem)
+{
+d99 1
+a99 1
+bool Stack<T>::Push(T elem)
+d101 11
+a111 1
+  return TRUE;
+d115 1
+a115 1
+T* Stack<T>::PtrPop()
+d117 4
+a120 2
+  return &mpEntries[0];
+}
+d122 2
+a123 5
+template <class T>
+bool Stack<T>::PtrExists(T* elem)
+{
+  return TRUE;
+}
+d125 1
+a125 4
+template <class T>
+bool Stack<T>::PtrPush(T* elem)
+{
+  return TRUE;
+@

@@ -1,0 +1,51 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2009.07.19.01.35.40;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: Process.h,v $
+// $Revision: 1.1 $
+
+#ifndef ProcessTestClass
+#define ProcessTestClass
+
+#include "Process.h"
+
+class Clock;
+class Interface;
+class Module;
+
+class ProcessTest : public Process
+{
+public:
+  ProcessTest(const char* name, Interface* intf, Module* parent_module);
+  ~ProcessTest();
+
+  virtual void Execute(bool& all_ok);
+
+private:
+  short mProcessTestState;
+  short mDelay;
+};
+
+#endif
+
+// End
+@

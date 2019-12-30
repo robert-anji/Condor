@@ -1,0 +1,120 @@
+head	1.1;
+access;
+symbols
+	C1_80:1.1
+	C1_70:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2007.06.18.00.09.29;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@A simple Clock Manager class that allows creating clocks for Processes.
+The clocks can be stopped, suspended and resumed.
+It supports clock negative-edge, positive-edge and level-edge.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile$
+// $Revision$
+
+#include "List.h"
+#include "Process.h"
+
+enum eClockMgrState {
+  eClockMgrState_NotStarted,
+  eClockMgrState_Running,
+  eClockMgrState_StopCurrentTick,
+  eClockMgrState_StopImmediate,
+  eClockMgrState_Completed
+};
+
+enum eClockState {
+  eClockState_NotStarted,
+  eClockState_Running,
+  eClockState_Suspended,
+  eClockState_Completed
+};
+
+enum eClockEdge {
+ eClockEdgePos,
+ eClockEdgeNone,
+ eClockEdgeNeg,
+ eClockLevel=eClockEdgeNone
+};
+
+typedef void (Process::*VoidVoidFunctionPtr)(void);
+typedef void (*VoidVoidStaticFunctionPtr)(Process* p);
+
+typedef VoidVoidFunctionPtr       ClockedProcessFnPtr;
+typedef VoidVoidStaticFunctionPtr ClockedProcessStaticFnPtr;
+
+typedef struct
+{
+  ClockedProcessFnPtr clockedProcessFnPtr;
+  Process*            processInstancePtr;
+  const char*         clockName;
+  short               divideRatio;
+} ClockedProcessInfo;
+
+typedef struct
+{
+  const char*         clockName;
+  eClockState         clockState;
+  short               divideRatio;
+  unsigned int        ticksCompleted;
+} ClockInfo;
+
+class ClockMgr
+{
+public:
+  ClockMgr(const char* name);
+  ~ClockMgr();
+
+  // Add a clock to the clock manager.
+  void ClockAdd(const char* name, unsigned int freq, const char* freq_unit);
+
+  // Start/stop the clock manager, only non-suspended clocks will be started.
+  void ClockMgrStart(const char* clock_name_for_max_ticks, unsigned int max_ticks);
+  void ClockMgrStop(eClockMgrState state);
+
+  // Remove, suspend or resume a clock.
+  eBoolean ClockRemove (const char* name);
+  eBoolean ClockSuspend(const char* name);
+  eBoolean ClockResume (const char* name);
+
+  // Determine how many clock ticks have completed.
+  unsigned int ClockTicksCompleted(const char* name);
+
+  // Add a process that needs to be run every clock tick.
+  void ClockedProcessAddF(Process& p, ClockedProcessFnPtr fn_ptr);
+  void AddProcessToClock(Process* p, ClockedProcessStaticFnPtr fn_ptr);
+  void ClockedProcessAdd(const char* clock_name, Process* p, eClockEdge);
+
+private:
+  const char*     mClockMgrName;
+  unsigned int    mTicksMax;
+  unsigned int    mTicksCompleted;
+  const char*     mClockNameForMaxTicks;
+
+  eClockMgrState  mClockMgrState;
+
+  List<ClockedProcessInfo> mListForPosEdgeClock;
+  List<ClockedProcessInfo> mListForLevelClock;
+  List<ClockedProcessInfo> mListForNegEdgeClock;
+
+  List<ClockInfo> mListOfClocks;
+};
+
+// End
+@

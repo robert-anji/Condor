@@ -1,0 +1,272 @@
+head	1.7;
+access;
+symbols
+	C1_80:1.1
+	C1_70:1.1;
+locks
+	robert:1.7; strict;
+comment	@ * @;
+
+
+1.7
+date	2011.12.04.05.07.19;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.04.22.21.01.04;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.01.08.19.44.46;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.21.23.43.03;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.00.10.54;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@Simple class to represent a Process.
+@
+
+
+1.7
+log
+@Added constructor that passes in a function pointer. When used, this function
+will be automatically called for each ProcessExecute() invoked by the Scheduler.
+@
+text
+@// $RCSfile: Process.h,v $
+// $Revision: 1.6 $
+
+#ifndef ProcessClass
+#define ProcessClass
+
+#include <assert.h>
+
+#include "List.h"
+#include "Interface.h"
+#include "ProcessExecuteReason.h"
+#include "SimulatorDefines.h"
+#include "Simulator.h"
+#include "String.h"
+
+enum eProcessState {
+  eProcessState_NotYetStarted,
+  eProcessState_Running,
+  eProcessState_Suspended,
+  eProcessState_Stopped,
+  eProcessState_Completed
+};
+
+enum eProcessType {
+  eProcessType_Clock,
+  eProcessType_Software,
+  eProcessType_Timer,
+  eProcessType_Synchronous,
+  eProcessType_Asynchronous,
+  eProcessType_Invalid
+};
+
+typedef void (*ProcessExecFunctionPtr)(ProcessExecuteReason &proc_exec_reason, Process* proc);
+typedef        ProcessExecFunctionPtr  ProcessExecFnPtr;
+
+class Clock;
+class Module;
+
+class Process
+{
+  friend class Module;
+  friend class Scheduler;
+  friend class Vcd;
+
+public:
+  Process(const char* name, Module* parent_module);
+  Process(const char* name, Module* parent_module, ProcessExecFnPtr fn_ptr);
+  Process(const char* name, Module* parent_module, Interface* intf);
+  //
+  virtual ~Process();
+
+  bool ProcessIsSensitiveTo(const char* signal_name, eSignalEdge edge);
+
+  Interface* InterfaceGet() { return mpInterface; }
+  bool       InterfaceSet(Interface* intf); // only one invocation allowed
+
+  // Query functions.
+  const char* Name()            const { return (const char*)mProcessName; }
+  Module*     GetOwningModule() const { return mpModule;                  }
+  //
+  virtual bool          ProcessStateModify(eProcessState state);
+  virtual eProcessState ProcessStateGet() { return mProcessState; }
+  virtual eProcessType  ProcessType() const;
+
+protected:
+  String          mProcessName;
+  Interface*      mpInterface;
+  Module*         mpModule;
+  eProcessState   mProcessState;
+  //
+  ProcessExecFnPtr mpProcessExecFnPtr;
+  //
+  List<SensitiveEdgeInfo> mSensitiveEdgeList;
+
+  // Derived class should implement the Execute() function.
+  virtual void ProcessExecute(ProcessExecuteReason& exec_reason);
+};
+
+#endif
+
+// End
+@
+
+
+1.6
+log
+@1. Renamed ModuleGet() with GetOwningModule().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d33 3
+d46 3
+a48 2
+  Process(const char* name, Module* module);
+  Process(const char* name, Module* module, Interface* intf);
+d71 2
+@
+
+
+1.5
+log
+@1. Remove uneeded constructors.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d54 2
+a55 2
+  const char* Name()      const { return (const char*)mProcessName; }
+  Module*     ModuleGet() const { return mpModule;                  }
+@
+
+
+1.4
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a44 2
+  Process(const char* name, Module* module, Interface* intf, eSignalEdge edge);
+  Process(const char* name, Module* module, InterfaceDescription* intf_desc, eSignalEdge edge);
+@
+
+
+1.3
+log
+@1. Expanded eProcessState with: eProcessState_Stopped, eProcessState_Completed.
+2. Changed arg position of owning module in constructor.
+3. Added constructor that takes in InterfaceDescription instead of an interface.
+4. Replaced Execute(ok, intf) with ProcessExecute(ExecuteReason).
+5. Added ProcessStateGet() and ProcessStateModify().
+6. Added InterfaceSet().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+a8 3
+#include "DefinesAndEnum.h"
+
+#include "String.h"
+d12 1
+d14 1
+@
+
+
+1.2
+log
+@1. Completed the interface for this class (was only an empty shell).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 2
+d11 1
+a11 1
+#include "MyString.h"
+d13 3
+d19 4
+a22 2
+  eProcessState_Active,
+  eProcessState_Suspend
+d34 1
+a34 1
+class Interface;
+d39 1
+a39 1
+public:
+d43 1
+d45 7
+a51 2
+  Process(const char* name, Interface* intf, Module* module);
+  ~Process();
+d54 1
+d60 3
+a62 1
+  virtual eProcessType ProcessType() const;
+d69 2
+d73 1
+a73 4
+  virtual void Execute(bool& all_ok, Interface* intf=0);
+  //
+  bool  ProcessStateModify(eProcessState state);
+  bool  InterfaceSet(Interface* intf); // called by Scheduler
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 4
+// $RCSfile$
+// $Revision$
+
+#include <stdio.h>
+d7 23
+d33 5
+a37 1
+  Process();
+d40 19
+a58 2
+  void ClockedProcess() { printf("ROB, it works!\n"); }
+private:
+@

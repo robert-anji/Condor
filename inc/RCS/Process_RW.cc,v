@@ -1,0 +1,255 @@
+head	1.3;
+access;
+symbols;
+locks
+	robert:1.3; strict;
+comment	@// @;
+
+
+1.3
+date	2011.12.04.01.47.43;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.21.23.31.34;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.38.40;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@Moved Process_RW_StateNV here from Enum.cc .
+@
+text
+@// $RCSfile: Process_RW.cc,v $
+// $Revision: 1.2 $
+
+#include <assert.h>
+#include <stdio.h>
+
+#include "Process_RW.h"
+//
+#include "Enum.h"
+#include "Global.h"
+#include "Interfaces.h"
+#include "Timer.h"
+
+extern int gDbg;
+extern SimulationTime gSimTime;
+M_ExternConstructDestructCountInt;
+
+NameVal Process_RW_StateNV[] =
+{
+  Process_RW::eRW_WaitForTran, "RW_WaitForTran",
+  Process_RW::eRW_Delay,       "RW_Delay",
+  Process_RW::eRW_Addr,        "RW_Addr",
+  Process_RW::eRW_WaitForReq,  "RW_WaitForReq",
+  Process_RW::eRW_WaitForAck,  "RW_WaitForAck",
+  Process_RW::eRW_AckDone,     "RW_AckDone",
+};
+
+Process_RW::Process_RW(const char* name, Module* parent_module, eRW_MasterOrSlave type) :
+  Process           (name, parent_module),
+  mRW_MasterOrSlave (type),
+  mExecuteState     ((type==eRW_Master) ? eRW_WaitForTran : eRW_WaitForReq),
+  mTimer            (0),
+  mBit32            (31, 0)
+{
+  mTimer = new Timer("RW_Timer", parent_module);
+
+  M_UpdConstructCount(eType_Process_RW);
+}
+
+Process_RW::~Process_RW()
+{
+  // mTimer is deleted in 'parent_module'.
+
+  M_UpdDestructCount(eType_Process_RW);
+}
+
+void Process_RW::ProcessExecute(ProcessExecuteReason& exec_reason)
+{
+  unsigned next_state;
+
+  Interface& intf = *mpInterface;
+
+  if (mRW_MasterOrSlave == eRW_Master) {
+  //if (gDbg) printf("[%u] Dbg: %s state=%s\n",
+  // gSimTime, intf.Name(), Enum2Str(Process_RW_StateNV, mExecuteState));
+
+    switch (mExecuteState) {
+    case eRW_WaitForTran:
+      intf[eRWIntf_Req ] = 0;
+      intf[eRWIntf_Addr] = 0;
+      intf[eRWIntf_Data] = 0;
+
+      next_state = eRW_Delay;
+      break;
+    case eRW_Delay:
+      printf("[%u] In Master:RW_Delay", gSimTime), M_FL;
+      mTimer->TimerStartAndBlockProcess(50, eTimeScale_ns, (Process*)this);
+      next_state = eRW_Addr;
+      break;
+    case eRW_Addr:
+      printf("[%u] In Master:RW_Addr", gSimTime), M_FL;
+      intf[eRWIntf_Req ] = TRUE;
+      intf[eRWIntf_Addr] = 100;
+      intf[eRWIntf_Data] = 255;
+
+      next_state = eRW_WaitForAck;
+      break;
+    case eRW_WaitForAck:
+      if (intf[eRWIntf_Ack] == 1) {
+        intf[eRWIntf_Req ] = 0;
+
+        next_state = eRW_WaitForTran;
+      }
+      else {
+        intf[eRWIntf_Req ] = 0;
+
+        next_state = mExecuteState; // ie, no change
+      }
+
+      break;
+    }
+  }
+  else {
+    // eRW_Slave:
+    if (gDbg) printf("[%u] Dbg: %s state =%s", gSimTime, intf.Name(), Enum2Str(Process_RW_StateNV, mExecuteState)), M_FL;
+
+    switch (mExecuteState) {
+    case eRW_WaitForReq:
+      if (intf[eRWIntf_Req] == 1) {
+        printf("Addr:Data = ");
+        mBit32 = intf[eRWIntf_Addr]; mBit32.Print("%s");
+        printf(":");
+        mBit32 = intf[eRWIntf_Data]; mBit32.Print("%s");
+        printf("\nGot the Request!\n");
+
+        intf[eRWIntf_Ack] = 1;
+
+        next_state = eRW_AckDone;
+      }
+      else
+        next_state = eRW_WaitForReq;
+
+      break;
+    case eRW_AckDone:
+      intf[eRWIntf_Ack] = 0;
+
+      next_state = eRW_WaitForReq;
+    }
+  }
+
+  exec_reason.mExecutedOk = TRUE;
+
+  mExecuteState = next_state;
+}
+
+// End
+@
+
+
+1.2
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Now access interface signals by enum position instead of by char*.
+3. Added state eRW_Delay to the state-machine which uses a Timer.
+4. Changed position of parent_module arg in ProcessExecute().
+5. Replaced Execute(ok, intf) with ProcessExecute(ExecuteReason).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d18 10
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d7 2
+d10 1
+a10 1
+#include "Process_RW.h"
+d12 1
+d16 1
+d18 1
+a18 1
+Process_RW::Process_RW(const char* name, eRW_MasterOrSlave type, Module* parent_module) :
+d21 3
+a23 1
+  mExecuteState     ((type==eRW_Master) ? eRW_WaitForTran : eRW_WaitForReq)
+d25 3
+d32 3
+d37 1
+a37 1
+void Process_RW::Execute(bool& all_ok, Interface* intf_from_scheduler)
+a39 2
+  Bit      bit1(0,0);
+  Bit      bit32(31, 0);
+d41 1
+a41 3
+  assert(intf_from_scheduler);
+
+  Interface& intf = *intf_from_scheduler;
+d44 2
+a45 2
+    if (gDbg) printf("[%u] Dbg: %s state=%s\n",
+     gSimTime, intf.Name(), Enum2Str(Process_RW_StateNV, mExecuteState));
+d49 3
+a51 3
+      intf[cRWIntf_Req ] = 0;
+      intf[cRWIntf_Addr] = 0;
+      intf[cRWIntf_Data] = 0;
+d53 5
+d61 4
+a64 3
+      intf[cRWIntf_Req ] = TRUE;
+      intf[cRWIntf_Addr] = 100;
+      intf[cRWIntf_Data] = 255;
+d69 2
+a70 4
+      bit1 = 1;
+
+      if (intf[cRWIntf_Ack] == 1) {
+        intf[cRWIntf_Req ] = 0;
+d75 1
+a75 1
+        intf[cRWIntf_Req ] = (bit1  = 0);
+d84 2
+a85 1
+    if (gDbg) printf("[%u] Dbg: %s state =%s\n", gSimTime, intf.Name(), Enum2Str(Process_RW_StateNV, mExecuteState));
+d89 1
+a89 2
+      bit1 = 1;
+      if (intf[cRWIntf_Req] == bit1) {
+d91 1
+a91 1
+        bit32 = intf[cRWIntf_Addr]; bit32.Print();
+d93 1
+a93 1
+        bit32 = intf[cRWIntf_Data]; bit32.Print();
+d96 1
+a96 1
+        intf[cRWIntf_Ack] = (bit1 = 1);
+d105 1
+a105 1
+      intf[cRWIntf_Ack] = (bit1 = 0);
+d111 1
+a111 1
+  all_ok = TRUE;
+@
