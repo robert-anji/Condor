@@ -1,0 +1,9 @@
+Clock implementation:
+
+- Would be nice to just have a simple counter to represent the clock edges
+
+- That would be straight forward if there was only one clock
+
+- Multiple clocks is also straightforward if each clock is an integer multiple of the fastest clock
+
+- Problem is that the time period may not be an integer value, example 300MHz is 3.33ns, solution: use float?
