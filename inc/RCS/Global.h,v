@@ -1,0 +1,470 @@
+head	1.9;
+access
+	Roberto;
+symbols
+	C1_80:1.2
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.9; strict;
+comment	@ * @;
+
+
+1.9
+date	2011.12.20.17.24.39;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.12.03.17.56.56;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.06.26.15.47.08;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.05.25.13.21.29;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.14.18.18.45;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.16.14.07.39;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.9
+log
+@Added type eType_PRNG and eType_Short.
+@
+text
+@// $RCSfile: Global.h,v $
+// $Revision: 1.8 $
+
+#ifndef GLOBAL
+#define GLOBAL
+
+#include <limits.h>
+
+#define TRUE  1
+#define FALSE 0
+
+#ifndef ushort
+#define ushort unsigned short
+#endif
+
+#define M_FL printf("\t[%s:%d]\n", __FILE__, __LINE__)
+
+#define M_ExternConstructDestructCountInt extern int gConstructCount[]; \
+                                          extern int gDestructCount[];
+
+#define M_UpdConstructCount(arg)         gConstructCount[arg] += 1;
+#define M_UpdDestructCount(arg)          gDestructCount [arg] += 1;
+#define M_UpdConstructCountN(arg, count) gConstructCount[arg] += count;
+#define M_UpdDestructCountN(arg, count)  gDestructCount [arg] += count;
+
+#define M_ConstructEnable 0
+
+#define M_Constructed(arg)         if (M_ConstructEnable) \
+                                     printf("%s constructed in %s %d\n", #arg, __FILE__, __LINE__)
+#define M_ConstructedN(arg, count) if (M_ConstructEnable) \
+                                     printf("%s %d constructed in %s %d\n", #arg, count, __FILE__, __LINE__)
+
+#define MacroIsExactMultiple(A, B) !(A % B)
+#define MacroAssert1(A)             { assert(A); }
+#define MacroAssert2(A, B)          { assert(A); assert(B); }
+#define MacroAssert3(A, B, C)       { MacroAssert2(A, B); assert(C); }
+#define MacroAssert4(A, B, C, D)    { MacroAssert2(A, B) MacroAssert2(C,D) }
+#define MacroAssert5(A, B, C, D, E) { MacroAssert2(A, B) MacroAssert3(C,D, E) }
+
+enum eCompare { eCompareLess = -1, eCompareEqual, eCompareGreater, eCompareNotEqual };
+enum          { NOT_OK,   OK   };
+enum          { DIFFER,   SAME }; 
+enum          { OFF,      ON   };
+enum          { NOT_DONE, DONE };
+enum          { eEnumInvalid=SHRT_MAX };
+
+enum eSearchDirection { eForward, eBackward };
+
+// Also update Enum.cc when adding enums.
+enum eTypes   { eType_Aggregate,                    //  0
+                eType_Attribute,                    //  1
+                eType_Bit,                          //  2
+                eType_Bool,                         //  3
+                eType_Bucket,                       //  4
+                eType_BucketList,                   //  5
+                eType_Char,                         //  6
+                eType_Clock,                        //  7
+                eType_Condition,                    //  8
+                eType_DBTransaction,                //  9
+                eType_DBTransactionRec,             // 10
+                eType_DBTransactionRecValue,        // 11
+                eType_Database,                     // 12
+                eType_DecodeEncode8b10b,            // 13
+                eType_Event,                        // 14
+                eType_EventFromTrigger,             // 15
+                eType_Interface,                    // 16
+                eType_Link,                         // 17
+                eType_List,                         // 18
+                eType_ListIterator,                 // 19
+                eType_MailboxBase,                  // 20
+                eType_Mailbox,                      // 21
+                eType_Module,                       // 22
+                eType_ModuleTop,                    // 23
+                eType_Module_PhyUsbPcie,            // 24
+                eType_Mutex,                        // 25
+                eType_PRNG,                         // 26
+                eType_Process,                      // 27
+                eType_ProcessAndEdgeInfo,           // 28
+                eType_ProcessExecuteReason,         // 29
+                eType_Process_PipeSerial,           // 30
+                eType_Process_RW,                   // 31
+                eType_Query,                        // 32
+                eType_Record,                       // 33
+                eType_Scheduler,                    // 34
+                eType_Semaphore,                    // 35
+                eType_SemaphoreInfo,                // 36
+                eType_SensitiveEdgeInfo,            // 37
+                eType_Short,                        // 38
+                eType_Signal,                       // 39
+                eType_Simulator,                    // 40
+                eType_Stack,                        // 41
+                eType_String,                       // 42
+                eType_Table,                        // 43
+                eType_TableRecord,                  // 44
+                eType_Timer,                        // 45
+                eType_Trigger,                      // 46
+                eType_Unsigned,                     // 47
+                eType_Value,                        // 48
+                eType_Vcd,                          // 49
+                eType_View,                         // 50
+                eType_ViewIterator,                 // 51
+                eType_Max                           // 52
+              };
+
+#define MAX_DATA_BYTES           2048
+#define MAX_FILE_LINE_LEN        256
+#define MAX_FILENAME_LEN         512
+
+#define MAX_LEN_FILELINE         256
+#define MAX_LEN_FILENAME         512
+#define MAX_FILENAME_LENGTH     1024
+
+#define cUnsignedMax             UINT_MAX
+
+#define CHECK_OBJS_DELETED \
+bool check_objects_deleted(bool print, FILE* fp) \
+{ \
+  bool all_deleted_ok = TRUE; \
+ \
+  /* Memory allocation/deallocation check.*/ \
+  /* Print out the cleanly deleted items. */ \
+  for (int i=0, j=0; i<eType_Max; i++) { \
+    if (gConstructCount[i] == gDestructCount[i] && gConstructCount[i] != 0) { \
+      if (print) if (j==0) fprintf(fp, "Clean:\n"); \
+      if (print) \
+        fprintf(fp, "Eq:%2d  Type:%25s Constructed/Destructed=%d/%d\n", j++, Enum2Str(TypesNV, i), gConstructCount[i], gDestructCount[i]); \
+    } \
+  } \
+ \
+  /* Print out the not cleanly deleted items. */ \
+  for (int i=0, j=0; i<eType_Max; i++) { \
+    if (gConstructCount[i] != gDestructCount[i]) { \
+      if (print) { \
+        if (j == 0) fprintf(fp, "Not clean:\n"); \
+        fprintf(fp, "Neq:%2d Type:%25s Constructed/Destructed=%d/%d\n", j++, Enum2Str(TypesNV, i), gConstructCount[i], gDestructCount[i]); \
+      } \
+      all_deleted_ok = FALSE; \
+    } \
+  } \
+ \
+  return all_deleted_ok; \
+}
+
+// Definitions to help convert Binary to Hex representation.
+#define b_0 0x0
+#define b_1 0x1
+
+#define b_00 0x0
+#define b_01 0x1
+#define b_10 0x2
+#define b_11 0x3
+
+#define b_000 0x0
+#define b_001 0x1
+#define b_010 0x2
+#define b_011 0x3
+#define b_100 0x4
+#define b_101 0x5
+#define b_110 0x6
+#define b_111 0x7
+
+#define b_0000 0x0
+#define b_0001 0x1
+#define b_0010 0x2
+#define b_0011 0x3
+#define b_0100 0x4
+#define b_0101 0x5
+#define b_0110 0x6
+#define b_0111 0x7
+#define b_1000 0x8
+#define b_1001 0x9
+#define b_1010 0xa
+#define b_1011 0xb
+#define b_1100 0xc
+#define b_1101 0xd
+#define b_1110 0xe
+#define b_1111 0xf
+
+#endif
+
+// End
+@
+
+
+1.8
+log
+@1. Added entries to enum eTypes.
+2. Added Macro for check_objects_deleted().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d76 3
+a78 3
+                eType_Process,                      // 26
+                eType_ProcessAndEdgeInfo,           // 27
+                eType_ProcessBlockedOnSemaphoreInfo,// 28
+d86 17
+a102 16
+                eType_SensitiveEdgeInfo,            // 36
+                eType_Short,                        // 37
+                eType_Signal,                       // 38
+                eType_Simulator,                    // 39
+                eType_Stack,                        // 40
+                eType_String,                       // 41
+                eType_Table,                        // 42
+                eType_TableRecord,                  // 43
+                eType_Timer,                        // 44
+                eType_Trigger,                      // 45
+                eType_Unsigned,                     // 46
+                eType_Value,                        // 47
+                eType_Vcd,                          // 48
+                eType_View,                         // 49
+                eType_ViewIterator,                 // 50
+                eType_Max                           // 51
+@
+
+
+1.7
+log
+@Added enum for type Stack.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d70 32
+a101 31
+                eType_Mailbox,                      // 20
+                eType_Module,                       // 21
+                eType_ModuleTop,                    // 22
+                eType_Module_PhyUsbPcie,            // 23
+                eType_Mutex,                        // 24
+                eType_Process,                      // 25
+                eType_ProcessAndEdgeInfo,           // 26
+                eType_ProcessExecuteReason,         // 27
+                eType_Process_PipeSerial,           // 28
+                eType_Process_RW,                   // 29
+                eType_Query,                        // 30
+                eType_ProcessBlockedOnSemaphoreInfo,// 31
+                eType_Record,                       // 32
+                eType_Scheduler,                    // 33
+                eType_Semaphore,                    // 34
+                eType_SensitiveEdgeInfo,            // 35
+                eType_Short,                        // 36
+                eType_Signal,                       // 37
+                eType_Simulator,                    // 38
+                eType_Stack,                        // 39
+                eType_String,                       // 40
+                eType_Table,                        // 41
+                eType_TableRecord,                  // 42
+                eType_Timer,                        // 43
+                eType_Trigger,                      // 44
+                eType_Unsigned,                     // 45
+                eType_Value,                        // 46
+                eType_Vcd,                          // 47
+                eType_View,                         // 48
+                eType_ViewIterator,                 // 49
+                eType_Max                           // 50
+d114 29
+@
+
+
+1.6
+log
+@Added eType_EventFromTrigger for new class: EventFromTrigger.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d89 12
+a100 11
+                eType_String,                       // 39
+                eType_Table,                        // 40
+                eType_TableRecord,                  // 41
+                eType_Timer,                        // 42
+                eType_Trigger,                      // 43
+                eType_Unsigned,                     // 44
+                eType_Value,                        // 45
+                eType_Vcd,                          // 46
+                eType_View,                         // 47
+                eType_ViewIterator,                 // 48
+                eType_Max                           // 49
+@
+
+
+1.5
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d65 35
+a99 34
+                eType_Interface,                    // 15
+                eType_Link,                         // 16
+                eType_List,                         // 17
+                eType_ListIterator,                 // 18
+                eType_Mailbox,                      // 19
+                eType_Module,                       // 20
+                eType_ModuleTop,                    // 21
+                eType_Module_PhyUsbPcie,            // 22
+                eType_Mutex,                        // 23
+                eType_Process,                      // 24
+                eType_ProcessAndEdgeInfo,           // 25
+                eType_ProcessExecuteReason,         // 26
+                eType_Process_PipeSerial,           // 27
+                eType_Process_RW,                   // 28
+                eType_Query,                        // 29
+                eType_ProcessBlockedOnSemaphoreInfo,// 30
+                eType_Record,                       // 31
+                eType_Scheduler,                    // 32
+                eType_Semaphore,                    // 33
+                eType_SensitiveEdgeInfo,            // 34
+                eType_Short,                        // 35
+                eType_Signal,                       // 36
+                eType_Simulator,                    // 37
+                eType_String,                       // 38
+                eType_Table,                        // 39
+                eType_TableRecord,                  // 40
+                eType_Timer,                        // 41
+                eType_Trigger,                      // 42
+                eType_Unsigned,                     // 43
+                eType_Value,                        // 44
+                eType_Vcd,                          // 45
+                eType_View,                         // 46
+                eType_ViewIterator,                 // 47
+                eType_Max                           // 48
+@
+
+
+1.4
+log
+@1. Added macro M_FL to print file name and line number.
+2. Added macros to track constructor & destructor calls (catch memory leaks).
+3. Defined enum eTypes for all C++ types (classes, structs) being defined.
+4. Added macros to help convert binary to hex (ex: #define b_0010 0x2).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d9 3
+d33 7
+a39 2
+enum eBoolean { FALSE, TRUE };
+enum eSign    { eMinus, ePlus };
+d45 1
+d47 1
+a47 1
+enum          { eEnumInvalid=SHRT_MAX };
+d107 1
+@
+
+
+1.3
+log
+@1. Added cUnsignedMax.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d13 17
+d40 52
+d101 35
+@
+
+
+1.2
+log
+@1. Added '#include "limits.h"
+2. Added eCompareNotEqual
+3. Added eEnumInvalid
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d30 2
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d7 2
+d15 1
+a15 1
+enum eCompare { eCompareLess = -1, eCompareEqual, eCompareGreater };
+d21 2
+@

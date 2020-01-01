@@ -1,0 +1,99 @@
+\section{View Class Reference}
+\label{classView}\index{View@{View}}
+{\tt \#include $<$View.h$>$}
+
+\subsection*{Public Member Functions}
+\begin{CompactItemize}
+\item 
+bool {\bf View\-Record\-Unselect} (Record $\ast$rec)
+\begin{CompactList}\small\item\em Constructor/Desctructor are private, used only by friend class: Table. Records API (iterate, search, retrieve, delete records etc.):. \item\end{CompactList}\item 
+unsigned {\bf Table\-Records\-Select} (unsigned start, unsigned end)
+\begin{CompactList}\small\item\em Select records based on a start/end index. \item\end{CompactList}\item 
+unsigned {\bf Table\-Records\-Select} (Query $\ast$q)\label{classView_a2}
+
+\item 
+unsigned {\bf Table\-Records\-Select} (Regex $\ast$r)\label{classView_a3}
+
+\item 
+bool {\bf Table\-Records\-Import\-Selected} ()\label{classView_a4}
+
+\item 
+bool {\bf Table\-Records\-Import\-From\-Trigger} (Trigger $\ast$trigger)\label{classView_a5}
+
+\item 
+Record $\ast$ {\bf Record\-New} ()\label{classView_a6}
+
+\item 
+Record $\ast$ {\bf Record\-Current\-Get} (View\-Iterator $\ast$iter=0)\label{classView_a7}
+
+\item 
+Record $\ast$ {\bf Record\-Search\-First} (Query $\ast$q=0, View\-Iterator $\ast$iter=0)\label{classView_a8}
+
+\item 
+Trigger $\ast$ {\bf Trigger\-New} (e\-Trigger\-Type type, void $\ast$trg\_\-owner\_\-obj, Query $\ast$q=0, Record $\ast$rec=0)\label{classView_a9}
+
+\item 
+Trigger $\ast$ {\bf Trigger\-New} (e\-Trigger\-Type type, void $\ast$trg\_\-owner\_\-obj, Aggregate $\ast$aggr, Query $\ast$q)\label{classView_a10}
+
+\item 
+bool {\bf Trigger\-Activate} (Trigger $\ast$trg, Trigger\-Action\-Fn\-Ptr fn)\label{classView_a11}
+
+\item 
+bool {\bf Trigger\-Activate} (Trigger $\ast$trg, Process $\ast$process)\label{classView_a12}
+
+\item 
+bool {\bf Trigger\-Suspend} (Trigger $\ast$trg)\label{classView_a13}
+
+\item 
+bool {\bf Trigger\-Activate} (Trigger $\ast$trg)\label{classView_a14}
+
+\item 
+bool {\bf Trigger\-Delete} (Trigger $\ast$trg)\label{classView_a15}
+
+\item 
+bool {\bf Trigger\-Matched} (Trigger $\ast$trg)\label{classView_a16}
+
+\end{CompactItemize}
+\subsection*{Public Attributes}
+\begin{CompactItemize}
+\item 
+List$<$ Record $>$ $\ast$ {\bf mp\-Record\-Ptr\-List}\label{classView_o0}
+
+\end{CompactItemize}
+\subsection*{Friends}
+\begin{CompactItemize}
+\item 
+class {\bf Database}\label{classView_n0}
+
+\item 
+class {\bf Table}\label{classView_n1}
+
+\end{CompactItemize}
+
+
+\subsection{Detailed Description}
+Some description 
+
+
+
+\subsection{Member Function Documentation}
+\index{View@{View}!TableRecordsSelect@{TableRecordsSelect}}
+\index{TableRecordsSelect@{TableRecordsSelect}!View@{View}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}unsigned View::Table\-Records\-Select (unsigned {\em start}, unsigned {\em end})}\label{classView_a1}
+
+
+Select records based on a start/end index. 
+
+This function will select a range of record from the parent table and import them into the view \index{View@{View}!ViewRecordUnselect@{ViewRecordUnselect}}
+\index{ViewRecordUnselect@{ViewRecordUnselect}!View@{View}}
+\subsubsection{\setlength{\rightskip}{0pt plus 5cm}bool View::View\-Record\-Unselect (Record $\ast$ {\em rec})}\label{classView_a0}
+
+
+Constructor/Desctructor are private, used only by friend class: Table. Records API (iterate, search, retrieve, delete records etc.):. 
+
+select records (also allows this to be accomplished iteratively) import records (the records that were selected) import records (dynamically, using triggers) own the records (set ownership/permission) release records (decrements the reference count) delete records (delete will occur when reference count becomes 0) 
+
+The documentation for this class was generated from the following files:\begin{CompactItemize}
+\item 
+View.h\item 
+View.cc\end{CompactItemize}

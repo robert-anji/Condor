@@ -1,0 +1,47 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.01.30.07.42.12;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: TriggerEvent.h,v $
+// $Revision: 1.1 $
+
+#ifndef TriggerEventClass
+#define TriggerEventClass
+
+#include "Event.h"
+#include "Trigger.h"
+
+class TriggerEvent : public Trigger, public Event
+{
+public:
+  TriggerEvent(const char* name, eTriggerType type, void* trg_owner_obj, View* v, Query* q=0, Record* rec=0);
+ ~TriggerEvent() {}
+
+protected:
+  virtual void TriggerActionExecute();
+
+private:
+};
+
+#endif
+
+// End
+@

@@ -1,0 +1,469 @@
+head	1.7;
+access;
+symbols;
+locks
+	robert:1.7; strict;
+comment	@ * @;
+
+
+1.7
+date	2011.12.20.17.26.28;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.12.07.16.51.38;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.12.07.06.48.43;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.01.30.07.00.53;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.22.19.04.21;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.46.56;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@1. Renamed Semaphore_Put() as ScheduleSemaphoreGet().
+2. Added a Sentinel record and query to ease record insertion for processes.
+3. Made the Flush*() functions private from public.
+@
+text
+@// $RCSfile: Scheduler.h,v $
+// $Revision: 1.6 $
+
+#ifndef SchedulerClass
+#define SchedulerClass
+
+#include "DBTables.h"
+#include "Event.h"
+#include "List.h"
+#include "MailboxBase.h"
+#include "Module.h"
+#include "Process.h"
+#include "Query.h"
+#include "SimulatorDefines.h"
+#include "Simulator.h"
+#include "Value.h"
+
+// Forward declarations.
+class Attribute;
+class Clock;
+class Database;
+class Process;
+class Record;
+class Semaphore;
+class Table;
+class Timer;
+class Trigger;
+class View;
+class ViewIterator;
+
+enum eSchedulerState {
+  eSchedulerState_NotStarted,
+  eSchedulerState_Started,
+  eSchedulerState_SimTimeMaxReached,
+  eSchedulerState_Finished
+};
+
+enum eSchedulerRegion {
+  eSchedulerRegion_0,
+  eSchedulerRegion_1,
+  eSchedulerRegion_2,
+  eSchedulerRegion_3,
+  eSchedulerRegion_4,
+  eSchedulerRegion_5,
+  eSchedulerRegion_6,
+  eSchedulerRegion_7,
+  eSchedulerRegion_8,
+  eSchedulerRegion_9,
+  //      Useful eSchedulerRegion aliases.
+  eSchedulerRegion_First   = eSchedulerRegion_0,
+  eSchedulerRegion_Last    = eSchedulerRegion_9,
+  eSchedulerRegion_Current = eSchedulerRegion_Last+1,
+  eSchedulerRegion_Invalid = eSchedulerRegion_Last+2
+};
+
+struct sProcessAndEdge {
+  sProcessAndEdge() { M_UpdConstructCount(eType_ProcessAndEdgeInfo); }
+ ~sProcessAndEdge() { M_UpdDestructCount (eType_ProcessAndEdgeInfo); }
+
+  Process*    mpProcess;
+  eSignalEdge mEdge;
+};
+typedef sProcessAndEdge ProcessAndEdgeInfo;
+
+class Scheduler
+{
+public:
+  Scheduler();
+ ~Scheduler();
+
+  // The Start() function will begin invoking all the registered Processes whose
+  // clocks are active. This is the main purpose of the Scheduler.
+  bool Start();
+
+  // Set maximum simulation time (watchdog).
+  void SimulationTimeMax(SimulationTime tm);
+
+  // Schedule all processes created within a module (includes sub-modules).
+  bool ScheduleProcessesForModule(Module* module);
+  bool ScheduleSensitiveProcess(Process* process);
+  bool ScheduleEventNotify(Event* e);
+  bool ScheduleSemaphoreGet(Semaphore* s) { mSemaphoreList.Add(s); }
+
+  bool ProcessAdd    (Process* p);
+  bool ProcessRemove (Process* p);
+
+  // Functionality for processes blocking from Mailboxes.
+  void ProcessBlock    (Process* process);
+  void ProcessUnblock  (Process* process, bool schedule_process=TRUE);
+  //
+  // Mailboxes that Scheduler has to manage.
+  void MailboxAdd(MailboxBase* mbox_base) { if (!mMboxList.Exists(mbox_base))
+                                              mMboxList.Add(mbox_base); }
+
+  // Triggers will be added by the Database class for
+  // the Scheduler to execute at the appropriate time.
+  bool TriggerSchedule(Trigger* trg);
+
+  // Query functions.
+  SimulationTime SimulationTimeGet() { return mSimulationTime; }
+
+  // For debug only:
+  void Print();
+  void p();
+
+private:
+  Table*             mpProcessesTable;
+  View*              mpProcessesView;
+  ViewIterator*      mpProcessesViewIterUnblock; // unblock processes
+  ViewIterator*      mpProcessesViewIterSearch;  // for temporary use
+  ViewIterator*      mpProcessesViewIterSearch1; // for temporary use
+  ViewIterator*      mpProcessesViewIterSearch2; // for temporary use
+  //
+  Table*             mpAsyncProcessesTable;
+  View*              mpAsyncProcessesView;
+
+  SimulationTime     mSimulationTime;
+  SimulationTime     mSimulationTimeMax;
+  eSchedulerState    mSchedulerState;
+  eTimeScale         mTimescale;
+
+  bool               mUseInternalClock;
+  bool               mProcessIsBlocked;
+
+  List<ProcessAndEdgeInfo> mProcessAndEdgeList;
+  List<MailboxBase>        mMboxList;
+  List<Event>              mEventSetList;
+
+  // Scheduler statistics:
+  unsigned           mScheduleEntriesProcessed;
+  bool               mIsFirstSyncProcessExecuted;
+
+  // Store Triggers for execution.
+  List<Trigger>      mTriggerList;
+
+  // Store all synchronization objects created.
+  List<Semaphore>    mSemaphoreList;
+
+  // Share the current scheduled entry (record) between functions.
+  Record*            mpCurrentSchedulerRecord;
+  eSchedulerRegion   mCurrentRegion;
+
+  // Sometimes its useful to have a Sentinel link when re-sorting etc.
+  Record*            mpSentinelRecord;
+
+  // Rather than retrieving attributes from a view each time, keep them ready.
+  // Attribute names for table: Schedule
+  const Attribute* mpAttrSimTime;
+  const Attribute* mpAttrProcName;
+  const Attribute* mpAttrClock;
+  const Attribute* mpAttrClockEdge;
+  const Attribute* mpAttrProcess;
+  const Attribute* mpAttrExecReason;
+  const Attribute* mpAttrInterface;
+  const Attribute* mpAttrRegion;
+  //
+  // Attribute names for table: AsyncProcesses
+  const Attribute* mpAttrAsyncProcess;
+  const Attribute* mpAttrAsyncInterface;
+
+  Query mSentinelQuery;
+      
+  static const short cAsyncProcReadyLoopCountMax = 5000; // catch runaway loop
+
+  // Private enums:
+  enum eScheduleRecord {
+    eScheduleRecord_None,
+    eScheduleRecord_New,
+    eScheduleRecord_Current,
+    eScheduleRecord_FromIter
+  };
+
+  // Private member functions:
+  // -------------------------
+  // Add a process to Scheduler (note: process has max 1 interface & 1 clock).
+  bool ProcessAddAsync(Process* p, Interface* intf);
+  bool ProcessAddSync (Process* p);
+  bool ProcessAddClock(Clock*   clk);
+  bool ProcessAddTimer(Timer*   t);
+  bool ProcessAddSoftware(Process* s);
+  bool ProcessAddCommon(Process* p, Clock* clk, eSignalEdge edge);
+  //
+  void ProcessAddSentinel(); // for convenience we keep a dummy record
+  //
+  eSchedulerRegion RegionGet(Process* process, eSignalEdge clk_edge);
+  eSchedulerRegion RegionGet(eProcessType process_type, eSignalEdge clk_edge);
+  //
+  // Flush (propagate) synchronization objects: Semaphore, Mailboxes and Events.
+  bool FlushSemaphoreGets();
+  bool FlushMailboxPuts();
+  bool FlushEventsSet();
+
+  void ScheduleTheEntry(eScheduleRecord sched_type, SimulationTime sched_sim_tm, eSchedulerRegion reg, ViewIterator* iter_for_relink=0, Record* r=0);
+  void             AdjustTimeScale(eTimeScale timescale);
+
+  // Convenience members (avoid repeated calls to Constructor/Destructor).
+  Value iValSimTime;
+
+  // Convenience members (avoids repeated Constructor/Destructor calls).
+  Query     *impQueryTmGtEq;
+  Query     *impQueryTmGtRgGt;
+  Query      impQueryProcFind;
+  //
+  ProcessExecuteReason  impProcExecReason;
+};
+
+#endif
+
+// End
+@
+
+
+1.6
+log
+@1. Renamed MailboxesFlushPuts() to FlushMailboxPuts().
+2. Added FlushEventsSet().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d82 1
+a93 4
+  // Flush (propagate) synchronization objects: Semaphore, Mailboxes and Events.
+  bool FlushSemaphorePuts();
+  bool FlushMailboxPuts();
+  bool FlushEventsSet();
+a101 3
+  // Add to synchronization lists.
+  void Semaphore_Add(Semaphore* s) { mSemaphoreList.Add(s); }
+
+d143 3
+d160 2
+d183 2
+d187 5
+@
+
+
+1.5
+log
+@1. Adjusted to use MailboxBase class instead of Mailbox class.
+2. Added function MailboxesFlushPuts() to move objects from Put process to a
+   Get process.
+3. Added eExecuteReason attribute to the Processes table.
+4. All created Mailboxes are stored in Scheduler and Mailbox Puts and Gets
+   are resolved at the appropriate time (before running Sync processes).
+5. Renamed mpSyncProcessesTable to mpProcessesTable and same for View as
+   this table currently also stores Software and Timer processes in addition
+   to Sync processes.
+6. Added new region called: eSchedulerRegion_Current.
+7. Needed another iterator for SyncProcesses table.
+8. Renamed ProcessAdd(...) to ProcessAddCommon(...).
+9. Added another member: Query impQueryProcFind.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d8 1
+d69 1
+a69 1
+  ~Scheduler();
+d81 1
+d93 4
+a96 1
+  bool MailboxesFlushPuts();
+d133 1
+d197 2
+@
+
+
+1.4
+log
+@1. Renamed some of the members and enums.
+2. For ScheduleTheEntry() made ScheduleRecord (schedule type) the first arg.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d9 1
+d12 1
+a21 1
+class Query;
+d23 1
+d51 2
+a52 1
+  eSchedulerRegion_Invalid = eSchedulerRegion_Last+1
+d87 5
+d100 3
+d108 2
+a109 2
+  Table*             mpSyncProcessesTable;
+  View*              mpSyncProcessesView;
+d113 1
+d127 1
+d131 1
+d136 3
+d150 1
+a173 1
+  bool ProcessAdd     (Process* p, Clock* clk, eSignalEdge edge);
+d176 1
+d190 1
+@
+
+
+1.3
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d97 2
+a98 2
+  Table*             mpProcessesTable;
+  View*              mpProcessesView;
+d100 2
+a101 1
+  ViewIterator*      mpProcessesViewIterTemp;    // for temporary use
+d143 5
+a147 4
+  enum eSchedulerPosition {
+    eSchedulerPosition_Add,
+    eSchedulerPosition_Relink,
+    eSchedulerPosition_None
+d162 2
+a163 1
+  void             ScheduleTheEntry(SimulationTime sched_sim_tm, eSchedulerRegion reg, Record* r, eSchedulerPosition pos, ViewIterator* iter_for_relink=0);
+@
+
+
+1.2
+log
+@1.  Added ProcessAndEdge structure.
+2.  Removed TimerRemove(), is handled by ProcessRemove().
+3.  Added ScheduleProcessesForModule() and ScheduleSensitiveProcess().
+4.  Removed ScheduleMailboxCommit().
+5.  Removed ViewIterator for current process.
+6.  Added ViewIterator for processes to unblock.
+7.  Converted mSchedulerState from bool to eSchedulerState.
+8.  Added mTimeScale.
+9.  Added ProcessAndEdge list.
+10. Removed mProcessesWaitingOnClockList, mListMailboxCommitPending.
+11. Removed mListSchedulerEntriesBlocked.
+12. Added member for mpAttrProcName.
+13. Added private enums for eSchedulerPosition.
+14. Made ProcessAddXxx private.
+15. Added private AdjustTimeScale().
+16. Added private convenience members to avoid repeated 'new' operations.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a7 1
+#include "DefinesAndEnum.h"
+d11 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: template.txt,v $
+d10 1
+d13 1
+a18 1
+class Mailbox;
+d20 1
+d52 9
+d70 1
+d74 6
+a79 8
+  // Add a process to Scheduler (note: only one interface & clock per process).
+  bool ProcessAddAsync(Process* p, Interface* intf);
+  bool ProcessAddSync (Process* p, /*intf in proc*/ Clock* clk, eClockEdge edge);
+  bool ProcessAddClock(Clock*   clk);
+  bool ProcessAdd     (Process* p, Interface* intf, Clock* clk, eClockEdge edge);
+  bool ProcessAddTimer(Timer*   t);
+  bool ProcessRemove  (Process* p);
+  bool TimerRemove    (Timer*   t);
+a83 1
+  void ScheduleMailboxCommit(Mailbox* mbox) { mListMailboxCommitPending.Add(mbox); }
+d99 2
+a100 2
+  ViewIterator*      mpProcessesViewIterCurr; // always is the current process
+  ViewIterator*      mpProcessesViewIterTemp; // for temporary use
+d107 2
+a108 1
+  bool               mSchedulerState;
+d111 3
+a120 7
+  // Storage for synchronous processes whose clock is not yet running.
+  List<Process>      mProcessesWaitingOnClockList;
+
+  // Mailboxes with blocked processes.
+  List<Record>       mListSchedulerEntriesBlocked;
+  List<Mailbox>      mListMailboxCommitPending;
+
+d128 1
+d141 7
+d149 20
+a168 3
+  eSchedulerRegion RegionGet(Process* process, eClockEdge clk_edge);
+  eSchedulerRegion RegionGet(eProcessType process_type, eClockEdge clk_edge);
+  void             ScheduleTheEntry(SimulationTime sched_sim_tm, eSchedulerRegion reg, Record* r);
+@

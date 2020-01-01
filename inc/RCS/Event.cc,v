@@ -1,0 +1,168 @@
+head	1.4;
+access;
+symbols;
+locks
+	robert:1.4; strict;
+comment	@// @;
+
+
+1.4
+date	2011.12.07.16.49.00;	author robert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.02.22.46.55;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2009.08.02.02.15.15;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.38.40;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Notify() is now called Set().
+2. A process now waits for an event with blocking using Wait(process).
+3. A process can now receive an event without blocking using Notify(process).
+@
+text
+@// $RCSfile: Event.cc,v $
+// $Revision: 1.3 $
+
+#include "Event.h"
+//
+#include "Global.h"
+#include "Scheduler.h"
+
+extern Scheduler* gScheduler;
+M_ExternConstructDestructCountInt;
+
+
+Event::Event(const char* name) :
+  mName(name)
+{
+  M_UpdConstructCount(eType_Event);
+}
+
+Event::~Event()
+{
+  mProcessedWaitingForEventList.DeleteLinkAll();
+
+  M_UpdDestructCount(eType_Event);
+}
+
+bool Event::Set()
+{
+  return gScheduler->ScheduleEventNotify(this);
+}
+
+// Wait() will block the proeess until the event is received.
+void Event::Wait(Process* process)
+{
+  if (! mProcessedWaitingForEventList.Exists(process))
+    mProcessedWaitingForEventList.Add(process);
+
+  // CONT: Figure out how to block/unblock correctly for different reasons,
+  //       example: can we block on both Mailbox & Event or only one at a time?
+  //       Probably first block wins, after that the process is not executed
+  //       and hence cannot block on another reason.
+  gScheduler->ProcessBlock(process);
+}
+
+// Notify() will execute the process when the event is set, until then
+// the process is not blocked from executing for other reasons.
+bool Event::Notify(Process* process)
+{
+  if (! mProcessedWaitingForEventList.Exists(process))
+    return mProcessedWaitingForEventList.Add(process);
+
+  return FALSE;
+}
+
+// End
+@
+
+
+1.3
+log
+@iFixed typo in: M_ExternConstrutDestructCountInt (missing c).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d26 1
+a26 1
+short Event::Notify()
+d28 2
+a29 1
+  short count = 0;
+d31 5
+a35 3
+  for (M_ListIterateAll(mProcessedWaitingForEventList)) {
+    Process* process = mProcessedWaitingForEventList.Get();
+    assert(process);
+d37 5
+a41 8
+    gScheduler->ProcessUnblock(process);
+
+    mProcessedWaitingForEventList.DeleteLinkThenIterationDone();
+
+    count++;
+  }
+
+  return count;
+d44 3
+a46 1
+void Event::Wait(Process* process)
+d48 2
+a49 1
+  mProcessedWaitingForEventList.Add(process);
+d51 1
+a51 1
+  gScheduler->ProcessBlock(process);
+@
+
+
+1.2
+log
+@1. Added memory tracking in constructors and destructors.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d5 1
+a5 1
+
+d10 1
+a10 1
+M_ExternConstrutDestructCountInt;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: Event $
+d6 1
+d10 1
+d16 1
+d22 2
+@

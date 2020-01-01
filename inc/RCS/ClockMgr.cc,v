@@ -1,0 +1,243 @@
+head	1.1;
+access;
+symbols
+	C1_80:1.1
+	C1_70:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2007.06.18.01.48.23;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile$
+// $Revision$
+
+#include <assert.h>
+#include <string.h>
+
+#include "ClockMgr.h"
+
+ClockMgr::ClockMgr(const char* name) :
+  mClockMgrName(name),
+  mTicksMax(0),
+  mTicksCompleted(0),
+//mClockNameForMaxTicks(cCharPtrNull),
+  mClockNameForMaxTicks("\0"),
+  mClockMgrState(eClockMgrState_NotStarted)
+{
+}
+
+ClockMgr::~ClockMgr()
+{
+  // Delete all allocated ClockInfo and ClockedProcessInfo's
+
+  MacroListDeleteAll(mListForPosEdgeClock, ClockedProcessInfo);
+  MacroListDeleteAll(mListForLevelClock,   ClockedProcessInfo);
+  MacroListDeleteAll(mListForNegEdgeClock, ClockedProcessInfo);
+
+  MacroListDeleteAll(mListOfClocks, ClockInfo);
+}
+
+void ClockMgr::ClockMgrStart(const char* clock_name_for_max_ticks, unsigned int max_ticks)
+{
+  mClockMgrState = eClockMgrState_Running;
+
+  mTicksMax             = max_ticks;
+  mClockNameForMaxTicks = clock_name_for_max_ticks;
+
+  // TBD: check clock_name exists.
+
+  eBoolean done = FALSE;
+
+  for (unsigned int u=1; !done; u++) {
+    if (mListForPosEdgeClock.First()) {
+      do {
+        // TBD: Check if clock for process is suspended.
+        ClockedProcessInfo* process_info = mListForPosEdgeClock.Get();
+
+        if (! (mTicksCompleted % process_info->divideRatio))
+        //(*process_info->ClockedProcessFnPtr)();
+          process_info->processInstancePtr->ClockedProcess();
+        
+      } while (mListForPosEdgeClock.Next()
+        &&     mClockMgrState!=eClockMgrState_StopImmediate);
+    }
+
+    if (mListForLevelClock.First()) {
+      do {
+        // TBD: Check if clock for process is suspended.
+        ClockedProcessInfo* process_info = mListForLevelClock.Get();
+
+        if (! (mTicksCompleted % process_info->divideRatio))
+        //(*process_info->ClockedProcessFnPtr)();
+          process_info->processInstancePtr->ClockedProcess();
+        
+      } while (mListForLevelClock.Next()
+        &&     mClockMgrState!=eClockMgrState_StopImmediate);
+    }
+
+    if (mListForNegEdgeClock.First()) {
+      do {
+        // TBD: Check if clock for process is suspended.
+        ClockedProcessInfo* process_info = mListForNegEdgeClock.Get();
+
+        if (! (mTicksCompleted % process_info->divideRatio))
+        //(*process_info->ClockedProcessFnPtr)();
+          process_info->processInstancePtr->ClockedProcess();
+        
+      } while (mListForNegEdgeClock.Next()
+        &&     mClockMgrState!=eClockMgrState_StopImmediate);
+    }
+
+    if (mClockMgrState == eClockMgrState_StopImmediate
+    ||  mClockMgrState == eClockMgrState_StopCurrentTick
+    ||  u == mTicksMax)
+    {
+      done = TRUE;
+    }
+
+    // TBD: update ticks completed for each clock.
+  }
+
+  if (mClockMgrState == eClockMgrState_Running) {
+    // completed normally
+    mClockMgrState = eClockMgrState_Completed;
+  }
+}
+
+void ClockMgr::ClockMgrStop(eClockMgrState state)
+{
+  assert (state==eClockMgrState_StopCurrentTick
+  ||      state==eClockMgrState_StopImmediate);
+
+  mClockMgrState = state;
+}
+
+void ClockMgr::ClockAdd(const char* name, unsigned int freq, const char* freq_unit)
+{
+  ClockInfo* clock_info = new ClockInfo;
+
+  assert (clock_info);
+
+  clock_info->clockName      = name;
+  clock_info->clockState     = eClockState_NotStarted;
+  clock_info->divideRatio    = 1; // TBD: compute correct divideRatio
+  clock_info->ticksCompleted = 0;
+
+  mListOfClocks.Add(clock_info);
+}
+
+eBoolean ClockMgr::ClockRemove(const char* clock_name)
+{
+  for (mListOfClocks.First(); ! mListOfClocks.IsDone(); mListOfClocks.Next())
+  {
+    ClockInfo* clockInfo = mListOfClocks.Get();
+
+    if (strcmp(clockInfo->clockName, clock_name) == 0) {
+      // TBD: unregister any process using this clock (with warning?).
+      // TBD: adjust divideRatio of remaining clocks.
+
+      delete clockInfo;
+      mListOfClocks.DeleteLinkCurrent();
+
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+eBoolean ClockMgr::ClockSuspend(const char* clock_name)
+{
+  if (mListOfClocks.First()) {
+    do {
+      ClockInfo* clockInfo = mListOfClocks.Get();
+
+      if (strcmp(clockInfo->clockName, clock_name) == 0) {
+        clockInfo->clockState = eClockState_Suspended;
+
+        return TRUE;
+      }
+
+    } while (mListOfClocks.Next());
+  }
+
+  return FALSE;
+}
+
+eBoolean ClockMgr::ClockResume(const char* clock_name)
+{
+  if (mListOfClocks.First()) {
+    do {
+      ClockInfo* clockInfo = mListOfClocks.Get();
+
+      if (strcmp(clockInfo->clockName, clock_name) == 0) {
+        assert (clockInfo->clockState == eClockState_Suspended);
+
+        clockInfo->clockState = eClockState_Running;
+
+        return TRUE;
+      }
+
+    } while (mListOfClocks.Next());
+  }
+
+  return FALSE;
+}
+
+unsigned int ClockMgr::ClockTicksCompleted(const char* name)
+{
+  return mTicksCompleted;
+}
+
+void ClockMgr::AddProcessToClock(Process* p, ClockedProcessStaticFnPtr fn_ptr)
+{
+  (*fn_ptr)(p);
+}
+
+void ClockMgr::ClockedProcessAddF(Process& p, ClockedProcessFnPtr fn_ptr)
+{
+  (p.*fn_ptr)();
+}
+
+void ClockMgr::ClockedProcessAdd(const char* clock_name, Process* p, eClockEdge edge)
+{
+  ClockedProcessInfo* process = new ClockedProcessInfo;
+
+  assert(process);
+
+//process->ClockedProcessFnPtr = fn_ptr;
+  process->processInstancePtr  = p;
+  process->clockName           = clock_name; // TBD: check clock_name exists
+  process->divideRatio         = 1;          // TBD get ratio from ClockInfo
+
+  switch (edge) {
+  case eClockEdgePos:
+    mListForPosEdgeClock.Add(process);
+    break;
+  case eClockEdgeNone:
+    mListForLevelClock.Add(process);
+    break;
+  case eClockEdgeNeg:
+    mListForNegEdgeClock.Add(process);
+    break;
+  default:
+    assert(0);
+  }
+}
+
+// End
+@

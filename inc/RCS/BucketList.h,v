@@ -1,0 +1,1565 @@
+head	1.4;
+access
+	Roberto;
+symbols
+	C1_80:1.2
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2010.09.13.22.02.28;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.22.17.15;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Fixed logic in Add(elem, dir).
+3. Added member Size().
+@
+text
+@// $RCSfile: BucketList.h,v $
+// $Revision: 1.3 $
+
+#ifndef BucketListClass
+#define BucketListClass
+
+#include <assert.h>
+#include <stdio.h>
+
+// Template for a bucket list.
+// Classes that want to use this list need to define a copy constructor.
+
+#include "Global.h"
+#include "Database.h"
+
+M_ExternConstructDestructCountInt;
+
+enum ePosition {ePositionFirst, ePositionNext, ePositionCurrent,
+                ePositionLast,  ePositionDone                  };
+
+#define MacroBucketList_BucketIterateAll(bkt_list) \
+  bkt_list.BktSetPosition(ePositionFirst); !bkt_list.BktDone(); bkt_list.BktSetPosition(ePositionNext)
+
+#define MacroBucketList_ListIterateAll(bkt_list) \
+  bkt_list.SetLinkPosition(ePositionFirst); !bkt_list.LinkDone(); bkt_list.SetLinkPosition(ePositionNext)
+
+template<class T>
+class BktLink
+{
+public:
+  BktLink()           : mpLinkNext(0)    {}
+  BktLink(BktLink* link) : mpLinkNext(link) {}
+
+  BktLink* mpLinkNext;
+  T*    mpElem;
+};
+
+template<class T>
+class Bucket
+{
+public:
+  enum eBkt_CopyType { eBkt_CopyShallow, eBkt_CopyDeep };
+
+  Bucket();
+  ~Bucket();
+
+  // Rename to CopyLinksOnly(), CopyLinksAndElems.
+  void CopyShallow  (Bucket<T>& bkt) { return Copy(bkt, eBkt_CopyShallow); }
+  void CopyDeep     (Bucket<T>& bkt) { return Copy(bkt, eBkt_CopyDeep);    }
+
+  void Add     (T *elem, eAddDirection dir=eEast);
+  void Clear();
+  void Detach  ();
+  T*   Get     (ePosition  pos);
+
+  Bucket*      mpBktNext;
+  BktLink<T>*  mpLinkFirst;
+  BktLink<T>*  mpLinkLast;
+  BktLink<T>*  mpLinkCurrent;
+  int          mLinkLength;
+private:
+  void Copy(Bucket<T>& bkt, eBkt_CopyType type);
+};
+
+template<class T>
+Bucket<T>::Bucket() :
+  mpBktNext     (0),
+  mpLinkFirst   (0),
+  mpLinkLast    (0),
+  mLinkLength   (0),
+  mpLinkCurrent (0)
+{
+  M_UpdConstructCount(eType_Bucket);
+}
+
+template<class T>
+Bucket<T>::~Bucket()
+{
+  BktLink<T>* next;
+
+  // Only the links are deleted, elements must be deleted by the Bucket client.
+  while (mpLinkFirst) {
+    next = mpLinkFirst->mpLinkNext;
+
+    delete mpLinkFirst; mpLinkFirst = 0;
+
+    mpLinkFirst = next;
+  }
+
+  M_UpdDestructCount(eType_Bucket);
+}
+
+template<class T>
+void Bucket<T>::Add(T *elem, eAddDirection dir)
+{
+  BktLink<T> *link = new BktLink<T>;
+
+  link->mpElem     = elem;
+  link->mpLinkNext = 0;
+  
+  if (dir == eEast) {
+    if (mpLinkFirst) {
+      mpLinkLast->mpLinkNext = link;
+      mpLinkLast             = link;
+    }
+    else {
+      mpLinkCurrent = mpLinkFirst = mpLinkLast = link;
+    }
+  }
+  else {
+    if (!mpLinkFirst) mpLinkCurrent = link;
+
+    link->mpLinkNext = mpLinkFirst;
+    mpLinkFirst      = link;
+
+    if (!mpLinkLast) mpLinkLast = link;
+  }
+}
+
+template<class T>
+T* Bucket<T>::Get(ePosition pos)
+{
+  switch (pos) {
+    case ePositionFirst:
+      mpLinkCurrent = mpLinkFirst;
+
+      if (mpLinkFirst) return mpLinkFirst->mpElem;
+      else             return 0;
+
+    case ePositionCurrent:
+      return mpLinkCurrent->mpElem;
+
+    case ePositionLast:
+      mpLinkCurrent = mpLinkLast;
+
+      if (mpLinkLast) return mpLinkLast->mpElem;
+      else            return 0;
+
+    case ePositionNext:
+      if (mpLinkCurrent) {
+        mpLinkCurrent = mpLinkCurrent->mpLinkNext;
+
+        if (mpLinkCurrent) return mpLinkCurrent->mpElem;
+      }
+      return 0;
+
+    case ePositionDone:
+      return 0;
+
+    default: fprintf(stdout, "Bucket Error: Cannot get for pos %d\n", pos);
+  }
+}
+
+template<class T>
+void Bucket<T>::Copy(Bucket<T>& bkt, eBkt_CopyType copy_type)
+{
+  Clear();
+
+  T* elem = bkt.Get(ePositionFirst);
+
+  while (elem) {
+    if (copy_type == eBkt_CopyShallow) {
+      Add(elem);
+    }
+    else if (copy_type == eBkt_CopyDeep) {
+      T* elem_copy = new T(*elem);
+
+      if (elem_copy) Add(new T(*elem));
+      else           assert(0);
+    }
+    else assert(0);
+
+    elem = bkt.Get(ePositionNext);
+  }
+}
+
+// TBD: Rename to DeleteLinksAndElems().
+template<class T>
+void Bucket<T>::Clear()
+{
+  BktLink<T>* next;
+  BktLink<T>* link = mpLinkFirst;
+
+  while (link) {
+    delete link->mpElem;
+    next = link->mpLinkNext;
+    delete link;
+    link = next;
+  }
+
+  mpLinkFirst = mpLinkLast = 0;
+  mLinkLength = 0;
+  next   = 0;
+}
+
+template<class T>
+void Bucket<T>::Detach()
+{
+  // This task is used to detach the links from the bucket, effectively
+  // the memory management of the links and elements is now handled by
+  // the caller of this task.
+  mpBktNext      = 0;
+  mpLinkFirst    = 0;
+  mpLinkLast     = 0;
+  mpLinkCurrent  = 0;
+  mLinkLength    = 0;
+}
+
+template<class T>
+class BucketList
+{
+public:
+  enum eBktList_CopyType { eBktList_CopyShallow, eBktList_CopyDeep };
+
+  BucketList();
+  ~BucketList();
+
+  // Add elem's or buckets to the bucket list.
+  bool       Add(T* elm, eAddDirection dir);
+  void       BktAdd(Bucket<T> *bkt, ePosition pos=ePositionNext);
+
+  bool       BktSetPosition(ePosition pos);
+  ePosition  BktGetPosition() const;
+  bool       BktDone()        const;
+  void       BktAppend(BucketList<T> &bl);
+
+  // Bucket get
+  Bucket<T>* BktGet(ePosition pos);
+
+  // BktLink iterator
+  bool      NextLink();
+  //
+  bool      SetLinkPosition(ePosition);
+  ePosition GetLinkPosition();
+  bool      LinkDone();
+
+  // Assigment operator, used to make a copy.
+  void CopyShallow(BucketList<T>& bl) { return Copy(bl, eBktList_CopyShallow); }
+  void CopyDeep   (BucketList<T>& bl) { return Copy(bl, eBktList_CopyDeep); }
+
+  // Attach one bucket list to another.
+  // This will destroy the bucket list being attached.
+  void AttachDestroy(BucketList<T>& bl, eAddDirection dir);
+ 
+  // Other
+  void Clean();
+  void Print(FILE* fp);
+  void p();
+  T*   Get();
+
+  short TotalBuckets() { return mBucketTotal;   }
+  short TotalElems()   { return mElemTotal;     }
+  short Size()         { return TotalBuckets(); }
+  static const bool dbg=TRUE;
+private:
+  bool     AddLink(Bucket<T>* bkt, T* elem, eAddDirection dir);
+  void     Copy(BucketList<T>& bl, eBktList_CopyType copy_type);
+
+  Bucket<T>* mpBktFirst;
+  Bucket<T>* mpBktLast;
+  Bucket<T>* mpBktCurrent;
+  BktLink<T>*   mpLinkCurrent;
+  //
+  short      mElemTotal;
+  short      mBucketTotal;
+  short      mBktDone;
+  short      mLinkDone;
+
+#ifdef Caching
+  BktLink<T> *cachedLink;
+  short cachedPos;
+#endif
+};
+
+template<class T>
+BucketList<T>::BucketList() :
+#ifdef Caching
+  cachedPos(0),
+  cachedLink(0),
+#endif
+  mElemTotal(0),
+  mpBktFirst(0),
+  mpBktLast(0),
+  mpLinkCurrent(0),
+  mpBktCurrent(0),
+  mBucketTotal(0),
+  mBktDone(TRUE),
+  mLinkDone(TRUE)
+{
+  M_UpdConstructCount(eType_BucketList);
+}
+
+template<class T>
+BucketList<T>::~BucketList()
+{
+  Clean();
+
+  M_UpdDestructCount(eType_BucketList);
+}
+
+template<class T>
+void BucketList<T>::Clean()
+{
+  // Delete all links and buckets (but not the elements).
+
+  Bucket<T>* next_bkt;
+
+  while (mpBktFirst)
+  {
+    next_bkt = mpBktFirst->mpBktNext;
+
+    delete mpBktFirst;
+
+    mpBktFirst = next_bkt;
+  }
+
+  mElemTotal     = 0;
+  mpBktFirst     = 0;
+  mpBktLast      = 0;
+  mpLinkCurrent  = 0;
+  mpBktCurrent   = 0;
+  mBucketTotal   = 0;
+  mBktDone       = TRUE;
+  mLinkDone      = TRUE;
+}
+
+template<class T>
+void BucketList<T>::Print(FILE* fp)
+{
+  short count = 0;
+  Bucket<T> *bkt;
+
+  bkt = mpBktFirst;
+
+  while (bkt)
+  {
+    fprintf(fp, "Bucket: %d\n", ++count);
+
+    BktLink<T> *chain;
+
+    chain = bkt->mpLinkFirst;
+
+    while (chain)
+    {
+      chain->Elem->Print(fp);
+      chain = chain->mpLinkNext;
+    }
+
+    bkt = bkt->mpBktNext;
+  }
+
+  fprintf(fp, "End BucketList Print\n");
+}
+
+template<class T>
+void BucketList<T>::p()
+{
+  short count = 0;
+  Bucket<T> *bkt;
+
+  bkt = mpBktFirst;
+
+  while (bkt)
+  {
+    fprintf(stdout, "Bucket %d: ", ++count);
+
+    BktLink<T> *chain;
+
+    chain = bkt->mpLinkFirst;
+
+    while (chain)
+    {
+      chain->mpElem->Name(stdout);
+      chain = chain->mpLinkNext;
+
+      fprintf(stdout, " ");
+    }
+    fprintf(stdout, "\n");
+
+    bkt = bkt->mpBktNext;
+  }
+}
+
+template<class T>
+void BucketList<T>::Copy(BucketList<T>& bl, eBktList_CopyType copy_type)
+{
+  Clean();
+
+  if (bl.BktSetPosition(ePositionFirst))
+  {
+    while (!bl.BktDone()) {
+      if (bl.SetLinkPosition(ePositionFirst))
+      {
+        T* elem = bl.Get();
+
+        if (copy_type == eBktList_CopyShallow) {
+          Add(elem, eSouth);
+        }
+        else if (copy_type == eBktList_CopyDeep) {
+          T* elem_copy = new T(*elem);
+
+          if (elem_copy) Add(elem_copy, eSouth);
+          else           assert(0);
+        }
+        else assert(0);
+
+        bl.SetLinkPosition(ePositionNext);
+
+        while (!bl.LinkDone())
+        {
+          Add(bl.Get(), eEast);
+          bl.SetLinkPosition(ePositionNext);
+        }
+      }
+
+      bl.BktSetPosition(ePositionNext);
+    }
+  }
+}
+
+template<class T>
+bool BucketList<T>::Add(T* elem, eAddDirection dir=eSouth)
+{
+  switch (dir)
+  {
+  case eNorth:
+    if (mBucketTotal) {
+      mpBktCurrent            = mpBktFirst = new Bucket<T>;
+      mpBktCurrent->mpBktNext = mpBktFirst;
+    }
+    else {
+      mpBktCurrent            = mpBktFirst = mpBktLast = new Bucket<T>;
+      mpBktCurrent->mpBktNext = 0;
+    }
+
+    mBucketTotal++;
+    mBktDone   = FALSE;
+    mLinkDone  = FALSE;
+
+    return AddLink(mpBktFirst, elem, eEast);
+  case eSouth:
+    if (mBucketTotal) {
+      mpBktCurrent            = mpBktLast = mpBktLast->mpBktNext = new Bucket<T>;
+      mpBktCurrent->mpBktNext = 0;
+    }
+    else {
+      mpBktCurrent = mpBktLast = mpBktFirst = new Bucket<T>;
+      mpBktCurrent->mpBktNext = 0;
+    }
+
+    mBucketTotal++;
+    mBktDone   = FALSE;
+    mLinkDone  = FALSE;
+
+    return AddLink(mpBktLast, elem, eEast);
+  case eEast:
+    if (mpBktCurrent) {
+      mBktDone   = FALSE;
+      mLinkDone  = FALSE;
+
+      return AddLink(mpBktCurrent, elem, eEast);
+    }
+    else
+      return Add(elem, eSouth);
+
+  case eWest:
+    if (mpBktCurrent) {
+      mBktDone   = FALSE;
+      mLinkDone  = FALSE;
+
+      return AddLink(mpBktCurrent, elem, eWest);
+    }
+    else
+      return Add(elem, eSouth);
+  default:
+    return FALSE;
+  }
+
+  return FALSE;
+}
+
+template<class T>
+bool BucketList<T>::AddLink(Bucket<T>* bkt, T* elem, eAddDirection dir)
+{
+  BktLink<T>* link;
+  switch (dir)
+  {
+  case eWest:
+    bkt->mpLinkFirst = new BktLink<T>(bkt->mpLinkFirst);
+    link             = bkt->mpLinkFirst;
+    break;
+  case eEast:
+    if (bkt->mpLinkLast)
+      bkt->mpLinkLast = bkt->mpLinkLast->mpLinkNext = new BktLink<T>(0);
+    else
+      bkt->mpLinkLast = new BktLink<T>(0);
+
+    link = bkt->mpLinkLast;
+    break;
+  default:
+    return FALSE;
+  }
+
+  link->mpElem = elem;
+  bkt->mLinkLength++;
+  mElemTotal++;
+
+  if (bkt->mLinkLength == 1)
+    bkt->mpLinkFirst = bkt->mpLinkLast = link;
+
+  return TRUE;
+}
+
+template<class T>
+void BucketList<T>::BktAdd(Bucket<T> *bkt, ePosition pos)
+{
+  if (!bkt) return; // cannot add a null bucket
+
+  switch (pos) {
+    case ePositionNext:
+      if (mpBktCurrent) {
+        bkt->mpBktNext          = mpBktCurrent->mpBktNext;
+        mpBktCurrent->mpBktNext = bkt;
+        // Ensure subsequent adds will keep the 'add' order
+        mpBktCurrent            = bkt;
+      }
+      else {
+        fprintf(stdout, "BucketList Error: Cannot add bkt for next pos\n");
+      }
+      break;
+    case ePositionFirst:
+      if (mpBktFirst) {
+        bkt->mpBktNext  = mpBktFirst;
+        mpBktFirst      = bkt;
+      }
+      else {
+        mpBktFirst = mpBktLast = bkt;
+      }
+    case ePositionLast:
+      if (mpBktLast) {
+        mpBktLast->mpBktNext = bkt;
+        mpBktLast            = bkt;
+        bkt->mpBktNext       = 0;
+      }
+      else {
+        mpBktFirst = mpBktLast = bkt;
+      }
+    default:
+      fprintf(stdout, "BucketList Error: Cannot add bkt for pos %d\n", pos);
+  }
+}
+
+template<class T>
+void BucketList<T>::AttachDestroy(BucketList<T>& bl, eAddDirection dir)
+{
+  // This unlinks all elements in bucket list bl and attaches
+  // them to this bucket list (south or east), bl is consequently left empty.
+  // Thus it is a destructive call for bl.
+  // Used to avoid copying all bl elements into this bucket list.
+  // This function must be used with care as it sets bl to the clear state.
+
+  // Only pointers are manipulated as we are avoiding copying elements.
+  if (bl.mpBktLast != 0)
+  {
+    if (dir == eSouth)
+    {
+      if (mpBktLast) {
+        // both bkts nonempty
+        mpBktLast->mpBktNext = bl.mpBktFirst;
+        mpBktLast            = bl.mpBktLast;
+      }
+      else {
+        // this bkt list is empty
+        mpBktLast       = bl.mpBktLast;
+      }
+
+      mBktDone      = FALSE;
+      mpBktCurrent  = bl.mpBktFirst;
+      mBucketTotal += bl.mBucketTotal;
+    }
+    else if (dir == eEast)
+    {
+      BktSetPosition(ePositionFirst);
+      bl.BktSetPosition(ePositionFirst);
+
+      while (mpBktCurrent && bl.mpBktCurrent) {
+        mpBktCurrent->mpLinkLast->mpLinkNext = bl.mpBktCurrent->mpLinkFirst;
+
+        mpBktCurrent    = mpBktCurrent->mpBktNext;
+        bl.mpBktCurrent = bl.mpBktCurrent->mpBktNext;
+      }
+
+      mBktDone = FALSE;
+    }
+    else {
+      fprintf(stderr, "eWest or eNorth not supported\n");
+    }
+
+    // Now clear out 'bl', the actions should be same as constructor.
+    // Danger: Do not call bl.Clean() as that will destroy the elements
+    // that were just attached.
+    bl.mpBktFirst    = bl.mpBktLast = 0;
+    bl.mpLinkCurrent = 0;
+    bl.mpBktCurrent  = 0;
+    bl.mBucketTotal  = 0;
+    bl.mBktDone      = TRUE;
+    bl.mLinkDone     = TRUE;
+
+#ifdef Caching
+    // TBD: Also clear out cached stuff if caching is enabled.
+    BktLink<T> *cachedLink;
+    short cachedPos;
+#endif
+  }
+  // else: nothing to do, bl is empty.
+}
+
+template<class T>
+T* BucketList<T>::Get()
+{
+  if (mpLinkCurrent)
+    return mpLinkCurrent->mpElem;
+
+  return 0;
+}
+
+template<class T>
+bool BucketList<T>::BktSetPosition(ePosition pos)
+{
+  switch (pos) {
+    case ePositionFirst:
+      mpBktCurrent = mpBktFirst;
+
+      if (mpBktCurrent) {
+        mpLinkCurrent = mpBktCurrent->mpLinkFirst;
+        return TRUE;
+      }
+      else {
+        mpLinkCurrent = 0;
+        mBktDone      = TRUE;
+
+        return FALSE;
+      }
+    case ePositionNext:
+      if (mpBktCurrent) {
+        mpBktCurrent = mpBktCurrent->mpBktNext;
+        if (mpBktCurrent == 0) {
+          mBktDone = TRUE;
+
+          return FALSE;
+        }
+
+        return TRUE;
+      }
+      else {
+        mBktDone = TRUE;
+
+        return FALSE;
+      }
+    case ePositionLast:
+      mpBktCurrent = mpBktLast;
+
+      if (mpBktCurrent) {
+        mpLinkCurrent = mpBktCurrent->mpLinkFirst;
+
+        return TRUE;
+      }
+      else {
+        mpLinkCurrent = 0;
+        mBktDone      = TRUE;
+
+        return FALSE;
+      }
+    case ePositionDone:
+      mpBktCurrent = 0;
+      mBktDone     = TRUE;
+
+      return TRUE;
+    case ePositionCurrent:
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+template<class T>
+ePosition BucketList<T>::BktGetPosition() const
+{
+  if      (mpBktCurrent == 0)          return ePositionDone;
+  else if (mpBktCurrent == mpBktFirst) return ePositionFirst;
+  else if (mpBktCurrent == mpBktLast)  return ePositionLast;
+  else                                 return ePositionNext;
+}
+
+template<class T>
+Bucket<T>* BucketList<T>::BktGet(ePosition pos)
+{
+  switch (pos) {
+  case ePositionFirst:
+    return mpBktFirst;
+  case ePositionLast:
+    return mpBktLast;
+  case ePositionCurrent:
+    return mpBktCurrent;
+  case ePositionNext:
+    if (mpBktCurrent) {
+      Bucket<T> *bkt = mpBktCurrent;
+      mpBktCurrent   = mpBktCurrent->mpBktNext;
+      if (mpBktCurrent) mBktDone = TRUE; 
+
+      return bkt;
+    }
+    else {
+      return 0;
+    }
+  default:
+    return 0;
+  }
+}
+
+template<class T>
+bool BucketList<T>::SetLinkPosition(ePosition pos)
+{
+  switch (pos) {
+    case ePositionFirst:
+      if (mpBktCurrent) {
+        mpLinkCurrent = mpBktCurrent->mpLinkFirst;
+        if (mpLinkCurrent == 0) mLinkDone = TRUE;
+
+        return TRUE;
+      }
+      else {
+        mLinkDone = TRUE;
+
+        return FALSE;
+      }
+
+    case ePositionNext:
+      if (mpLinkCurrent) {
+        mpLinkCurrent = mpLinkCurrent->mpLinkNext;
+        if (mpLinkCurrent == 0) mLinkDone = TRUE;
+
+        return TRUE;
+      }
+      else {
+        mLinkDone = TRUE;
+
+        return FALSE;
+      }
+
+    case ePositionLast:
+      if (mpBktCurrent) {
+        mpLinkCurrent = mpBktCurrent->mpLinkLast;
+
+        if (mpLinkCurrent == 0) {
+          mLinkDone = TRUE;
+
+          return FALSE;
+        }
+        else
+          return TRUE;
+      }
+      else {
+        mLinkDone = TRUE;
+
+        return FALSE;
+      }
+
+    case ePositionDone:
+      mpLinkCurrent = 0;
+      mLinkDone     = TRUE;
+
+      return TRUE;
+  }
+}
+
+template<class T>
+ePosition BucketList<T>::GetLinkPosition()
+{
+  if (mpBktCurrent) {
+    if      (mpLinkCurrent == mpBktCurrent->mpLinkFirst) return ePositionFirst;
+    else if (mpLinkCurrent == mpBktCurrent->mpLinkLast)  return ePositionLast;
+    else if (mpLinkCurrent == 0)                         return ePositionDone;
+    else                                                 return ePositionNext;
+  }
+  else
+    return ePositionDone;
+}
+
+template<class T>
+bool BucketList<T>::NextLink()
+{
+  if (mpLinkCurrent->mpLinkNext)
+  {
+    mpLinkCurrent = mpLinkCurrent->mpLinkNext;
+    return TRUE;
+  }
+  else
+    mpLinkCurrent = 0;
+
+  return FALSE;
+}
+
+template<class T>
+bool BucketList<T>::BktDone() const
+{
+  if (BktGetPosition() == ePositionDone) return TRUE;
+  else                                   return FALSE;
+}
+
+template<class T>
+void BucketList<T>::BktAppend(BucketList<T> &bl)
+{
+  if (mpBktCurrent) {
+    // Make a copy of the bucket to be appended
+    Bucket<T> bkt;
+    bkt.CopyDeep(*bl.mpBktCurrent);
+
+    if (mpBktCurrent->mpLinkLast) mpBktCurrent->mpLinkLast->mpLinkNext = bkt.mpLinkFirst;
+    else                          mpBktCurrent->mpLinkLast             = bkt.mpLinkFirst;
+
+    mpBktCurrent->mpLinkLast = bkt.mpLinkLast;
+
+    bkt.Detach(); // prevent bkt destructor from deleting links/elem's appended
+  }
+  // else: this bucket list is empty or mpBktCurrent isnt correctly positioned
+}
+
+template<class T>
+bool BucketList<T>::LinkDone()
+{
+  if (GetLinkPosition() == ePositionDone) return TRUE;
+  else                                    return FALSE;
+}
+
+
+#endif
+
+// End
+@
+
+
+1.3
+log
+@1. Removed BucketList(Bucket* bkt) constructor.
+2. Bucket:     Added CopyShallow() and CopyDeep() instead of using operator=.
+3. BucketList: Added CopyShallow() and CopyDeep() instead of using operator=.
+4. Removed 'sortval' member.
+5. Removed BucketList(BucketList&) constructor.
+6. Added iteration macros.
+7. Added class BktLink.
+8. Fixed member prefix for class Bucket (ie mpNext instead of next etc.).
+9. Made some access functions const.
+10.Replaced eBoolean with bool.
+11.Renamed Attach() to AttachDestroy()..
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d16 2
+d57 3
+a59 3
+  BktLink<T>*     mpLinkFirst;
+  BktLink<T>*     mpLinkLast;
+  BktLink<T>*     mpLinkCurrent;
+d66 1
+a66 1
+Bucket<T>::Bucket<T>() :
+d73 1
+d77 1
+a77 1
+Bucket<T>::~Bucket<T>()
+d89 2
+d98 2
+a99 1
+  link->mpElem = elem;
+d102 7
+a108 5
+    if (mpLinkFirst) mpLinkLast->mpLinkNext   = link;
+    else             mpLinkFirst = mpLinkLast = link;
+
+    mpLinkLast      = link;
+    link->mpLinkNext = 0;
+d111 2
+d114 1
+a114 1
+    mpLinkFirst     = link;
+d251 3
+a253 2
+  short TotalBuckets() { return mBucketTotal; }
+  short TotalElems()   { return mElemTotal;   }
+d290 1
+a290 1
+  // Empty
+d297 2
+@
+
+
+1.2
+log
+@1. Minor alignment change, no logic changes.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 1
+d10 2
+a11 3
+/* Template for a bucket list. Classes that want */
+/* to use this list need to define the following */
+/*     a) A copy constructor                     */
+d19 6
+d26 1
+a26 1
+class Link
+d29 2
+a30 2
+  Link() : next(0), sortval(0) {}
+  Link(Link* link) : next(link), sortval(0) {}
+d32 2
+a33 3
+  Link* next;
+  T*    elem;
+  int   sortval;
+a35 2
+static int count = 0;
+
+d40 19
+a58 18
+  Bucket()            : next(0),  firstL(0),lastL(0),length(0) {id=count++;}
+  Bucket(Bucket* bkt) : next(bkt),firstL(0),lastL(0),length(0) {id=count++;}
+  Bucket(Bucket& bkt) : next(0),  firstL(0),lastL(0),length(0) {id=count++;
+                                                                Append(bkt); }
+  // TBD: initialize currentL
+
+  void operator=(Bucket<T>& bkt);
+  void Add(T *elem, eAddDirection dir=eEast);
+  T*   Get(ePosition pos);
+  void Append(Bucket<T> &bkt);
+  void Detach();
+
+  Bucket*  next;
+  Link<T>* firstL;
+  Link<T>* lastL;
+  Link<T>* currentL;
+  int length;
+  int id;
+d60 1
+a60 1
+  void Clear();
+d64 25
+d91 1
+a91 1
+  Link<T> *link = new Link<T>;
+d93 1
+a93 1
+  link->elem = elem;
+d96 2
+a97 2
+    if (firstL) lastL->next    = link;
+    else        firstL = lastL = link;
+d99 2
+a100 2
+    lastL      = link;
+    link->next = 0;
+d103 2
+a104 2
+    link->next = firstL;
+    firstL     = link;
+d106 1
+a106 1
+    if (!lastL) lastL = link;
+d115 1
+a115 1
+      currentL = firstL;
+d117 2
+a118 2
+      if (firstL) return firstL->elem;
+      else        return 0;
+d121 1
+a121 1
+      return currentL->elem;
+d124 1
+a124 1
+      currentL = lastL;
+d126 2
+a127 2
+      if (lastL) return lastL->elem;
+      else       return 0;
+d130 2
+a131 2
+      if (currentL) {
+        currentL = currentL->next;
+d133 1
+a133 1
+        if (currentL) return currentL->elem;
+d145 1
+a145 1
+void Bucket<T>::Append(Bucket<T> &bkt)
+d147 1
+a147 1
+  T* elem;
+d149 1
+a149 1
+  elem = bkt.Get(ePositionFirst);
+d152 10
+a161 1
+    Add(new T(*elem));
+d167 1
+a167 7
+template<class T>
+void Bucket<T>::operator=(Bucket<T>& bkt)
+{
+  Clear();
+  Append(bkt);
+}
+
+d171 2
+a172 2
+  Link<T>* next;
+  Link<T>* link = firstL;
+d175 2
+a176 2
+    delete link->elem;
+    next = link->next;
+d181 2
+a182 2
+  firstL = lastL = 0;
+  length = 0;
+a183 1
+  // We leave id the same so that this bucket can still be tracked
+d192 5
+a196 5
+  next      = 0;
+  firstL    = 0;
+  lastL     = 0;
+  currentL  = 0;
+  length    = 0;
+d203 2
+a205 1
+  BucketList<T>(BucketList<T>& bl);
+d209 2
+a210 2
+  eBoolean Add(T& elm, eAddDirection dir);
+  void     BktAdd(Bucket<T> *bkt, ePosition pos=ePositionNext);
+d212 3
+a214 4
+  // Bucket iterator
+  eBoolean   BktSetPosition(ePosition pos);
+  ePosition  BktGetPosition();
+  eBoolean   BktDone();
+d220 2
+a221 2
+  // Link iterator
+  eBoolean NextLink();
+d223 1
+a223 1
+  eBoolean  SetLinkPosition(ePosition);
+d225 1
+a225 1
+  eBoolean  LinkDone();
+d227 3
+a229 2
+  /* Assigment operator, used to make a copy */
+  void operator=(BucketList<T>& bl);
+d233 1
+a233 1
+  void Attach(BucketList<T>& bl, eAddDirection dir);
+d239 1
+a239 1
+  T* Get();
+d241 3
+a243 3
+  short TotalBuckets() { return blNumBuckets; }
+  short TotalElems() { return size; }
+  static const eBoolean dbg=TRUE;
+d245 2
+a246 1
+  eBoolean AddLink(Bucket<T>* bkt, T& elem, eAddDirection dir);
+d248 9
+a256 10
+  short size;
+
+  Bucket<T> *blFirstBkt;
+  Bucket<T> *blLastBkt;
+  Link<T>   *blCurrentLink;
+  Bucket<T> *blCurrentBkt;
+
+  short blNumBuckets;
+  short blBktDone;
+  short blLinkDone;
+d259 1
+a259 1
+  Link<T> *cachedLink;
+d270 8
+a277 8
+  size(0),
+  blFirstBkt(0),
+  blLastBkt(0),
+  blCurrentLink(0),
+  blCurrentBkt(0),
+  blNumBuckets(0),
+  blBktDone(TRUE),
+  blLinkDone(TRUE)
+a282 35
+BucketList<T>::BucketList<T>(BucketList<T>& bl) :
+#ifdef Caching
+  cachedPos(0),
+  cachedLink(0),
+#endif
+  size(0),
+  blFirstBkt(0),
+  blLastBkt(0),
+  blCurrentLink(0),
+  blCurrentBkt(0),
+  blNumBuckets(0),
+  blBktDone(TRUE),
+  blLinkDone(TRUE)
+{
+  if (bl.BktSetPosition(ePositionFirst))
+  {
+    while (!bl.BktDone()) {
+      if (bl.SetLinkPosition(ePositionFirst))
+      {
+        Add(*bl.Get(), eSouth);
+        bl.SetLinkPosition(ePositionNext);
+
+        while (!bl.LinkDone())
+        {
+          Add(*bl.Get(), eEast);
+          bl.SetLinkPosition(ePositionNext);
+        }
+      }
+
+      bl.BktSetPosition(ePositionNext);
+    }
+  }
+}
+
+template<class T>
+d291 3
+a293 1
+  /* Delete all links, buckets and elements */
+d295 1
+a295 1
+  while (blFirstBkt)
+d297 3
+a299 2
+    /* delete the chain of links in each bucket */
+    Link<T> *chain = blFirstBkt->firstL;
+d301 11
+a311 21
+    while (chain)
+    {
+      Link<T>* link = chain->next;
+      delete chain->elem;
+      delete chain;
+      chain = link;
+    }
+
+    Bucket<T>* bkt = blFirstBkt;
+    blFirstBkt     = blFirstBkt->next;
+    delete bkt;
+  }
+
+  size           = 0;
+  blFirstBkt     = 0;
+  blLastBkt      = 0;
+  blCurrentLink  = 0;
+  blCurrentBkt   = 0;
+  blNumBuckets   = 0;
+  blBktDone      = TRUE;
+  blLinkDone     = TRUE;
+d320 1
+a320 1
+  bkt = blFirstBkt;
+d326 1
+a326 1
+    Link<T> *chain;
+d328 1
+a328 1
+    chain = bkt->firstL;
+d333 1
+a333 1
+      chain = chain->next;
+d336 1
+a336 1
+    bkt = bkt->next;
+d348 1
+a348 1
+  bkt = blFirstBkt;
+d354 1
+a354 1
+    Link<T> *chain;
+d356 1
+a356 1
+    chain = bkt->firstL;
+d360 2
+a361 2
+      chain->elem->Name(stdout);
+      chain = chain->next;
+d367 1
+a367 1
+    bkt = bkt->next;
+d372 1
+a372 1
+void BucketList<T>::operator=(BucketList<T>& bl)
+d381 13
+a393 1
+        Add(*bl.Get(), eSouth);
+d398 1
+a398 1
+          Add(*bl.Get(), eEast);
+d409 1
+a409 1
+eBoolean BucketList<T>::Add(T& elem, eAddDirection dir=eSouth)
+d414 8
+a421 2
+    if (blNumBuckets) blCurrentBkt = blFirstBkt = new Bucket<T>(blFirstBkt);
+    else              blCurrentBkt = blFirstBkt = blLastBkt = new Bucket<T>(0);
+d423 3
+a425 3
+    blNumBuckets++;
+    blBktDone  = FALSE;
+    blLinkDone = FALSE;
+d427 1
+a427 1
+    return AddLink(blFirstBkt, elem, eEast);
+d429 8
+a436 2
+    if (blNumBuckets) blCurrentBkt = blLastBkt = blLastBkt->next = new Bucket<T>(0);
+    else              blCurrentBkt = blLastBkt = blFirstBkt      = new Bucket<T>(0);
+d438 3
+a440 3
+    blNumBuckets++;
+    blBktDone  = FALSE;
+    blLinkDone = FALSE;
+d442 1
+a442 1
+    return AddLink(blLastBkt, elem, eEast);
+d444 3
+a446 3
+    if (blCurrentBkt) {
+      blBktDone  = FALSE;
+      blLinkDone = FALSE;
+d448 1
+a448 1
+      return AddLink(blCurrentBkt, elem, eEast);
+d454 3
+a456 3
+    if (blCurrentBkt) {
+      blBktDone  = FALSE;
+      blLinkDone = FALSE;
+d458 1
+a458 1
+      return AddLink(blCurrentBkt, elem, eWest);
+d470 1
+a470 1
+eBoolean BucketList<T>::AddLink(Bucket<T>* bkt, T& elem, eAddDirection dir)
+d472 1
+a472 1
+  Link<T>* link;
+d476 2
+a477 2
+    bkt->firstL = new Link<T>(bkt->firstL);
+    link = bkt->firstL;
+d480 2
+a481 2
+    if (bkt->lastL)
+      bkt->lastL = bkt->lastL->next = new Link<T>(0);
+d483 3
+a485 2
+      bkt->lastL = new Link<T>(0);
+    link = bkt->lastL;
+d491 3
+a493 4
+  link->sortval = 0;
+  link->elem = new T(elem);
+  bkt->length++;
+  size++;
+d495 2
+a496 2
+  if (bkt->length == 1)
+    bkt->firstL = bkt->lastL = link;
+d508 3
+a510 4
+      if (blCurrentBkt) {
+        bkt->next          = blCurrentBkt->next;
+        blCurrentBkt->next = bkt;
+
+d512 1
+a512 1
+        blCurrentBkt       = bkt;
+d519 3
+a521 3
+      if (blFirstBkt) {
+        bkt->next  = blFirstBkt;
+        blFirstBkt = bkt;
+d524 1
+a524 1
+        blFirstBkt = blLastBkt = bkt;
+d527 4
+a530 4
+      if (blLastBkt) {
+        blLastBkt->next = bkt;
+        blLastBkt       = bkt;
+        bkt->next       = 0;
+d533 1
+a533 1
+        blFirstBkt = blLastBkt = bkt;
+d541 1
+a541 1
+void BucketList<T>::Attach(BucketList<T>& bl, eAddDirection dir)
+d546 2
+a547 3
+  // Used to avoid copying of all bl elements into this bucket list.
+  // Obviously this function must be used with care as it clear's bl,
+  // bl passed in is usually a temporary bucket list so this is ok.
+d550 1
+a550 1
+  if (bl.blLastBkt != 0)
+d554 1
+a554 1
+      if (blLastBkt) {
+d556 2
+a557 2
+        blLastBkt->next = bl.blFirstBkt;
+        blLastBkt       = bl.blLastBkt;
+d561 1
+a561 1
+        blLastBkt       = bl.blLastBkt;
+d564 3
+a566 3
+      blBktDone    = FALSE;
+      blCurrentBkt = bl.blFirstBkt;
+      blNumBuckets += bl.blNumBuckets;
+d573 2
+a574 2
+      while (blCurrentBkt && bl.blCurrentBkt) {
+        blCurrentBkt->lastL->next = bl.blCurrentBkt->firstL;
+d576 2
+a577 2
+        blCurrentBkt    = blCurrentBkt->next;
+        bl.blCurrentBkt = bl.blCurrentBkt->next;
+d580 1
+a580 1
+      blBktDone = FALSE;
+d589 6
+a594 6
+    bl.blFirstBkt    = bl.blLastBkt = 0;
+    bl.blCurrentLink = 0;
+    bl.blCurrentBkt  = 0;
+    bl.blNumBuckets  = 0;
+    bl.blBktDone     = TRUE;
+    bl.blLinkDone    = TRUE;
+d598 1
+a598 1
+    Link<T> *cachedLink;
+a602 1
+
+d608 2
+a609 2
+  if (blCurrentLink)
+    return blCurrentLink->elem;
+d615 1
+a615 1
+eBoolean BucketList<T>::BktSetPosition(ePosition pos)
+d619 1
+a619 1
+      blCurrentBkt = blFirstBkt;
+d621 2
+a622 2
+      if (blCurrentBkt) {
+        blCurrentLink = blCurrentBkt->firstL;
+d626 3
+a628 2
+        blCurrentLink = 0;
+        blBktDone = TRUE;
+d631 5
+a636 5
+    case ePositionNext:
+      if (blCurrentBkt) {
+        blCurrentBkt = blCurrentBkt->next;
+        if (blCurrentBkt == 0) {
+          blBktDone = TRUE;
+d643 2
+a644 1
+        blBktDone = TRUE;
+d647 2
+d650 2
+a651 2
+    case ePositionLast:
+      blCurrentBkt = blLastBkt;
+a652 2
+      if (blCurrentBkt) {
+        blCurrentLink = blCurrentBkt->firstL;
+d656 3
+a658 2
+        blCurrentLink = 0;
+        blBktDone = TRUE;
+d661 3
+a664 3
+    case ePositionDone:
+      blCurrentBkt = 0;
+      blBktDone    = TRUE;
+a665 1
+
+d674 1
+a674 1
+ePosition BucketList<T>::BktGetPosition()
+d676 3
+a678 3
+  if      (blCurrentBkt == 0)          return ePositionDone;
+  else if (blCurrentBkt == blFirstBkt) return ePositionFirst;
+  else if (blCurrentBkt == blLastBkt)  return ePositionLast;
+d687 1
+a687 1
+    return blFirstBkt;
+d689 1
+a689 1
+    return blLastBkt;
+d691 1
+a691 1
+    return blCurrentBkt;
+d693 4
+a696 4
+    if (blCurrentBkt) {
+      Bucket<T> *bkt = blCurrentBkt;
+      blCurrentBkt   = blCurrentBkt->next;
+      if (blCurrentBkt) blBktDone = TRUE; 
+d709 1
+a709 1
+eBoolean BucketList<T>::SetLinkPosition(ePosition pos)
+d713 4
+a716 3
+      if (blCurrentBkt) {
+        blCurrentLink = blCurrentBkt->firstL;
+        if (blCurrentLink == 0) blLinkDone = TRUE;
+d720 2
+a721 1
+        blLinkDone = TRUE;
+d726 4
+a729 3
+      if (blCurrentLink) {
+        blCurrentLink = blCurrentLink->next;
+        if (blCurrentLink == 0) blLinkDone = TRUE;
+d733 2
+a734 1
+        blLinkDone = TRUE;
+d739 5
+a743 2
+      if (blCurrentBkt) {
+        blCurrentLink = blCurrentBkt->lastL;
+a744 2
+        if (blCurrentLink == 0) {
+          blLinkDone = TRUE;
+d751 2
+a752 1
+        blLinkDone = TRUE;
+d757 3
+a759 2
+      blCurrentLink = 0;
+      blLinkDone    = TRUE;
+d767 5
+a771 5
+  if (blCurrentBkt) {
+    if      (blCurrentLink == blCurrentBkt->firstL) return ePositionFirst;
+    else if (blCurrentLink == blCurrentBkt->lastL)  return ePositionLast;
+    else if (blCurrentLink == 0)                    return ePositionDone;
+    else                                            return ePositionNext;
+d778 1
+a778 1
+eBoolean BucketList<T>::NextLink()
+d780 1
+a780 1
+  if (blCurrentLink->next)
+d782 1
+a782 1
+    blCurrentLink = blCurrentLink->next;
+d786 1
+a786 1
+    blCurrentLink = 0;
+d792 1
+a792 1
+eBoolean BucketList<T>::BktDone()
+d801 1
+a801 1
+  if (blCurrentBkt) {
+d803 2
+a804 1
+    Bucket<T> bkt = *bl.blCurrentBkt;
+d806 2
+a807 2
+    if (blCurrentBkt->lastL) blCurrentBkt->lastL->next = bkt.firstL;
+    else                     blCurrentBkt->lastL       = bkt.firstL;
+d809 1
+a809 1
+    blCurrentBkt->lastL = bkt.lastL;
+d813 1
+a813 1
+  // else: this bucket list is empty or blCurrentBkt isnt correctly positioned
+d817 1
+a817 1
+eBoolean BucketList<T>::LinkDone()
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d422 1
+a422 1
+    else              blCurrentBkt = blLastBkt = blFirstBkt = new Bucket<T>(0);
+@

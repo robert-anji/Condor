@@ -1,0 +1,52 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2011.12.07.06.52.40;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@See MailboxBase.h description.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: Mailbox.cc,v $
+// $Revision: 1.4 $
+
+#include <assert.h>
+
+#include "MailboxBase.h"
+
+bool MailboxBase::FlushPuts(Process** put_proc, Process** get_proc, void** elm)
+{
+  if (mProcessWaitingOnPutList.Size()) {
+    if (mProcessWaitingOnGetList.Size()) {
+      assert(*get_proc = mProcessWaitingOnGetList.Get());
+      assert(*put_proc = mProcessWaitingOnPutList.Get());
+      assert(*elm      = mMboxElmWaitingOnPutList.Get());
+
+      assert(mProcessWaitingOnGetList.DeleteLinkThenNext());
+      assert(mProcessWaitingOnPutList.DeleteLinkThenNext());
+      assert(mMboxElmWaitingOnPutList.DeleteLinkThenNext());
+
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+// End
+@

@@ -1,0 +1,336 @@
+head	1.4;
+access;
+symbols;
+locks
+	robert:1.4; strict;
+comment	@// @;
+
+
+1.4
+date	2011.12.20.17.27.04;	author robert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.12.04.02.06.30;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.08.16.02.52.12;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.45.03;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Reworked as Semaphore Get() needs to be scheduled.
+2. Added FlushGet() to match-up Puts and Gets.
+3. Added randomness using a PRNG random numner generator.
+4. Added Semaphore name as it is needed to help seed the PRNG random generator.
+5. Added several Get() policies: Round-robin, Round-robin-block, random.
+@
+text
+@// $RCSfile: Semaphore.cc,v $
+// $Revision: 1.3 $
+
+#include <assert.h>
+
+#include "Semaphore.h"
+
+#include "Global.h"
+#include "Scheduler.h"
+#include "SeedHelper.h"
+
+extern Scheduler* gScheduler;
+//
+M_ExternConstructDestructCountInt;
+
+Semaphore::Semaphore(const char* name, unsigned total_keys, eSemaphorePolicy policy) :
+  mName          (name),
+  mKeysTotal     (total_keys),
+  mKeysRemaining (total_keys),
+  mPolicy        (policy),
+  mpPRNG         (0)
+{
+  M_UpdConstructCount(eType_Semaphore);
+}
+
+Semaphore::~Semaphore()
+{
+  if (mpPRNG) { delete mpPRNG; mpPRNG=0; }
+
+  M_ListDeleteAll(mSemInfoGetPending,   SemaphoreInfo);
+  M_ListDeleteAll(mSemInfoGetAllocated, SemaphoreInfo);
+
+  M_UpdDestructCount(eType_Semaphore);
+}
+
+bool Semaphore::SemaphoreScheduleGet(unsigned num_keys, Process* process)
+{
+  // Cannot ask for more keys than the maximum possible.
+  assert(num_keys <= mKeysTotal);
+
+  // IMPR: See if we can avoid allocating a sem_info for each Get.
+  SemaphoreInfo* sem_info = new SemaphoreInfo;
+  assert(sem_info);
+  //
+  sem_info->mpProcess = process;
+  sem_info->mNumKeys  = num_keys;
+  //
+  mSemInfoGetPending.Add(sem_info);
+
+  return gScheduler->ScheduleSemaphoreGet(this);
+}
+
+bool Semaphore::SemaphorePut(unsigned num_keys, Process* process)
+{
+  unsigned put_keys_remaining = num_keys;
+
+  for (mSemInfoGetAllocated.First(); put_keys_remaining && !mSemInfoGetAllocated.IsDone(); ) {
+    SemaphoreInfo* sem_info = mSemInfoGetAllocated.Get();
+    assert(sem_info);
+
+    if (sem_info->mpProcess == process) {
+      if (put_keys_remaining >= sem_info->mNumKeys) {
+        // Allowed to return as many keys as was taken in one or more Gets().
+        put_keys_remaining -= sem_info->mNumKeys;
+
+        mKeysRemaining += sem_info->mNumKeys;
+
+        delete sem_info;
+
+        mSemInfoGetAllocated.DeleteLinkThenNext();
+      }
+      else {
+        sem_info->mNumKeys -= put_keys_remaining;
+        mKeysRemaining     += put_keys_remaining;
+        put_keys_remaining  = 0;
+      }
+    }
+  }
+
+  // Catch the case if more keys are put than was taken.
+  assert (put_keys_remaining == 0);
+
+  return TRUE;
+}
+
+Process* Semaphore::FlushGets()
+{
+  Process* process = 0;
+
+  if (mPolicy==eSemaphorePolicy_RoundRobinWithBlock
+  ||  mPolicy==eSemaphorePolicy_RoundRobinWithNoBlock)
+  {
+    for (M_ListIterateAll(mSemInfoGetPending)) {
+      SemaphoreInfo* sem_info = mSemInfoGetPending.Get();
+      assert(sem_info);
+
+      if (sem_info->mNumKeys <= mKeysRemaining) {
+        mKeysRemaining -= sem_info->mNumKeys;
+
+        process = sem_info->mpProcess;
+
+        mSemInfoGetAllocated.Add(sem_info);
+
+        mSemInfoGetPending.DeleteLinkThenIterationDone();
+      }
+
+      if (mPolicy == eSemaphorePolicy_RoundRobinWithBlock) {
+        mSemInfoGetPending.Last(); // force iteration to end
+      }
+    }
+
+    return process;
+  }
+
+  if (mPolicy == eSemaphorePolicy_Random) {
+    if (! mpPRNG) mpPRNG = new PRNG(SeedGet()+mName.Hash()); // CONT: Fix seeding of PRNG object
+
+    if (mSemInfoGetPending.Size()) {
+      unsigned pos = mpPRNG->RandomValueGet(mSemInfoGetPending.Size());
+
+      mSemInfoGetPending.PositionSet(pos);
+      mSemInfoGetPending.PositionSave();
+
+      for (int l=0; l<2 && process==0; l++) {
+        if (l == 1) mSemInfoGetPending.PositionRestore();
+
+        do {
+          SemaphoreInfo* sem_info = mSemInfoGetPending.Get();
+          assert(sem_info);
+
+          if (sem_info->mNumKeys <= mKeysRemaining) {
+            mKeysRemaining -= sem_info->mNumKeys;
+
+            process = sem_info->mpProcess;
+
+            mSemInfoGetAllocated.Add(sem_info);
+
+            mSemInfoGetPending.DeleteLinkThenIterationDone();
+            break;
+          }
+        } while ((l==0) ? mSemInfoGetPending.Next() : mSemInfoGetPending.Prev());
+      }
+    }
+  }
+
+  return process;
+}
+
+// End
+@
+
+
+1.3
+log
+@1. Added CONT for code that still needs to be done.
+2. Adding Semaphare to Scheduler list.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d10 1
+d16 6
+a21 3
+Semaphore::Semaphore(unsigned total_keys) :
+  mNumberOfKeysLoanedOut    (0),
+  mNumberOfKeysTotal        (total_keys)
+a23 2
+
+  gScheduler->Semaphore_Add(this);
+d28 5
+d36 1
+a36 1
+bool Semaphore::SemGetElseBlock(unsigned num_keys, Process* process)
+d38 11
+a48 3
+  // CONT: Need to always block a process first before Scheduler can
+  //       decide which processes can get the semaphore next.
+  unsigned keys_available = mNumberOfKeysTotal - mNumberOfKeysLoanedOut;
+d50 6
+a55 2
+  if (num_keys <= keys_available) {
+    mNumberOfKeysLoanedOut += num_keys;
+d57 8
+a64 3
+    return TRUE;
+  }
+  // else code below:
+d66 1
+a66 3
+  // Keys not available, block the process.
+  ProcessBlockedOnSemaphoreInfo* process_blocked_on_sem = new ProcessBlockedOnSemaphoreInfo;
+  assert(process_blocked_on_sem);
+d68 1
+a68 2
+  process_blocked_on_sem->mProcess = process;
+  process_blocked_on_sem->mNumKeys = num_keys;
+d70 9
+a78 2
+  mProcessBlockedOnSemaphoreList.Add(process_blocked_on_sem);
+  gScheduler->ProcessBlock(process);
+d80 4
+a83 1
+  return FALSE;
+d86 1
+a86 1
+bool Semaphore::SemGetButNoBlock(unsigned num_keys)
+d88 11
+a98 1
+  unsigned keys_available = mNumberOfKeysTotal - mNumberOfKeysLoanedOut;
+d100 1
+a100 2
+  if (num_keys <= keys_available) {
+    mNumberOfKeysLoanedOut += num_keys;
+d102 4
+a105 2
+    return TRUE;
+  }
+d107 4
+a110 2
+  return FALSE;
+}
+d112 2
+a113 5
+void Semaphore::SemPut(unsigned num_keys)
+{
+  // Also check to make sure that the number of keys returned is a legal value.
+  if (num_keys <= mNumberOfKeysLoanedOut) mNumberOfKeysLoanedOut -= num_keys;
+  else                                    assert(0);
+d115 2
+a116 1
+  // CONT: Add check to confirm not more keys are put than taken by process.
+d118 2
+a119 1
+  // CONT: The unblocking needs to be controlled from the Scheduler.
+d121 2
+a122 7
+  // CONT: Add various algorithms for unblocking.
+  // Now check if there are any blocked processes that can be un-blocked.
+  // We can support the following un-blocking algorithms:
+  // 1. Unblock in fifo order.
+  // 2. Unblock first   one that can be satisfied (TBD).
+  // 3. Unblock random  one that can be satisfied (TBD).
+  // 4. Unblock largest one that can be satisfied (TBD).
+d124 2
+a125 2
+  while (mNumberOfKeysLoanedOut < mNumberOfKeysTotal) {
+    unsigned keys_available = mNumberOfKeysTotal - mNumberOfKeysTotal;
+d127 3
+a129 3
+    if (mProcessBlockedOnSemaphoreList.First()) {
+      ProcessBlockedOnSemaphoreInfo* info = mProcessBlockedOnSemaphoreList.Get();
+      assert(info);
+d131 2
+a132 2
+      if (keys_available >= info->mNumKeys) {
+        SemGetButNoBlock(info->mNumKeys); // updates mNumberOfKeysLoanedOut
+d134 1
+a134 1
+        gScheduler->ProcessUnblock(info->mProcess);
+d136 1
+a136 1
+        delete info;
+d138 4
+a141 1
+        mProcessBlockedOnSemaphoreList.DeleteLinkThenIterationDone();
+a142 1
+      else break;
+a143 1
+    else break;
+d145 2
+@
+
+
+1.2
+log
+@1. Added CONT statement needed to modify Put(), Get() to queue up requests.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d20 2
+d74 5
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d29 2
+@

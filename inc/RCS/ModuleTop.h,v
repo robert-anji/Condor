@@ -1,0 +1,38 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2010.09.02.22.44.11;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: template.txt,v $
+// $Revision: 1.1 $
+
+#include "Module.h"
+
+class ModuleTop : public Module
+{
+public:
+  ModuleTop(const char* name);
+  virtual ~ModuleTop();
+
+private:
+};
+
+// End
+@

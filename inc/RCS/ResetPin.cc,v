@@ -1,0 +1,230 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: ResetPin.cc,v $
+// $Revision: 1.2 $
+
+#include <assert.h>
+
+#include "ResetPin.h"
+//
+#include "Global.h"
+#include "Interface.h"
+#include "Process.h"
+#include "Scheduler.h"
+#include "SimulatorDefines.h"
+
+extern Scheduler* gScheduler;
+M_ExternConstructDestructCountInt;
+
+ResetPin& ResetPin::operator()(unsigned u) {
+  mHalfPeriod = u;
+  return *this;
+}
+
+const char* const cResetPinName  = "ResetPin";
+enum { eSignalIntf, eSignalIntf_End };
+InterfaceDescription ResetPin_Interface[] = {
+  eSignalIntf,     cResetPinName, 1, eSignalType_Output,  "CLK",
+  eSignalIntf_End, "",         0, eSignalType_Invalid, "",
+};
+
+ResetPin::ResetPin(const char* name, Module* parent_module, unsigned half_period, eTimeScale t, eResetPinPhase phase) :
+  Process                   (name, parent_module),
+  mHalfPeriod               (half_period),
+  mTimeScale                (t),
+  mResetPinPhaseStart          (phase),
+  mResetPinPhaseCurrent        (phase),
+  mResetPinStartTime           (0),
+  mResetPinNextTransitionTime  (0),
+  mResetPinScheduleSuspend     (FALSE),
+  mBit                      (0, 0)
+{
+  mBit    = 0;
+
+  mpInterface = new Interface(name, ResetPin_Interface);
+  assert(mpInterface);
+
+  Signal* signal = mpInterface->SignalGet(cResetPinName);
+  assert(signal);
+
+  mpInterface->SetOwningProcess(this);
+
+  M_UpdConstructCount(eType_ResetPin);
+}
+
+ResetPin::~ResetPin()
+{
+  M_UpdDestructCount(eType_ResetPin);
+}
+
+bool ResetPin::Start()
+{
+  mProcessState    = eProcessState_Running;
+  mResetPinStartTime  = gScheduler->SimulationTimeGet();
+
+  SimulationTime tm_incr;
+
+  switch (mResetPinPhaseCurrent) {
+    case eResetPinPhase_JustBeforePositiveEdge: mBit = 0; tm_incr = 0;           break;
+    case eResetPinPhase_JustAfterPositiveEdge:  mBit = 1; tm_incr = mHalfPeriod; break;
+    case eResetPinPhase_JustBeforeNegativeEdge: mBit = 1; tm_incr = 0;           break;
+    case eResetPinPhase_JustAfterNegativeEdge:  mBit = 0; tm_incr = mHalfPeriod; break;
+    default:                                 assert(0);
+  }
+
+  mResetPinNextTransitionTime = mResetPinStartTime + tm_incr;
+}
+
+void ResetPin::ProcessExecute(ProcessExecuteReason& exec_reason)
+{
+  exec_reason.mExecutedOk = TRUE;
+
+  if (mResetPinScheduleSuspend) {
+    mProcessState = eProcessState_Suspended;
+
+    return;
+  }
+
+  mBit = !mBit;
+
+  Interface& clk_intf = *mpInterface;
+
+//clk_intf[cResetPinName] = mBit;
+  clk_intf[0] = mBit; // assumes only one signal for clocks
+
+  if (mBit == 1) mResetPinPhaseCurrent = eResetPinPhase_JustAfterPositiveEdge;
+  else           mResetPinPhaseCurrent = eResetPinPhase_JustAfterNegativeEdge;
+
+  mResetPinNextTransitionTime += mHalfPeriod;
+}
+
+bool ResetPin::ProcessStateModify(eProcessState new_state)
+{
+  switch (new_state) {
+  case eProcessState_Running:
+    if (mProcessState == eProcessState_Suspended) {
+      Start(); // restarts the clock and updates the process state
+    }
+    break;
+  case eProcessState_Suspended:
+    // Schedule the suspend for the next time the clock tries to execute
+    // so that current sync processes still see the clock running.
+    mResetPinScheduleSuspend = TRUE;
+    break;
+  default:
+    assert(0);
+  }
+
+  return TRUE;
+}
+
+eProcessType ResetPin::ProcessType() const
+{
+  return eProcessType_ResetPin;
+}
+
+SimulationTime ResetPin::SimTimeForNextResetPinEdgeGet(eSignalEdge next_clk_edge)
+{
+  SimulationTime curr_sim_tm = gScheduler->SimulationTimeGet();
+  SimulationTime next_sim_tm = curr_sim_tm;
+
+  if (curr_sim_tm==mResetPinStartTime && mResetPinPhaseCurrent==mResetPinPhaseStart) {
+    // If the clock has just started, then we must consider its starting phase.
+    switch (mResetPinPhaseStart) {
+      case eResetPinPhase_JustBeforePositiveEdge:
+        switch (next_clk_edge) {
+          case eSignalEdge_PositiveEdge:            next_sim_tm += 0            ; break;
+          case eSignalEdge_PositiveLevel:           next_sim_tm += 0            ; break;
+          case eSignalEdge_PositiveAndNegativeEdge: next_sim_tm += 0            ; break;
+          case eSignalEdge_NegativeEdge:            next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_NegativeLevel:           next_sim_tm += mHalfPeriod  ; break;
+          default: assert(0);
+        }
+        break;
+      case eResetPinPhase_JustAfterPositiveEdge:
+        switch (next_clk_edge) {
+          case eSignalEdge_PositiveEdge:            next_sim_tm += mHalfPeriod*2; break;
+          case eSignalEdge_PositiveLevel:           next_sim_tm += 0            ; break;
+          case eSignalEdge_PositiveAndNegativeEdge: next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_NegativeEdge:            next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_NegativeLevel:           next_sim_tm += mHalfPeriod  ; break;
+          default: assert(0);
+        }
+        break;
+      case eResetPinPhase_JustBeforeNegativeEdge:
+        switch (next_clk_edge) {
+          case eSignalEdge_PositiveEdge:            next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_PositiveLevel:           next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_PositiveAndNegativeEdge: next_sim_tm += 0            ; break;
+          case eSignalEdge_NegativeEdge:            next_sim_tm += 0            ; break;
+          case eSignalEdge_NegativeLevel:           next_sim_tm += 0            ; break;
+          default: assert(0);
+        }
+        break;
+      case eResetPinPhase_JustAfterNegativeEdge:
+        switch (next_clk_edge) {
+          case eSignalEdge_PositiveEdge:            next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_PositiveLevel:           next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_PositiveAndNegativeEdge: next_sim_tm += mHalfPeriod  ; break;
+          case eSignalEdge_NegativeEdge:            next_sim_tm += mHalfPeriod*2; break;
+          case eSignalEdge_NegativeLevel:           next_sim_tm += 0            ; break;
+          default: assert(0);
+        }
+        break;
+      default: assert(0);
+    }
+  }
+  else {
+    eSignalEdge prev_clk_edge;
+
+    if (mBit == 1 ) prev_clk_edge = eSignalEdge_PositiveEdge;
+    else            prev_clk_edge = eSignalEdge_NegativeEdge;
+
+    switch (next_clk_edge) {
+      case eSignalEdge_PositiveEdge:
+      case eSignalEdge_PositiveLevel:
+        if (prev_clk_edge == eSignalEdge_PositiveEdge)
+          next_sim_tm = mResetPinNextTransitionTime + mHalfPeriod;
+        else
+          next_sim_tm = mResetPinNextTransitionTime;
+        break;
+      case eSignalEdge_NegativeEdge:
+      case eSignalEdge_NegativeLevel:
+        if (prev_clk_edge == eSignalEdge_PositiveEdge)
+          next_sim_tm = mResetPinNextTransitionTime;
+        else
+          next_sim_tm = mResetPinNextTransitionTime + mHalfPeriod;
+        break;
+      case eSignalEdge_PositiveAndNegativeEdge:
+        next_sim_tm = mResetPinNextTransitionTime;
+        break;
+      default: assert(0);
+    }
+  }
+
+  return next_sim_tm;
+}
+
+// End
+@

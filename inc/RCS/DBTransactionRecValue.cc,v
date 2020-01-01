@@ -1,0 +1,120 @@
+head	1.3;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.3
+date	2010.09.13.23.18.07;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.14.37.13;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.00.59.46;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@Database transaction that needs a handle to a Table, Record, Value and attribute position.
+@
+
+
+1.3
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+@
+text
+@// $RCSfile: DBTransactionRecValue.cc,v $
+// $Revision: 1.2 $
+
+#include <assert.h>
+
+#include "DBTransactionRecValue.h"
+//
+#include "Global.h"
+#include "Value.h"
+
+M_ExternConstructDestructCountInt;
+
+DBTransactionRecValue::DBTransactionRecValue(eDBTransactionOperation tran_oper, View *view, Record *rec, const Attribute* attr, const Value &val) :
+  DBTransaction   (tran_oper),
+  mpView          (view),
+  mpRecord        (rec),
+  mpAttribute     (attr)
+{
+  mpValue = new Value(val); M_Constructed(Value);
+
+  assert (mpValue);
+
+  M_UpdConstructCount(eType_DBTransactionRecValue);
+}
+
+DBTransactionRecValue::~DBTransactionRecValue()
+{
+  if (mpValue) { delete mpValue; mpValue = 0; }
+
+  M_UpdDestructCount(eType_DBTransactionRecValue);
+}
+
+// End
+@
+
+
+1.2
+log
+@1. Class needs member View, not Table, changed (Table kept for future use).
+2. Replaced attribute position (short) with Attribute object.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 2
+d11 3
+a13 1
+DBTransactionRecValue::DBTransactionRecValue(eDBTransactionOperation tran_oper, View *view, Record *rec, Attribute *const attr, Value &val) :
+d15 3
+a17 3
+  mView           (view),
+  mRecord         (rec),
+  mAttribute      (attr)
+d19 3
+a21 1
+  mValue        = new Value(val);
+d23 1
+a23 1
+  assert (mValue);
+d28 3
+a30 1
+  if (mValue) { delete mValue; mValue = 0; }
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d9 1
+a9 1
+DBTransactionRecValue::DBTransactionRecValue(eDBTransactionOperation tran_oper, Table *tbl, Record *rec, short attr_pos, Value &val) :
+d11 1
+a11 1
+  mTable          (tbl),
+d13 1
+a13 1
+  mAttrPosition   (attr_pos)
+@

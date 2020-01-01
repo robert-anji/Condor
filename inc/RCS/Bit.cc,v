@@ -1,0 +1,2440 @@
+head	1.6;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.6; strict;
+comment	@// @;
+
+
+1.6
+date	2011.08.21.22.20.29;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.22.17.08.06;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.33.12;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.02.03.18;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@1. Add ability to assign different bits to self.
+2. Added operator bool() so that bit can be tested using 'if'.
+3. Comparison operators not correct, fixed one of them and added CONT.
+@
+text
+@// $RCSfile: Bit.cc,v $
+// $Revision: 1.5 $
+
+#include <assert.h>
+#include <stdio.h>
+#include <bits/wordsize.h>
+#include <limits.h>
+#include <string.h>
+
+#include "Bit.h"
+//
+#include "Global.h"
+#include "Interface.h"
+#include "SimulatorDefines.h"
+
+extern SimulationTime gSimTime;
+
+const short cWordSize              = __WORDSIZE;
+const short cWordSizeMinus1        = __WORDSIZE-1;
+const short cCharsPerWordHex       = cWordSize/4; // since 4 hex bits per char
+const short cWordSizeLog           = 5; // couldnt find #define, verify in Bit()
+const unsigned cWordMax            = UINT_MAX;
+
+// The following cannot be declared 'const' because we initialize them later.
+static unsigned int cBitSetAt[32];    // This sets up bit patterns like:
+                                      // [0] 00000000_00000000_00000000_00000001
+                                      // [1] 00000000_00000000_00000000_00000010
+                                      // [2] 00000000_00000000_00000000_00000100
+                                      // etc.
+static unsigned int cBitNotSetAt[32]; // This sets up bit patterns like:
+                                      // [0] 11111111_11111111_11111111_11111110
+                                      // [1] 11111111_11111111_11111111_11111101
+                                      // [2] 11111111_11111111_11111111_11111011
+                                      // etc.
+static unsigned int cBitSetUpto[32];  // This sets up bit patterns like:
+                                      // [0] 00000000_00000000_00000000_00000001
+                                      // [1] 00000000_00000000_00000000_00000011
+                                      // [2] 00000000_00000000_00000000_00000111
+                                      // etc.
+static short cBitSetAtInitDone = FALSE;
+
+M_ExternConstructDestructCountInt;
+
+static Bit sSavedBit(255,0);
+
+Bit::Bit() :
+  mNumWords  (0),
+  mNumBits   (0),
+  mLsbBit    (0),
+  mMsbBit    (0),
+  mpWords    (0),
+  mSavedBitSet(FALSE),
+  mBitRangeState(eBitRangeState_Clear)
+{
+  if (!cBitSetAtInitDone) InitMasks();
+
+  // This (default) constructor creates an empty bit that can be sized later
+  //       The reason for this constructor was simplified Concatenate logic,
+  //       we will not need to calculate the Bit width before assigning the
+  //       concatenated bits.
+  //       In general, whenever we dont yet know the size of the bit vector we
+  //       can use this instance.
+  //       Also need for Bit arrays as C++ arrays always use constructor X::X().
+
+  M_UpdConstructCount(eType_Bit);
+}
+
+Bit::Bit(short high_bit, short low_bit) :
+  mNumWords  (0),
+  mNumBits   (0),
+  mLsbBit    (0),
+  mMsbBit    (0),
+  mpWords    (0),
+  mSavedBitSet(FALSE),
+  mBitRangeState(eBitRangeState_Clear)
+{
+  // We need a one-time global initialization for this class.
+  if (!cBitSetAtInitDone) InitMasks();
+
+  assert(high_bit >= low_bit);
+
+  InitBitsAndWords(high_bit, low_bit);
+
+  assert(mpWords);
+
+  M_UpdConstructCount(eType_Bit);
+}
+
+Bit::Bit(const Bit &b) :
+  mNumWords  (0),
+  mNumBits   (0),
+  mLsbBit    (0),
+  mMsbBit    (0),
+  mpWords    (0),
+  mSavedBitSet(FALSE),
+  mBitRangeState(eBitRangeState_Clear)
+{
+  // Nothing more to do if 'b' is empty.
+  if (b.IsEmptyBit()) return;
+
+  // Size this object based on incoming msb, lsb bits, not mNumBits.
+  InitBitsAndWords(b.mMsbBit, b.mLsbBit);
+
+  for (short i=0; i<mNumWords; i++)
+    mpWords[i] = b.mpWords[i];
+
+  M_UpdConstructCount(eType_Bit);
+}
+
+Bit::Bit(Interface& intf) :
+  mNumWords  (0),
+  mNumBits   (0),
+  mLsbBit    (0),
+  mMsbBit    (0),
+  mpWords    (0),
+  mSavedBitSet(FALSE),
+  mBitRangeState(eBitRangeState_Clear)
+{
+  // The bit will be sized within GetCommittedValue() using operator=(Bit&).
+  intf.GetCommittedValue(*this);
+
+  M_UpdConstructCount(eType_Bit);
+}
+
+Bit::~Bit()
+{
+  delete [] mpWords; mpWords = 0; M_UpdDestructCountN(eType_Unsigned, mNumWords);
+
+  mNumWords = 0;
+  mNumBits  = 0;
+  mMsbBit   = 0;
+  mLsbBit   = 0;
+
+  M_UpdDestructCount(eType_Bit);
+}
+
+// Causes problems with bit = (Bit)value; // in Interface.cc
+//Bit::Bit(unsigned int i) :
+//  mNumWords  (1),
+//  mNumBits   (32),
+//  mLsbBit    (0),
+//  mMsbBit    (31),
+//  mpWords    (0),
+//  mBitRangeState(eBitRangeState_Clear)
+//{
+//  // Size this object based on incoming msb, lsb bits, not mNumBits.
+//  InitBitsAndWords(mMsbBit, mLsbBit);
+//
+//  mpWords[0] = i;
+//}
+
+void Bit::InitBitsAndWords(short msb, short lsb)
+{
+  if (lsb > msb) { short tmp = lsb; lsb = msb; msb = tmp; }
+
+  // Note: the logic below also takes care of situations when low_bit != 0,
+  //       internally we always set low_bit to 0 and adjust high_bit if needed.
+  mNumBits  = 1 + msb - lsb;
+  mNumWords = 1 + ((mNumBits-1)>>cWordSizeLog);
+  mpWords   = new unsigned [mNumWords]; M_UpdConstructCountN(eType_Unsigned, mNumWords);
+
+  for (short i=0; i<mNumWords; i++) mpWords[i] = 0;
+
+  mLsbBit   = 0;
+  mMsbBit   = mNumBits - 1;
+
+  assert(mpWords);
+}
+
+void Bit::InitMasks()
+{
+  unsigned int mask = 1;
+
+  for (int i=0; i<cWordSize; i++) {
+    cBitSetAt[i]    =  mask;
+    cBitNotSetAt[i] = ~mask;
+
+    if (i == 0) cBitSetUpto[i] = 1;
+    else        cBitSetUpto[i] = (cBitSetUpto[i-1]<<1) | 1;
+
+    mask = mask << 1;
+  }
+
+  cBitSetAtInitDone = TRUE;
+
+  // Confirm consistent constants.
+  assert((1<<cWordSizeLog) == cWordSize);
+}
+
+bool Bit::Initialize(const char* line, const char* format)
+{
+  // TBD: The Initialize task will not work well if the bit is not yet sized.
+
+  short chars_total    = strlen(line);
+  
+  unsigned      u;
+  bool          status;
+  const char   *char_ptr;
+  short         word_count;
+  short         char_count;
+  short         num_bits;
+
+  if (IsEmptyBit()) {
+    if      (*format=='x') num_bits = chars_total*4;
+    else if (*format=='d') num_bits = chars_total*4; // TBD: need less bits here
+
+    InitBitsAndWords(num_bits-1, 0);
+  }
+
+  for (u=0, status=TRUE, char_ptr=line+chars_total, word_count=0, char_count=0;
+   status && char_ptr>=line && word_count<mNumWords;
+    char_ptr--, char_count++)
+  {
+    if (MacroIsExactMultiple(char_count, cCharsPerWordHex)) {
+      mpWords[word_count++] = u;
+      u                     = 0;
+    }
+    else {
+      u = u << 4; // make room for next 4 bits since 4 bits per hex char
+    }
+
+    char c = *char_ptr;
+
+    if      (c>='0' && c<='9') u = u | (c - '0');
+    else if (c>='a' && c<='f') u = u | (c - 'a');
+    else if (c>='A' && c<='F') u = u | (c - 'A');
+    else                       status = FALSE;
+  }
+  // TBD: confirm 'line' len matches bit_width
+
+  if (char_ptr >= line) status = FALSE; // not all char's consumed
+
+  return status;
+}
+
+bool Bit::IsAtSignalEdge(eSignalEdge edge)
+{
+  assert (mMsbBit == 0); // allow edge check for single bits only, is this ok?
+
+  switch (edge) {
+    case eSignalEdge_PositiveEdge:
+    case eSignalEdge_PositiveLevel:           return *this == 1; break;
+    case eSignalEdge_NegativeEdge:
+    case eSignalEdge_NegativeLevel:           return *this == 0; break;
+    case eSignalEdge_PositiveAndNegativeEdge: return TRUE;
+    default:                                  return FALSE;
+  }
+
+  return FALSE;
+}
+
+// Note: This logic is also copied to operator=(Bit& b).
+Bit& Bit::operator=(Bit& b)
+{
+  // If assigning to self then handle it specially
+  // as we may be assigning different sets of bits.
+  if (&b == this) { 
+    // When assigning to self ensure mSavedBitSet was set using SelfCopy().
+    if (mSavedBitSet) { mSavedBitSet = FALSE; return *this = sSavedBit; }
+  }
+
+  // I think it doesnt make sense to assign an empty bit
+  assert(! b.IsEmptyBit());
+
+  // If this Bit is not yet sized, size it now (same size as 'b').
+  if (mpWords==0) InitBitsAndWords(b.mMsbBit, b.mLsbBit);
+
+  // If both bits are equal size and we are copying the
+  // full range of bits then simply copy over the words.
+  if (mMsbBit==b.mMsbBit && mLsbBit==b.mLsbBit && mNumBits==(mMsbBit-mLsbBit+1)) {
+    for (int i=0; i<mNumWords; i++) {
+      mpWords[i] = b.mpWords[i];
+    }
+
+    return *this;
+  }
+
+  if ((b.mMsbBit-b.mLsbBit) > (mMsbBit-mLsbBit))
+  {
+    // We dont allow assignment if bit width of operand is greater.
+    assert(0);
+  }
+  else {
+    short i =   mLsbBit;
+    short m =   mLsbBit>>cWordSizeLog; // mpWords index
+    short j = b.mLsbBit;
+    short n = b.mLsbBit>>cWordSizeLog; // mpWords index
+
+    for (; i<=mMsbBit; i++,j++)
+    {
+      if (j > b.mMsbBit) {
+        mpWords[m] = mpWords[m] & cBitNotSetAt[i%cWordSize];
+      }
+      else {
+        if (b.mpWords[n] & cBitSetAt[j%cWordSize])
+          mpWords[m] = mpWords[m] | cBitSetAt[i%cWordSize];
+        else
+          mpWords[m] = mpWords[m] & cBitNotSetAt[i%cWordSize];
+      }
+
+      if ((i%cWordSize) == (cWordSize-1)) m++;
+      if ((j%cWordSize) == (cWordSize-1)) n++;
+    }
+  }
+
+  ResetBitRange();
+  b.ResetBitRange();
+
+  return *this;
+}
+
+// This assignment operator is invoked whenever 'copy by value' is needed.
+// Note: logic is copied from operator=(Bit& b).
+Bit& Bit::operator=(const Bit& b)
+{
+  // If assigning to self then there is not much to do.
+  if (&b == this) { ResetBitRange(); return *this; }
+
+  // I think it doesnt make sense to assign an empty bit
+  assert(! b.IsEmptyBit());
+
+  // If this Bit is not yet sized, size it now.
+  if (mpWords == 0) InitBitsAndWords(b.mMsbBit, b.mLsbBit);
+
+  // If both bits are equal size and we are copying the
+  // full range of bits then simply copy over the words.
+  if (mMsbBit==b.mMsbBit && mLsbBit==b.mLsbBit && mNumBits==(mMsbBit-mLsbBit+1)) {
+    for (int i=0; i<mNumWords; i++) {
+      mpWords[i] = b.mpWords[i];
+    }
+
+    return *this;
+  }
+
+  if ((mMsbBit-mLsbBit) < (b.mMsbBit-b.mLsbBit))
+  {
+    // We dont allow assignment if bit width of operand is greater
+    assert(0);
+  }
+  else {
+    short i =   mLsbBit;
+    short m =   mLsbBit>>cWordSizeLog; // mpWords index
+    short j = b.mLsbBit;
+    short n = b.mLsbBit>>cWordSizeLog; // mpWords index
+
+    for (; i<=mMsbBit; i++,j++)
+    {
+      if (b.mpWords[n] & cBitSetAt[j%cWordSize])
+        mpWords[m] = mpWords[m] | cBitSetAt[i%cWordSize];
+      else
+        mpWords[m] = mpWords[m] & cBitNotSetAt[i%cWordSize];
+
+      if ((i%cWordSize) == (cWordSize-1)) m++;
+      if ((j%cWordSize) == (cWordSize-1)) n++;
+    }
+  }
+
+  ResetBitRange();
+
+  return *this;
+}
+
+Bit& Bit::operator=(unsigned u)
+{
+  // If this Bit is not yet sized, size it now.
+  if (mpWords == 0) InitBitsAndWords(cWordSizeMinus1, 0);
+
+  short w0 = mLsbBit >> ((cWordSize==64) ? 6 : 5);
+  short w1 = mMsbBit >> ((cWordSize==64) ? 6 : 5);
+
+  short width_minus1 = mMsbBit - mLsbBit;
+
+  // We dont allow truncation so confirm that u fits in 'width' bits,
+  // (use width-1 because shifting by 32 will not work as expected with gcc).
+  assert((u >> width_minus1) <= 1);
+
+  if (w0 == w1) {
+    // msb and lsb are in the same word.
+    mpWords[w0] = mpWords[w0] & ~(cBitSetUpto[width_minus1]<<(mLsbBit%32))  | u<<mLsbBit%32;
+  }
+  else {
+    // msb and lsb are not in the same word, first assign lower word.
+    short width_w0 = cWordSize - (mLsbBit%32);
+    mpWords[w0] = mpWords[w0] & ~(cBitSetUpto[width_w0]<<(mLsbBit%32)) | u<<mLsbBit%32;
+
+    // now assign upper word.
+    short width_w1 = mMsbBit%32;
+    mpWords[w1] = mpWords[w1] & ~cBitSetUpto[width_w0] | u>>width_w0;
+  }
+
+  ResetBitRange();
+
+  return *this;
+}
+
+// CONT: Fix comparison operators not accounting for msb, lsb.
+bool Bit::operator==(int ii)
+{
+  assert(ii >= 0); // we dont support -ve values inside Bit
+
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if (mpWords[msb_word_num] == ii) flag = TRUE;
+    else                             flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator!=(int ii)
+{
+  return ! (*this == ii);
+}
+
+bool Bit::operator>(int ii)
+{
+  assert(ii >= 0); // we dont support -ve values inside Bit
+
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if ((mpWords[msb_word_num]&cBitSetUpto[mMsbBit])>>mLsbBit > ii) flag = TRUE;
+    else flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator<(int ii)
+{
+  assert(ii >= 0); // we dont support -ve values inside Bit
+
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if (mpWords[msb_word_num] < ii) flag = TRUE;
+    else                            flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator>=(int ii)
+{
+  return ! (*this < ii);
+}
+
+bool Bit::operator<=(int ii)
+{
+  return ! (*this > ii);
+}
+
+bool Bit::operator==(unsigned u)
+{
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if (mpWords[msb_word_num] == u) flag = TRUE;
+    else                            flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator!=(unsigned u)
+{
+  return ! (*this == u);
+}
+
+bool Bit::operator>(unsigned u)
+{
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if (mpWords[msb_word_num] > u) flag = TRUE;
+    else                           flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator<(unsigned u)
+{
+  // First, special handling if Bit is still empty (never sized or assigned).
+  if (IsEmptyBit()) return FALSE;
+
+  bool flag;
+
+  short msb_word_num = mMsbBit>>cWordSizeLog;
+  short lsb_word_num = mLsbBit>>cWordSizeLog;
+  //
+  short bit_range_straddles = mNumWords>1 || (msb_word_num!=lsb_word_num);
+
+  if (!bit_range_straddles) {
+    if (mpWords[msb_word_num] < u) flag = TRUE;
+    else                           flag = FALSE;
+  }
+  else assert(0); // not yet implemented
+  
+  ResetBitRange();
+
+  return flag;
+}
+
+bool Bit::operator>=(unsigned u)
+{
+  return ! (*this < u);
+}
+
+bool Bit::operator<=(unsigned u)
+{
+  return ! (*this > u);
+}
+
+bool Bit::operator==(Bit& b)
+{
+  // Note: this code is reused for the other comparison operators,
+  //       so changes here should get reflected there.
+
+  short    num_words;
+  short    i;
+  bool     flag;
+
+  // First, special handling if either Bit is empty.
+  // We allow equality check for empty bits but not for comparison checks.
+  if (IsEmptyBit() || b.IsEmptyBit()) {
+    if (IsEmptyBit() && b.IsEmptyBit()) return TRUE;
+    else                                return FALSE;
+  }
+  
+  // Optimization is possible when Bit's have same msb & lsb, and lsb=0.
+  if (mMsbBit==b.mMsbBit && mLsbBit==b.mLsbBit && mLsbBit==0) {
+    num_words = mMsbBit>>cWordSizeLog;
+    flag      = TRUE;
+
+    for (i=0; i<=num_words; i++) {
+      if (mpWords[i] != b.mpWords[i]) { flag = FALSE; break; }
+    }
+
+    ResetBitRange(); b.ResetBitRange();
+    return flag;
+  }
+
+  // We should compare the value only, the
+  // number of bits in each can be different.
+  short width1 =   mMsbBit -   mLsbBit; // not the actual width but one less
+  short width2 = b.mMsbBit - b.mLsbBit; //                "
+
+  short j, m, n;
+
+  for (i=mMsbBit;   width1 > width2; i--, width1--) {
+    m = i>>cWordSizeLog;
+    if (mpWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return FALSE;
+    }
+  }
+
+  for (j=b.mMsbBit; width2 > width1; j--, width2--) {
+    m = j>>cWordSizeLog;
+    if (b.mpWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return FALSE;
+    }
+  }
+
+  // If we reach here, then width1 == width2
+  for ( ; TRUE; i--, j--) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+    if (( (mpWords[m] & cBitSetAt[i%cWordSize]) && !(b.mpWords[n] & cBitSetAt[j%cWordSize]))
+    ||  (!(mpWords[m] & cBitSetAt[i%cWordSize]) &&  (b.mpWords[n] & cBitSetAt[j%cWordSize])))
+    {
+      ResetBitRange(); b.ResetBitRange(); return FALSE;
+    }
+
+    // Can test for either 'i' or 'j' .
+    if (i == mLsbBit) break;
+  }
+
+  ResetBitRange(); b.ResetBitRange(); return TRUE; // done comparing all bits
+}
+
+bool Bit::operator!=(Bit& b)
+{
+  return !(*this == b);
+}
+
+bool Bit::operator>(Bit& b)
+{
+  // Note: code copied from operator==
+
+  short    num_words;
+  short    i;
+  bool     flag;
+  
+  // First, special handling if either Bit is empty.
+  // We allow equality check for empty bits but not for comparison checks.
+  assert (!IsEmptyBit() && !b.IsEmptyBit()); // don't allow comparison if empty
+
+  // Optimization is possible when Bit's have same msb & lsb, and lsb=0.
+  if (mMsbBit==b.mMsbBit && mLsbBit==b.mLsbBit && mLsbBit==0) {
+    num_words = mMsbBit>>cWordSizeLog;
+    flag      = FALSE;
+
+    for (i=num_words; i>=0; i--) {
+      if (mpWords[i] > b.mpWords[i]) { flag = TRUE; break; }
+    }
+
+    ResetBitRange(); b.ResetBitRange();
+    return flag;
+  }
+
+  // We should compare the value only, the
+  // number of bits in each can be different.
+  short width1 =   mMsbBit -   mLsbBit; // not the actual width but width-1
+  short width2 = b.mMsbBit - b.mLsbBit; //                "
+
+  short j, m, n;
+
+  for (i=mMsbBit;   width1 > width2; i--, width1--) {
+    m = i>>cWordSizeLog;
+    if (mpWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return TRUE;
+    }
+  }
+
+  for (j=b.mMsbBit; width2 > width1; j--, width2--) {
+    m = j>>cWordSizeLog;
+    if (b.mpWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return FALSE;
+    }
+  }
+
+  // If we reach here, then width1 == width2
+  for ( ; TRUE; i--, j--) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+    if ((  mpWords[m] & cBitSetAt[i%cWordSize])
+    && !(b.mpWords[n] & cBitSetAt[j%cWordSize]))
+    {
+      ResetBitRange(); b.ResetBitRange(); return TRUE;
+    }
+
+    // Can test for either 'i' or 'j' .
+    if (i==mLsbBit) break;
+  }
+
+  ResetBitRange(); b.ResetBitRange(); return FALSE; // done comparing all bits, bits are <=
+}
+
+bool Bit::operator<(Bit& b)
+{
+  // Note: code copied from operator==
+
+  // First, special handling if either Bit is empty.
+  // We allow equality check for empty bits but not for comparison checks.
+  assert (!IsEmptyBit() && !b.IsEmptyBit()); // don't allow comparison if empty
+
+  // Optimization is possible when Bit's have same msb & lsb, and lsb=0.
+  short    num_words;
+  short    i;
+  bool     flag;
+  
+  if (mMsbBit==b.mMsbBit && mLsbBit==b.mLsbBit && mLsbBit==0) {
+    num_words = mMsbBit>>cWordSizeLog;
+    flag      = FALSE;
+
+    for (i=num_words; i>=0; i--) {
+      if (mpWords[i] < b.mpWords[i]) { flag = TRUE; break; }
+    }
+
+    ResetBitRange(); b.ResetBitRange();
+    return flag;
+  }
+
+  // We should compare the value only, the
+  // number of bits in each can be different.
+  short width1 =   mMsbBit -   mLsbBit; // not the actual width but width-1
+  short width2 = b.mMsbBit - b.mLsbBit; //                "
+
+  short j, m, n;
+
+  for (i=mMsbBit;   width1 > width2; i--, width1--) {
+    m = i>>cWordSizeLog;
+    if (mpWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return FALSE;
+    }
+  }
+
+  for (j=b.mMsbBit; width2 > width1; j--, width2--) {
+    m = j>>cWordSizeLog;
+    if (b.mpWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBitRange(); b.ResetBitRange(); return TRUE;
+    }
+  }
+
+  // If we reach here, then width1 == width2
+  for ( ; TRUE; i--, j--) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+    if (!(  mpWords[m] & cBitSetAt[i%cWordSize])
+    &&   (b.mpWords[n] & cBitSetAt[j%cWordSize]))
+    {
+      ResetBitRange(); b.ResetBitRange(); return TRUE;
+    }
+
+    // Can test for either 'i' or 'j' .
+    if (i==mLsbBit) break;
+  }
+
+  ResetBitRange(); b.ResetBitRange(); return FALSE; // done comparing all bits, bits are >=
+}
+
+bool Bit::operator>=(Bit& b)
+{
+  return ! (*this < b);
+}
+
+bool Bit::operator<=(Bit& b)
+{
+  return ! (*this > b);
+}
+
+Bit& Bit::Concatenate2(Bit &b1, Bit &b0)
+{
+  bool empty0 = b0.IsEmptyBit();
+  bool empty1 = b1.IsEmptyBit();
+
+  short concat_bit_width;
+
+  // Take care of empty bits.
+  concat_bit_width  = (empty0!=0) + b0.mMsbBit-b0.mLsbBit;
+  concat_bit_width += (empty1!=0) + b1.mMsbBit-b1.mLsbBit;
+
+  if (concat_bit_width == 0) {
+    if (IsEmptyBit()) return *this; // leave as empty
+    else              assert(0);    // cannot concatenate a non-empty to empty
+  }
+
+  // If this Bit is not yet sized, size it now.
+  if (mpWords == 0) InitBitsAndWords(concat_bit_width-1, 0);
+
+  // Now make sure this bit is same size as needed by concatenation.
+  assert(mMsbBit-mLsbBit+1 == concat_bit_width);
+
+  (*this)[mLsbBit+concat_bit_width-1][mLsbBit] = b0;
+  (*this)[mMsbBit][mLsbBit+concat_bit_width]   = b1;
+
+  return *this;
+}
+
+Bit& Bit::Concatenate3(Bit &b2, Bit &b1, Bit &b0)
+{
+  Bit b; M_Constructed(Bit);
+
+  Concatenate2(b2, b.Concatenate2(b1, b0));
+
+  return *this;
+}
+
+Bit& Bit::Concatenate4(Bit &b3, Bit &b2, Bit &b1, Bit &b0)
+{
+  Bit b3_2;
+  Bit b1_0;
+
+  Concatenate2(b3_2.Concatenate2(b3, b2), b1_0.Concatenate2(b1, b0));
+
+  return *this;
+}
+
+Bit& Bit::Concatenate5(Bit &b4, Bit &b3, Bit &b2, Bit &b1, Bit &b0)
+{
+  Bit b3_2;
+  Bit b1_0;
+
+  Concatenate3(b4, b3_2.Concatenate2(b3, b2), b1_0.Concatenate2(b1, b0));
+
+  return *this;
+}
+
+Bit& Bit::Concatenate6(Bit &b5, Bit &b4, Bit &b3, Bit &b2, Bit &b1, Bit &b0)
+{
+  Bit b5_4;
+  Bit b3_2;
+  Bit b1_0;
+
+  b5_4.Concatenate2(b5, b4);
+  b3_2.Concatenate2(b3, b2);
+  b1_0.Concatenate2(b1, b0);
+
+  Bit b3_0;
+
+  Concatenate2(b5_4, (b3_0.Concatenate2(b3_2, b1_0)));
+
+  return *this;
+}
+
+Bit Bit::operator&(Bit& bit)
+{
+  assert(!IsEmptyBit());
+  assert((mMsbBit-mLsbBit) == (bit.mMsbBit-bit.mLsbBit));
+
+  Bit b(*this); M_Constructed(Bit);
+
+  short i = mLsbBit;
+  short j = bit.mLsbBit;
+  short m;
+  short n;
+
+  // OPT: directly 'and' the mpWords instead of individual bits.
+  for (; i<=b.mMsbBit; i++, j++) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+
+    if ((  b.mpWords[m] & cBitSetAt[i%cWordSize])
+    &&  (bit.mpWords[n] & cBitSetAt[j%cWordSize]))
+    {
+      b.mpWords[m] = b.mpWords[m] | cBitSetAt[i%cWordSizeLog];
+    }
+    else {
+      b.mpWords[m] = b.mpWords[m] & cBitNotSetAt[i%cWordSizeLog];
+    }
+  }
+
+  ResetBitRange();
+  bit.ResetBitRange();
+
+  return b;
+}
+
+Bit Bit::operator|(Bit& bit)
+{
+  assert(!IsEmptyBit());
+  assert((mMsbBit-mLsbBit) == (bit.mMsbBit-bit.mLsbBit));
+
+  Bit b(*this); M_Constructed(Bit);
+
+  short i = mLsbBit;
+  short j = bit.mLsbBit;
+  short m;
+  short n;
+
+  // OPT: directly 'or' the mpWords instead of individual bits.
+  for (; i<=b.mMsbBit; i++, j++) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+
+    if ((  b.mpWords[m] & cBitSetAt[i%cWordSize])
+    ||  (bit.mpWords[n] & cBitSetAt[j%cWordSize]))
+    {
+      b.mpWords[m] = b.mpWords[m] | cBitSetAt[i%cWordSizeLog];
+    }
+    else {
+      b.mpWords[m] = b.mpWords[m] & cBitNotSetAt[i%cWordSizeLog];
+    }
+  }
+
+  ResetBitRange();
+  bit.ResetBitRange();
+
+  return b;
+}
+
+Bit Bit::operator^(Bit& bit)
+{
+  assert(!IsEmptyBit());
+  assert((mMsbBit-mLsbBit) == (bit.mMsbBit-bit.mLsbBit));
+
+  Bit b(*this); M_Constructed(Bit);
+
+  short i = mLsbBit;
+  short j = bit.mLsbBit;
+  short m;
+  short n;
+
+  // OPT: directly 'or' the mpWords instead of individual bits.
+  for (; i<=b.mMsbBit; i++, j++) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+
+    if ((   (  b.mpWords[m] & cBitSetAt[i%cWordSize])
+         && (bit.mpWords[n] & cBitNotSetAt[j%cWordSize]))
+    ||  (   (  b.mpWords[m] & cBitNotSetAt[i%cWordSize])
+         && (bit.mpWords[n] & cBitSetAt[j%cWordSize])))
+    {
+      b.mpWords[m] = b.mpWords[m] | cBitSetAt[i%cWordSizeLog];
+    }
+    else {
+      b.mpWords[m] = b.mpWords[m] & cBitNotSetAt[i%cWordSizeLog];
+    }
+  }
+
+  ResetBitRange();
+  bit.ResetBitRange();
+
+  return b;
+}
+
+Bit Bit::operator~()
+{
+  Bit b(*this); M_Constructed(Bit);
+
+  short i = mLsbBit;
+  short m;
+
+  // OPT: directly 'or' the mpWords instead of individual bits.
+  for (; i<=b.mMsbBit; i++) {
+    m = i>>cWordSizeLog;
+
+    if (b.mpWords[m] & cBitSetAt[i%cWordSize])
+      b.mpWords[m] = b.mpWords[m] & cBitNotSetAt[i%cWordSizeLog];
+    else
+      b.mpWords[m] = b.mpWords[m] | cBitSetAt[i%cWordSizeLog];
+  }
+
+  ResetBitRange();
+
+  return b;
+}
+
+bool Bit::operator!() const
+{
+  for (short i=0; i<mNumWords; i++)
+    if (mpWords[i] != 0) return FALSE;
+
+  return TRUE;
+}
+
+Bit& Bit::operator++(int)
+{
+  assert(!IsEmptyBit());
+
+  Bit b(mMsbBit, mLsbBit); M_Constructed(Bit);
+
+  for (int i=0; i<=b.mNumWords; i++) {
+    if (i<b.mNumWords) {
+      if (b.mpWords[i] == cWordMax) { b.mpWords[i] = 0;      }
+      else                          { b.mpWords[i]++; break; }
+    }
+    else {
+      if ((b.mpWords[i] && cBitSetUpto[b.mMsbBit%cWordSize])
+      ==                   cBitSetUpto[b.mMsbBit%cWordSize])
+      {
+        b.mpWords[i] = 0;
+      }
+      else { b.mpWords[i]++; break; }
+    }
+  }
+
+  (*this) = b;
+
+  return *this;
+}
+
+Bit& Bit::operator--(int)
+{
+  assert(!IsEmptyBit());
+
+  Bit b(mMsbBit, mLsbBit); M_Constructed(Bit);
+
+  for (int i=0; i<=b.mNumWords; i++) {
+    if (i<b.mNumWords) {
+      if (b.mpWords[i] == 0) { b.mpWords[i] = cBitSetUpto[31]; }
+      else                   { b.mpWords[i]--; break;          }
+    }
+    else {
+      if (b.mpWords[i] == 0) { b.mpWords[i] = cBitSetUpto[b.mMsbBit%cWordSize]; }
+      else                   { b.mpWords[i]--; break;                           }
+    }
+  }
+
+  (*this) = b;
+
+  return *this;
+}
+
+void Bit::operator+=(Bit &bit)
+{
+  assert(!IsEmptyBit());
+
+  // In order to prevent cascading of + operator (b=b0+b1+b2) we return void.
+  // Cascading causes problems because it will modify the intermediate b1 above
+  // which is not our goal.
+  // In order to cascade we must cast the rhs to 'unsigned', i.e.:
+  //   b=(unsigned)b0+(unsigned)b1+(unsigned)b2;
+
+  Bit b0(1 +     mMsbBit -     mLsbBit, 0); M_Constructed(Bit);
+  Bit b1(1 + bit.mMsbBit - bit.mLsbBit, 0); M_Constructed(Bit);
+
+  // We dont allow addition of a larger Bit operand.
+  assert(b0.mMsbBit >= b1.mMsbBit);
+
+  unsigned carry = 0;
+  unsigned prev_b0_value;
+
+  for (short i=0; i==0 || (i<b0.mNumWords && carry); i++) {
+    prev_b0_value  = b0.mpWords[i];
+    b0.mpWords[i] += b1.mpWords[i] + carry;
+
+    // Check for overflow (carry), we do not check the final overflow
+    // (which is the overflow beyond msb) because verilog does the same.
+    if (i != b0.mNumWords-1) {
+      if (b0.mpWords[i] < prev_b0_value) carry = 0;
+      else                               carry = 1;
+    }
+  }
+
+  *this = b0;
+}
+
+void Bit::operator-=(Bit &bit)
+{
+  assert(!IsEmptyBit());
+
+  // See note for operator+ as to why we return 'void'.
+
+  Bit b0(1 +     mMsbBit -     mLsbBit, 0); M_Constructed(Bit);
+  Bit b1(1 + bit.mMsbBit - bit.mLsbBit, 0); M_Constructed(Bit);
+
+  // We dont allow subtraction of a larger Bit operand.
+  assert(b0.mMsbBit >= b1.mMsbBit);
+
+  unsigned borrow = 0;
+
+  for (short i=0; i==0 || (i<b0.mNumWords && borrow); i++) {
+    if (borrow) b0.mpWords[i]--;
+
+    if (b0.mpWords[i] < b1.mpWords[i]) {
+      borrow = 1; b0.mpWords[i] = cWordMax - b1.mpWords[i] + b0.mpWords[i];
+    }
+    else {
+      borrow = 0; b0.mpWords[i] -= b1.mpWords[i];
+    }
+
+    // Check for underflow? For now dont allow it.
+    if (i == b0.mNumWords-1 && borrow) assert(0);
+  }
+
+  *this = b0;
+}
+
+Bit& Bit::operator+(unsigned u)
+{
+  assert(!IsEmptyBit());
+
+  Bit b(mMsbBit-mLsbBit, 0); M_Constructed(Bit);
+
+  unsigned prev_b_value;
+  unsigned carry = 0;
+
+  for (short i=0; i==0 || (i<b.mNumWords && carry); i++) {
+    prev_b_value  = b.mpWords[i];
+    b.mpWords[i] += u + carry;
+
+    // Check for overflow (carry), we do not check the final overflow
+    // (which is the overflow beyond msb) because verilog does the same.
+    if (i != b.mNumWords-1) {
+      if (b.mpWords[i] < prev_b_value) carry = 0;
+      else                             carry = 1;
+    }
+  }
+
+  *this = b;
+
+  return *this;
+}
+
+Bit& Bit::operator-(unsigned u)
+{
+  assert(!IsEmptyBit());
+
+  Bit b(mMsbBit-mLsbBit, 0); M_Constructed(Bit);
+
+  unsigned borrow = 0;
+
+  for (short i=0; i==0 && (i<b.mNumWords && borrow); i++) {
+    if (borrow) b.mpWords[i]--;
+
+    if (b.mpWords[i] < b.mpWords[i]) {
+      borrow = 1; b.mpWords[i] = cWordMax - u + b.mpWords[i];
+    }
+    else {
+      borrow = 0; b.mpWords[i] -= u;
+    }
+
+    // Check for underflow? For now dont allow it.
+    if (i == b.mNumWords-1 && borrow) assert(0);
+  }
+
+  *this = b;
+
+  return *this;
+}
+
+Bit& Bit::operator>>(int u)
+{
+  if (IsEmptyBit()) return *this;
+
+  if (u > mMsbBit-mLsbBit) {
+    *this = 0;
+  }
+  else {
+    Bit b(mMsbBit-mLsbBit-u, 0); M_Constructed(Bit);
+
+    short msb = mMsbBit; // need to save mMsbBit and mLsbBit as they will
+    short lsb = mLsbBit; // be modified during the assignment operation
+
+    b = (*this)[msb][lsb+u];
+
+    (*this)[msb-u][lsb]   = b;
+    (*this)[msb][msb-u+1] = 0;
+  }
+  
+  return *this;
+}
+
+Bit& Bit::operator<<(int u)
+{
+  if (IsEmptyBit()) return *this;
+
+  if (u > mMsbBit-mLsbBit) {
+    *this = 0;
+  }
+  else {
+    Bit b(mMsbBit-mLsbBit-u, 0); M_Constructed(Bit);
+
+    short msb = mMsbBit; // need to save mMsbBit and mLsbBit as they will
+    short lsb = mLsbBit; // be modified during the assignment operation
+
+    b = (*this)[msb-u][lsb];
+    ResetBitRange();
+
+    (*this)[msb][lsb+u]   = b;
+    (*this)[lsb+u-1][lsb] = 0;
+  }
+  
+  return *this;
+}
+
+Bit& Bit::operator[](short bit)
+{
+  assert(!IsEmptyBit());
+
+  // Normal sequence is a) msb->lsb->Clear(), used to specify a range
+  //                    b) msb->Clear(),      used to specify a single bit
+  switch (mBitRangeState) {
+    case eBitRangeState_Clear:  { mMsbBit=mLsbBit=bit; mBitRangeState=eBitRangeState_MsbSet; break; }
+    case eBitRangeState_MsbSet: { mLsbBit=bit;         mBitRangeState=eBitRangeState_LsbSet; break; }
+    case eBitRangeState_LsbSet: { assert(0); } // after lsb is set, range must be cleared
+    default:                    { assert(0); }
+  }
+}
+
+short Bit::IsBitSet(short bit_num) const
+{
+  assert(!IsEmptyBit());
+
+  assert(bit_num < mNumBits);
+
+  if (bit_num < mNumBits) {
+    short word = bit_num>>cWordSizeLog;
+    short bit  = bit_num%cWordSize;
+
+    if (mpWords[word] & cBitSetAt[bit]) return TRUE;
+  }
+
+  return FALSE;
+}
+
+void Bit::SetBit(short bit_num)
+{
+  assert(!IsEmptyBit());
+  assert(bit_num < mNumBits);
+
+  if (bit_num < mNumBits) {
+    short word = bit_num>>cWordSizeLog;
+    short bit  = bit_num%cWordSize;
+
+    mpWords[word] = mpWords[word] | cBitSetAt[bit];
+  }
+}
+
+void Bit::BitSetAll()
+{
+  if (IsEmptyBit()) return;
+
+  short i;
+  short j;
+
+  switch (mNumWords) {
+  case 0:
+    break;
+  default:
+    for (i=0; i<mNumWords-1; i++) {
+      mpWords[i] = cWordMax;
+    }
+    // Now set bits in the last word.
+    for (j=0; j<mNumBits%cWordSize; j++) {
+      mpWords[i] = mpWords[i] | cBitSetAt[j];
+    }
+  }
+}
+
+void Bit::BitClearAll()
+{
+  if (IsEmptyBit()) return;
+
+  short i;
+  short j;
+
+  switch (mNumWords) {
+  case 0:
+    break;
+  default:
+    for (i=0; i<mNumWords-1; i++) {
+      mpWords[i] = 0;
+    }
+    // Now clear bits in the last word.
+    for (j=0; j<mNumBits%cWordSize; j++) {
+      mpWords[i] = mpWords[i] & !cBitSetAt[j];
+    }
+  }
+}
+
+void Bit::ClearBit(short bit_num)
+{
+  assert(!IsEmptyBit());
+  assert(bit_num < mNumBits);
+
+  if (bit_num < mNumBits) {
+    short word = bit_num>>cWordSizeLog;
+    short bit  = bit_num%cWordSize;
+
+    mpWords[word] = mpWords[word] & cBitNotSetAt[bit];
+  }
+}
+
+Bit& Bit::operator=(Interface& intf)
+{
+  intf.GetCommittedValue(*this);
+
+  return *this;
+}
+
+void Bit::SetMsbLsb(short msb, short lsb)
+{
+  if (IsEmptyBit()) {
+    InitBitsAndWords(msb, lsb);
+  }
+  else {
+    assert(msb<mNumBits && lsb<mNumBits && msb>=lsb);
+
+    mMsbBit = msb;
+    mLsbBit = lsb;
+  }
+}
+
+Bit::operator unsigned int()
+{
+  unsigned u;
+  short w0 = mLsbBit>>5;
+  short w1 = mMsbBit>>5;
+  short width = mMsbBit - mLsbBit;
+
+  // Check if u fits in 'width' bits.
+  assert(width<=cWordSize);
+
+  if (w0 == w1) {
+    // msb and lsb are in the same word.
+    u = (mpWords[w0]>>(mLsbBit%32)) & cBitSetUpto[width];
+  }
+  else {
+    // msb and lsb are not in the same word, first assign lower word.
+    short width_w0 = cWordSize - (mLsbBit%32);
+    u = mpWords[w0] & (cBitSetUpto[width_w0]<<(mLsbBit%32));
+
+    // now assign upper word.
+    short width_w1 = mMsbBit%32;
+    u = u | ((mpWords[w1] & cBitSetUpto[width_w1]) << width_w0);
+  }
+
+  ResetBitRange();
+
+  return u;
+}
+
+Bit::operator short()
+{
+  assert(!IsEmptyBit());
+
+  short        s;
+  unsigned int v;
+  
+  v = (unsigned int)(*this);
+
+  assert(v <= SHRT_MAX);
+
+  return s=v;
+}
+
+Bit::operator int()
+{
+  assert(!IsEmptyBit());
+
+  // No support yet for -ve interpretation of bits, convert from unsigned int.
+  int          i;
+  unsigned int v;
+  
+  v = (unsigned int)(*this);
+
+  assert(v <= INT_MAX);
+
+  return i=v;
+}
+
+Bit::operator unsigned short()
+{
+  assert(!IsEmptyBit());
+
+  unsigned short s;
+  unsigned int   v;
+  
+  v = (unsigned int)(*this);
+
+  assert(v <= USHRT_MAX);
+
+  return s=v;
+}
+
+Bit::operator bool()
+{
+  return (*this > 0);
+}
+
+Bit& Bit::SelfCopy()
+{
+  // We use 'casting to Bit' in order to save the Bit into a temp
+  // this is currently needed when assigning Bit to self: b[4] = b[5];
+  sSavedBit    = *this;
+  mSavedBitSet = TRUE;
+
+  ResetBitRange();
+
+  return *this;
+}
+
+// Currently used for Vcd dump.
+void Bit::VcdPrint(FILE* fp) const
+{
+  assert (!IsEmptyBit()); // cannot print uninitialized bit
+
+  bool found_non_zero_bit = FALSE;
+
+  // Vcd prints scalars (bit width 1) and vectors differently.
+  if (BitWidth() == 1) {
+    fprintf(fp, "%x", mpWords[0]); // no space after value for scalars
+  }
+  else {
+    fprintf(fp, "b"); // need leading 'b' for vectors
+
+    for (short i=mNumWords-1; i>=0; i--) {
+      if (mpWords[i]==0) continue;
+
+      // Need to print in binary.
+      for (int j=31; j>=0; j--) {
+        if (mpWords[i] & cBitSetAt[j]) { found_non_zero_bit = TRUE; fprintf(fp, "1"); }
+        else                           { if (found_non_zero_bit)    fprintf(fp, "0"); }
+      }
+    }
+
+    if (!found_non_zero_bit) fprintf(fp, "0");
+    fprintf(fp, " "); // space after value for vectors
+  }
+}
+
+void Bit::Print(const char* format_str) const
+{
+  char buf [MAX_RECORD_LINE_LENGTH+1];
+
+  if (format_str) fprintf(stdout, format_str, Save(buf));
+  else            fprintf(stdout, "%s\n", Save(buf));
+}
+
+char* Bit::Save(char buf [MAX_RECORD_LINE_LENGTH+1]) const
+{
+  char hex_buf [cCharsPerWordHex+1];
+  
+  if (!IsEmptyBit()) {
+    for (short i=mNumWords-1; i>=0; i--) {
+      if (i != mNumWords-1) {
+        // Lsb words.
+        sprintf(hex_buf, "%x", mpWords[i]);
+        strcat(buf, hex_buf);
+      }
+      else {
+        // Msb word.
+        switch (mNumBits % cCharsPerWordHex) {
+          case 0: sprintf(buf, "%8x", mpWords[i]); break;
+          case 1: sprintf(buf, "%1x", mpWords[i]); break;
+          case 2: sprintf(buf, "%2x", mpWords[i]); break;
+          case 3: sprintf(buf, "%3x", mpWords[i]); break;
+          case 4: sprintf(buf, "%4x", mpWords[i]); break;
+          case 5: sprintf(buf, "%5x", mpWords[i]); break;
+          case 6: sprintf(buf, "%6x", mpWords[i]); break;
+          case 7: sprintf(buf, "%7x", mpWords[i]); break;
+          default: assert(0);
+        }
+      }
+    }
+  }
+  else {
+    buf[0] = '\0';
+  }
+
+  return buf;
+}
+
+// End
+@
+
+
+1.5
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d44 2
+d52 1
+d74 1
+d95 1
+d116 1
+d255 6
+a260 2
+  // If assigning to self then there is nothing to do.
+  if (&b == this) { ResetBitRange(); return *this; }
+d396 1
+d442 2
+a443 2
+    if (mpWords[msb_word_num] > ii) flag = TRUE;
+    else                            flag = FALSE;
+d1385 17
+@
+
+
+1.4
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  Added a default constructor (needed for arrays and Concatenate functions).
+3.  Implemented constructor with Interface arg so that bit can be set to the
+4   interface comitted value.
+5.  Added macros to count constructor/destructor calls to help find memory leaks.
+6.  Added member function to test if Bit is at a particular edge.
+7.  Renamed mWords to mpWords.
+8.  Added mBitRangeState.
+9.  Removed constructor Bit(char*), added Initialize(char* line, char* format).
+10. Added member function to test if Bit is at a particular edge.
+11. Added operator(const Bit&).
+12. Removed need for temporary Bit 'temp_bit'.
+13. Added operators to compare with int's.
+14. Added operators to compare with unsigned's.
+15. Removed operator[const char*], use operator[short] & mBitRangeState instead.
+16. Added operator[Interface] so that Bit can be assigned from Interface signal.
+17. Fixed printing format for vcd.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a12 1
+#include "DefinesAndEnum.h"
+d14 1
+a24 1
+// CONT: Clean up Bit (lots of bugs) and fix code to support word size of 64.
+@
+
+
+1.3
+log
+@1. Added functions BitSetAll() and BitClearAll().
+2. Converted to using the 'm' data member prefix.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d8 1
+d10 52
+a61 2
+#define TRUE  1
+#define FALSE 0
+d63 2
+a64 7
+const short cWordSize    = __WORDSIZE;
+const short cWordSizeLog = 5; // couldnt find #define, verify in Bit::Bit()
+
+static unsigned int cBitSetAt[32];
+static short        cBitSetAtInitDone = FALSE;
+
+#include "Bit.h"
+d67 6
+a72 5
+  mNumWords(0),
+  mNumBits(0),
+  mLsbBit(0),
+  mMsbBit(0),
+  mWords(0)
+d75 1
+a75 2
+  if (!cBitSetAtInitDone) {
+    unsigned int mask = 1;
+d77 1
+a77 4
+    for (int i=0; i<cWordSize; i++) {
+      cBitSetAt[i] = mask;
+      mask = mask << 1;
+    }
+d79 1
+a79 1
+    cBitSetAtInitDone = TRUE;
+d81 1
+a81 2
+    assert((1<<cWordSizeLog) == cWordSize);
+  }
+d83 2
+a84 1
+  assert(high_bit >= low_bit);
+d86 7
+a92 16
+  mNumBits  = 1 + high_bit - low_bit;
+  mNumWords = 1 + (mNumBits>>cWordSizeLog) - !(mNumBits%cWordSize);
+  mWords    = new unsigned int [mNumWords]; 
+
+  mLsbBit = 0;
+  mMsbBit = mNumBits - 1;
+
+  assert(mWords);
+}
+
+Bit::Bit(Bit& b) :
+  mNumWords(0),
+  mNumBits(0),
+  mLsbBit(0),
+  mMsbBit(0),
+  mWords(0)
+d94 3
+d98 4
+a101 2
+  mLsbBit = b.mLsbBit;
+  mMsbBit = b.mMsbBit;
+d103 28
+a130 3
+  mNumBits  = 1 + mMsbBit - mLsbBit;
+  mNumWords = 1 + (mNumBits>>cWordSizeLog) - !(mNumBits%cWordSize);
+  mWords    = new unsigned int [mNumWords]; 
+d132 14
+a145 1
+  assert(mWords);
+d147 14
+a160 2
+  for (short i=0; i<mNumWords; i++)
+    mWords[i] = b.mWords[i];
+d162 1
+a162 1
+  b.ResetBits();
+d165 1
+a165 6
+Bit::Bit(char* str) :
+  mNumWords(0),
+  mNumBits(0),
+  mLsbBit(0),
+  mMsbBit(0),
+  mWords(0)
+d167 5
+a171 1
+  short high_bit, low_bit;
+d173 2
+a174 2
+  if (str != 0) {
+    int ret = sscanf(str, "%d:%d", &high_bit, &low_bit);
+d176 2
+a177 2
+    assert(ret==2);
+    assert(high_bit >= low_bit);
+d179 1
+a179 3
+    mNumBits  = 1 + high_bit - low_bit;
+    mNumWords = 1 + (mNumBits>>cWordSizeLog) - !(mNumBits%cWordSize);
+    mWords    = new unsigned int [mNumWords];
+d181 42
+a222 2
+    mLsbBit = 0;
+    mMsbBit = mNumBits;
+d224 5
+d231 1
+a231 1
+Bit::~Bit()
+d233 10
+a242 2
+  mNumWords = 0;
+  mNumBits  = 0;
+d244 1
+a244 1
+  if (mWords) delete [] mWords;
+d247 1
+d250 77
+a326 2
+  if (&b == this
+  ||  (mMsbBit - mLsbBit) != (b.mMsbBit - b.mLsbBit))
+d328 2
+a329 3
+    // Cannot assign if assigning to self or bit widths dont match.
+    if ((mMsbBit - mLsbBit) != (b.mMsbBit - b.mLsbBit))
+      assert(0);
+d332 4
+a335 1
+    short i, j, m, n;
+d337 1
+a337 1
+    for (i=mLsbBit,j=b.mLsbBit,m=mLsbBit>>cWordSizeLog,n=b.mLsbBit>>cWordSizeLog; i<=mMsbBit; i++,j++)
+d339 2
+a340 2
+      if (b.mWords[n] & cBitSetAt[j%cWordSize])
+        mWords[m] = mWords[m] |  cBitSetAt[i%cWordSize];
+d342 1
+a342 1
+        mWords[m] = mWords[m] & ~cBitSetAt[i%cWordSize];
+d349 1
+a349 2
+  ResetBits();
+  b.ResetBits();
+d354 1
+a354 1
+Bit& Bit::operator=(unsigned int value)
+d356 2
+a357 1
+  Bit temp_bit(mMsbBit-mLsbBit, 0);
+d359 2
+a360 1
+  short shift_bits = mMsbBit-mLsbBit+1;
+d362 1
+a362 7
+  // Dont allow value to be truncated
+  // gcc doesnt allow unsinged to be shifted by cWordSize!?
+  // so we need a custom check in the 'else if' lines.
+  if (shift_bits < cWordSize)
+    assert ((value >> shift_bits) == 0);
+  else if (shift_bits == cWordSize)
+    assert ((value >> (shift_bits-1)) <= 1);
+d364 3
+a366 1
+  temp_bit.mWords[0] = value;
+d368 15
+a382 1
+  *this = temp_bit;
+d387 1
+a387 1
+Bit& Bit::operator=(short value_short)
+d389 9
+a397 1
+  // Could  not find #define for number of bits in short.
+d399 1
+a399 4
+  // Therefore, use unsigned int and trust compiler to convert correctly
+  // from short to unsigned int, this is probably safe because we expect:
+  //   sizeof(short) <= sizeof(unsigned int);
+  unsigned int value = (unsigned int)value_short;
+d401 19
+a419 1
+  *this = value;
+d421 138
+a558 1
+  return *this;
+d561 1
+a561 1
+short Bit::operator==(Bit& b)
+d565 11
+d577 13
+d595 1
+a595 1
+  short i, j, m, n;
+d599 2
+a600 2
+    if (mWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d606 2
+a607 2
+    if (b.mWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d615 2
+a616 2
+    if (( (mWords[m] & cBitSetAt[i%cWordSize]) && !(b.mWords[n] & cBitSetAt[j%cWordSize]))
+    ||  (!(mWords[m] & cBitSetAt[i%cWordSize]) &&  (b.mWords[n] & cBitSetAt[j%cWordSize])))
+d618 1
+a618 1
+      ResetBits(); b.ResetBits(); return FALSE;
+d625 1
+a625 1
+  ResetBits(); b.ResetBits(); return TRUE; // done comparing all bits
+d628 1
+a628 1
+short Bit::operator!=(Bit& b)
+d633 1
+a633 1
+short Bit::operator>(Bit& b)
+d637 21
+d663 1
+a663 1
+  short i, j, m, n;
+d667 2
+a668 2
+    if (mWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBits(); b.ResetBits(); return TRUE;
+d674 2
+a675 2
+    if (b.mWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d683 2
+a684 2
+    if ((  mWords[m] & cBitSetAt[i%cWordSize])
+    && !(b.mWords[n] & cBitSetAt[j%cWordSize]))
+d686 1
+a686 1
+      ResetBits(); b.ResetBits(); return TRUE;
+d693 1
+a693 1
+  ResetBits(); b.ResetBits(); return FALSE; // done comparing all bits, bits are <=
+d696 1
+a696 1
+short Bit::operator<(Bit& b)
+d700 21
+d726 1
+a726 1
+  short i, j, m, n;
+d730 2
+a731 2
+    if (mWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d737 2
+a738 2
+    if (b.mWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBits(); b.ResetBits(); return TRUE;
+d746 2
+a747 2
+    if (!(  mWords[m] & cBitSetAt[i%cWordSize])
+    &&   (b.mWords[n] & cBitSetAt[j%cWordSize]))
+d749 1
+a749 1
+      ResetBits(); b.ResetBits(); return TRUE;
+d756 1
+a756 1
+  ResetBits(); b.ResetBits(); return FALSE; // done comparing all bits, bits are >=
+d759 1
+a759 1
+short Bit::operator>=(Bit& b)
+d761 86
+a846 1
+  // Note: code copied from operator==
+d848 1
+a848 4
+  // We should compare the value only, the
+  // number of bits in each can be different.
+  short width1 =   mMsbBit -   mLsbBit; // not the actual width but width-1
+  short width2 = b.mMsbBit - b.mLsbBit; //                "
+d850 4
+a853 1
+  short i, j, m, n;
+d855 2
+a856 1
+  for (i=mMsbBit;   width1 > width2; i--, width1--) {
+d858 9
+a866 2
+    if (mWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBits(); b.ResetBits(); return TRUE;
+d870 30
+a899 4
+  for (j=b.mMsbBit; width2 > width1; j--, width2--) {
+    m = j>>cWordSizeLog;
+    if (b.mWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d903 20
+a922 2
+  // If we reach here, then width1 == width2
+  for ( ; TRUE; i--, j--) {
+d925 5
+a929 2
+    if ((  mWords[m] & cBitSetAt[i%cWordSize])
+    && !(b.mWords[n] & cBitSetAt[j%cWordSize]))
+d931 4
+a934 1
+      ResetBits(); b.ResetBits(); return TRUE;
+d936 4
+d941 18
+a958 2
+    // Can test for either 'i' or 'j' .
+    if (i == mLsbBit) break;
+d961 11
+a971 1
+  ResetBits(); b.ResetBits(); return TRUE; // done comparing all bits
+d974 1
+a974 1
+short Bit::operator<=(Bit& b)
+d976 23
+a998 1
+  // Note: code copied from operator==
+d1000 3
+a1002 4
+  // We should compare the value only, the
+  // number of bits in each can be different.
+  short width1 =   mMsbBit -   mLsbBit; // not the actual width but width-1
+  short width2 = b.mMsbBit - b.mLsbBit; //                "
+d1004 1
+a1004 1
+  short i, j, m, n;
+d1006 8
+a1013 4
+  for (i=mMsbBit; width1 > width2; i--, width1--) {
+    m = i>>cWordSizeLog;
+    if (mWords[m] & cBitSetAt[i%cWordSize]) {
+      ResetBits(); b.ResetBits(); return FALSE;
+d1017 33
+a1049 4
+  for (j=b.mMsbBit; width2 > width1; j--, width2--) {
+    m = j>>cWordSizeLog;
+    if (b.mWords[m] & cBitSetAt[j%cWordSize]) {
+      ResetBits(); b.ResetBits(); return TRUE;
+d1053 25
+a1077 8
+  // If we reach here, then width1 == width2
+  for ( ; TRUE; i--, j--) {
+    m = i>>cWordSizeLog;
+    n = j>>cWordSizeLog;
+    if (!(  mWords[m] & cBitSetAt[i%cWordSize])
+    &&   (b.mWords[n] & cBitSetAt[j%cWordSize]))
+    {
+      ResetBits(); b.ResetBits(); return TRUE;
+d1080 2
+a1081 2
+    // Can test for either 'i' or 'j' .
+    if (i == mLsbBit) break;
+d1084 1
+a1084 1
+  ResetBits(); b.ResetBits(); return TRUE; // done comparing all bits
+d1087 1
+a1087 1
+Bit& Bit::operator[](const char* width_str)
+d1089 1
+a1089 1
+  short lsb, msb, temp;
+d1091 1
+a1091 1
+  if (width_str != 0) {
+d1093 2
+a1094 1
+    int ret = sscanf(width_str, "%hd:%hd", &msb, &lsb);
+d1096 3
+a1098 1
+    if (ret == 1) lsb = msb;
+d1100 7
+a1106 1
+    assert(ret && lsb < mNumBits && msb < mNumBits);
+d1108 21
+a1128 3
+    if (ret==1 || ret==2) {
+      mLsbBit = lsb;
+      mMsbBit = msb;
+d1131 37
+a1167 5
+    if (mLsbBit > mMsbBit) {
+      temp   = mLsbBit;
+      mLsbBit = mMsbBit;
+      mMsbBit = temp;
+    }
+d1169 5
+d1175 7
+d1185 1
+a1185 1
+short Bit::IsBitSet(short bit_num)
+d1187 16
+d1209 1
+a1209 1
+    if (mWords[word] & cBitSetAt[bit]) return TRUE;
+d1217 1
+d1224 1
+a1224 1
+    mWords[word] = mWords[word] | cBitSetAt[bit];
+d1230 2
+d1240 1
+a1240 1
+      mWords[i] = UINT_MAX;
+d1244 1
+a1244 1
+      mWords[i] = mWords[i] | cBitSetAt[j];
+d1251 2
+d1261 1
+a1261 1
+      mWords[i] = 0;
+d1265 1
+a1265 1
+      mWords[i] = mWords[i] & !cBitSetAt[j];
+d1272 1
+d1279 1
+a1279 1
+    mWords[word] = mWords[word] & ~cBitSetAt[bit];
+d1283 7
+d1292 5
+a1296 1
+  assert (msb<mNumBits && lsb<mNumBits && msb>=lsb);
+d1298 3
+a1300 2
+  mMsbBit = msb;
+  mLsbBit = lsb;
+d1305 16
+a1320 1
+  assert((mMsbBit-mLsbBit) <= cWordSize);
+d1322 4
+a1325 1
+  Bit temp_bit(mMsbBit-mLsbBit, 0);
+d1327 1
+a1327 1
+  temp_bit = *this;
+d1329 1
+a1329 1
+  return temp_bit.mWords[0];
+d1334 2
+d1348 2
+d1363 2
+d1375 2
+a1376 1
+void Bit::Print(FILE* fp, const char* format_str)
+d1378 1
+a1378 2
+  const int width_full   = cWordSize/4;
+  const int width_full_n = cWordSize/4 + 1;
+d1380 1
+a1380 1
+  char buf[width_full_n]; // assume only %x supported, 4bits=1char
+d1382 6
+a1387 1
+  // TBD: Support more formats. Allow format to specify whether to print with \n 
+d1389 2
+a1390 1
+  short num_words = mNumBits>>cWordSizeLog;
+d1392 6
+a1397 1
+  int width;
+d1399 8
+a1406 6
+  for (short i=num_words; i>0; i--) {
+    // If the first or only word, we may need to ignore unused msb bits.
+    if ((i==num_words || num_words==1) && mNumBits%cWordSize)
+      width = (mNumBits%cWordSizeLog)/4 + 1;
+    else
+      width = width_full;
+d1408 3
+a1410 1
+    snprintf(buf, width_full_n, format_str, width, mWords[i-1]);
+d1412 26
+a1437 1
+    fprintf(fp, "%s", buf);
+d1439 5
+@
+
+
+1.2
+log
+@1. Fixed operator==(Bit) so that bit ranges in the two comparands can be set
+   and be different ranges. Previously was simply comparing all bits.
+2. Added bit comparison operators: >, <, <=, >= .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d21 5
+a25 5
+  numWords(0),
+  numBits(0),
+  lsbBit(0),
+  msbBit(0),
+  words(0)
+d43 3
+a45 3
+  numBits  = 1 + high_bit - low_bit;
+  numWords = 1 + (numBits>>cWordSizeLog) - !(numBits%cWordSize);
+  words    = new unsigned int [numWords]; 
+d47 2
+a48 2
+  lsbBit = 0;
+  msbBit = numBits - 1;
+d50 1
+a50 1
+  assert(words);
+d54 13
+a66 13
+  numWords(0),
+  numBits(0),
+  lsbBit(0),
+  msbBit(0),
+  words(0)
+{
+  // Size this object based on incoming msb, lsb bits, not numBits.
+  lsbBit = b.lsbBit;
+  msbBit = b.msbBit;
+
+  numBits  = 1 + msbBit - lsbBit;
+  numWords = 1 + (numBits>>cWordSizeLog) - !(numBits%cWordSize);
+  words    = new unsigned int [numWords]; 
+d68 1
+a68 1
+  assert(words);
+d70 2
+a71 2
+  for (short i=0; i<numWords; i++)
+    words[i] = b.words[i];
+d77 5
+a81 5
+  numWords(0),
+  numBits(0),
+  lsbBit(0),
+  msbBit(0),
+  words(0)
+d91 3
+a93 3
+    numBits  = 1 + high_bit - low_bit;
+    numWords = 1 + (numBits>>cWordSizeLog) - !(numBits%cWordSize);
+    words    = new unsigned int [numWords];
+d95 2
+a96 2
+    lsbBit = 0;
+    msbBit = numBits;
+d102 2
+a103 2
+  numWords = 0;
+  numBits  = 0;
+d105 1
+a105 1
+  if (words) delete [] words;
+d111 1
+a111 1
+  ||  (msbBit - lsbBit) != (b.msbBit - b.lsbBit))
+d114 1
+a114 1
+    if ((msbBit - lsbBit) != (b.msbBit - b.lsbBit))
+d120 1
+a120 1
+    for (i=lsbBit,j=b.lsbBit,m=lsbBit>>cWordSizeLog,n=b.lsbBit>>cWordSizeLog; i<=msbBit; i++,j++)
+d122 2
+a123 2
+      if (b.words[n] & cBitSetAt[j%cWordSize])
+        words[m] = words[m] |  cBitSetAt[i%cWordSize];
+d125 1
+a125 1
+        words[m] = words[m] & ~cBitSetAt[i%cWordSize];
+d140 1
+a140 1
+  Bit temp_bit(msbBit-lsbBit, 0);
+d142 1
+a142 1
+  short shift_bits = msbBit-lsbBit+1;
+d152 1
+a152 1
+  temp_bit.words[0] = value;
+d180 2
+a181 2
+  short width1 =   msbBit -   lsbBit; // not the actual width but one less
+  short width2 = b.msbBit - b.lsbBit; //                "
+d185 1
+a185 1
+  for (i=msbBit;   width1 > width2; i--, width1--) {
+d187 1
+a187 1
+    if (words[m] & cBitSetAt[i%cWordSize]) {
+d192 1
+a192 1
+  for (j=b.msbBit; width2 > width1; j--, width2--) {
+d194 1
+a194 1
+    if (b.words[m] & cBitSetAt[j%cWordSize]) {
+d203 2
+a204 2
+    if (( (words[m] & cBitSetAt[i%cWordSize]) && !(b.words[n] & cBitSetAt[j%cWordSize]))
+    ||  (!(words[m] & cBitSetAt[i%cWordSize]) &&  (b.words[n] & cBitSetAt[j%cWordSize])))
+d210 1
+a210 1
+    if (i == lsbBit) break;
+d227 2
+a228 2
+  short width1 =   msbBit -   lsbBit; // not the actual width but width-1
+  short width2 = b.msbBit - b.lsbBit; //                "
+d232 1
+a232 1
+  for (i=msbBit;   width1 > width2; i--, width1--) {
+d234 1
+a234 1
+    if (words[m] & cBitSetAt[i%cWordSize]) {
+d239 1
+a239 1
+  for (j=b.msbBit; width2 > width1; j--, width2--) {
+d241 1
+a241 1
+    if (b.words[m] & cBitSetAt[j%cWordSize]) {
+d250 2
+a251 2
+    if ((  words[m] & cBitSetAt[i%cWordSize])
+    && !(b.words[n] & cBitSetAt[j%cWordSize]))
+d257 1
+a257 1
+    if (i==lsbBit) break;
+d269 2
+a270 2
+  short width1 =   msbBit -   lsbBit; // not the actual width but width-1
+  short width2 = b.msbBit - b.lsbBit; //                "
+d274 1
+a274 1
+  for (i=msbBit;   width1 > width2; i--, width1--) {
+d276 1
+a276 1
+    if (words[m] & cBitSetAt[i%cWordSize]) {
+d281 1
+a281 1
+  for (j=b.msbBit; width2 > width1; j--, width2--) {
+d283 1
+a283 1
+    if (b.words[m] & cBitSetAt[j%cWordSize]) {
+d292 2
+a293 2
+    if (!(  words[m] & cBitSetAt[i%cWordSize])
+    &&   (b.words[n] & cBitSetAt[j%cWordSize]))
+d299 1
+a299 1
+    if (i==lsbBit) break;
+d311 2
+a312 2
+  short width1 =   msbBit -   lsbBit; // not the actual width but width-1
+  short width2 = b.msbBit - b.lsbBit; //                "
+d316 1
+a316 1
+  for (i=msbBit;   width1 > width2; i--, width1--) {
+d318 1
+a318 1
+    if (words[m] & cBitSetAt[i%cWordSize]) {
+d323 1
+a323 1
+  for (j=b.msbBit; width2 > width1; j--, width2--) {
+d325 1
+a325 1
+    if (b.words[m] & cBitSetAt[j%cWordSize]) {
+d334 2
+a335 2
+    if ((  words[m] & cBitSetAt[i%cWordSize])
+    && !(b.words[n] & cBitSetAt[j%cWordSize]))
+d341 1
+a341 1
+    if (i == lsbBit) break;
+d353 2
+a354 2
+  short width1 =   msbBit -   lsbBit; // not the actual width but width-1
+  short width2 = b.msbBit - b.lsbBit; //                "
+d358 1
+a358 1
+  for (i=msbBit; width1 > width2; i--, width1--) {
+d360 1
+a360 1
+    if (words[m] & cBitSetAt[i%cWordSize]) {
+d365 1
+a365 1
+  for (j=b.msbBit; width2 > width1; j--, width2--) {
+d367 1
+a367 1
+    if (b.words[m] & cBitSetAt[j%cWordSize]) {
+d376 2
+a377 2
+    if (!(  words[m] & cBitSetAt[i%cWordSize])
+    &&   (b.words[n] & cBitSetAt[j%cWordSize]))
+d383 1
+a383 1
+    if (i == lsbBit) break;
+d399 1
+a399 1
+    assert(ret && lsb < numBits && msb < numBits);
+d402 2
+a403 2
+      lsbBit = lsb;
+      msbBit = msb;
+d406 4
+a409 4
+    if (lsbBit > msbBit) {
+      temp   = lsbBit;
+      lsbBit = msbBit;
+      msbBit = temp;
+d418 1
+a418 1
+  assert(bit_num < numBits);
+d420 1
+a420 1
+  if (bit_num < numBits) {
+d424 1
+a424 1
+    if (words[word] & cBitSetAt[bit]) return TRUE;
+d432 1
+a432 1
+  assert(bit_num < numBits);
+d434 1
+a434 1
+  if (bit_num < numBits) {
+d438 39
+a476 1
+    words[word] = words[word] | cBitSetAt[bit];
+d482 1
+a482 1
+  assert(bit_num < numBits);
+d484 1
+a484 1
+  if (bit_num < numBits) {
+d488 1
+a488 1
+    words[word] = words[word] & ~cBitSetAt[bit];
+d494 1
+a494 1
+  assert (msb<numBits && lsb<numBits && msb>=lsb);
+d496 2
+a497 2
+  msbBit = msb;
+  lsbBit = lsb;
+d502 1
+a502 1
+  assert((msbBit-lsbBit) <= cWordSize);
+d504 1
+a504 1
+  Bit temp_bit(msbBit-lsbBit, 0);
+d508 1
+a508 1
+  return temp_bit.words[0];
+d557 1
+a557 1
+  short num_words = numBits>>cWordSizeLog;
+d563 2
+a564 2
+    if ((i==num_words || num_words==1) && numBits%cWordSize)
+      width = (numBits%cWordSizeLog)/4 + 1;
+d568 1
+a568 1
+    snprintf(buf, width_full_n, format_str, width, words[i-1]);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d7 1
+d12 2
+a13 1
+const short cWordSize = __WORDSIZE;
+d27 1
+d37 2
+d44 1
+a44 1
+  numWords = 1 + (numBits/cWordSize) - !(numBits%cWordSize);
+d60 3
+a62 2
+  numBits  = b.numBits;
+  numWords = b.numWords;
+d64 2
+d68 4
+a71 2
+  lsbBit = 0;
+  msbBit = numBits - 1;
+d73 1
+a73 1
+  assert(words);
+d92 1
+a92 1
+    numWords = 1 + (numBits/cWordSize) - !(numBits%cWordSize);
+d120 1
+a120 1
+    for (i=lsbBit,j=b.lsbBit,m=lsbBit/cWordSize,n=b.lsbBit/cWordSize; i<=msbBit; i++,j++)
+d142 9
+a150 2
+  // Dont allow truncation.
+  assert ((value >> (msbBit-lsbBit+1)) == 0);
+d173 133
+a305 1
+short Bit::operator==(Bit& bit)
+d307 14
+a320 2
+  for (int i=0; i<numWords; i++) {
+    if (words[i] != bit.words[i]) return FALSE;
+d323 22
+a344 1
+  return TRUE;
+d347 1
+a347 1
+short Bit::operator!=(Bit& bit)
+d349 38
+a386 1
+  return !(*this == bit);
+d421 1
+a421 1
+    short word = bit_num/cWordSize;
+d435 1
+a435 1
+    short word = bit_num/cWordSize;
+d447 1
+a447 1
+    short word = bit_num/cWordSize;
+d454 8
+d473 62
+a534 13
+//int main()
+//{
+//  Bit bit(63, 0);
+//  Bit temp_bit(31, 0);
+//
+//  bit["60:58"] = (short)5;
+//  bit["7:5"]   = (short)5;
+//
+//  printf("bit0=%u\n", (unsigned)bit.GetWord(0));
+//  printf("bit1=%u\n", (unsigned)bit.GetWord(1));
+//
+//  return 1;
+//}
+@

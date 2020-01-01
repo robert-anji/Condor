@@ -1,0 +1,374 @@
+head	1.6;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.6; strict;
+comment	@// @;
+
+
+1.6
+date	2011.12.20.17.28.43;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.12.03.17.54.18;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.14.18.14.19;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.42.02;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.00.56.31;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@Added NV for PRNG and SemaphoreInfo, removed ProcessBlockedOnSemaphoreInfo.
+@
+text
+@// $RCSfile: Enum.cc,v $
+// $Revision: 1.5 $
+
+#include <assert.h>
+#include <string.h>
+
+#include "Enum.h"
+//
+#include "Global.h"
+#include "Value.h"
+#include "Process_RW.h"
+
+NameVal TypesNV[] =
+{
+  eType_Aggregate,              "Aggregate",
+  eType_Attribute,              "Attribute",
+  eType_Bit,                    "Bit",
+  eType_Bool,                   "Bool",
+  eType_Bucket,                 "Bucket",
+  eType_BucketList,             "BucketList",
+  eType_Char,                   "Char",
+  eType_Clock,                  "Clock",
+  eType_Condition,              "Condition",
+  eType_DBTransaction,          "DBTransaction",
+  eType_DBTransactionRec,       "DBTransactionRec",
+  eType_DBTransactionRecValue,  "DBTransactionRecValue",
+  eType_Database,               "Database",
+  eType_DecodeEncode8b10b,      "DecodeEncode8b10b",
+  eType_Event,                  "Event",
+  eType_EventFromTrigger,       "EventFromTrigger",
+  eType_Interface,              "Interface",
+  eType_Link,                   "Link",
+  eType_List,                   "List",
+  eType_ListIterator,           "ListIterator",
+  eType_MailboxBase,            "MailboxBase",
+  eType_Mailbox,                "Mailbox",
+  eType_Module,                 "Module",
+  eType_ModuleTop,              "ModuleTop",
+  eType_Module_PhyUsbPcie,      "Module_PhyUsbPcie",
+  eType_Mutex,                  "Mutex",
+  eType_PRNG,                   "PRNG",
+  eType_Process,                "Process",
+  eType_ProcessAndEdgeInfo,     "ProcessAndEdgeInfo",
+  eType_ProcessExecuteReason,   "ProcessExecuteReason",
+  eType_Process_PipeSerial,     "Process_PipeSerial",
+  eType_Process_RW,             "Process_RW",
+  eType_Query,                  "Query",
+  eType_Record,                 "Record",
+  eType_Scheduler,              "Scheduler",
+  eType_Semaphore,              "Semaphore",
+  eType_SemaphoreInfo,          "SemaphoreInfo", 
+  eType_SensitiveEdgeInfo,      "SensitiveEdgeInfo",
+  eType_Short,                  "Short",
+  eType_Signal,                 "Signal",
+  eType_Simulator,              "Simulator",
+  eType_Stack,                  "Stack",
+  eType_String,                 "String",
+  eType_Table,                  "Table",
+  eType_TableRecord,            "TableRecord",
+  eType_Timer,                  "Timer",
+  eType_Trigger,                "Trigger",
+  eType_Unsigned,               "Unsigned",
+  eType_Value,                  "Value",
+  eType_Vcd,                    "Vcd",
+  eType_View,                   "View",
+  eType_ViewIterator,           "ViewIterator",
+  eType_Max,                    "Max"
+};
+
+bool EnumExists(NameVal nv[], short code)
+{
+  short i;
+
+  for (i=0; nv[i].val != eEnumInvalid; i++)
+  {
+    if (nv[i].val == code)
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+const char* Enum2Str(NameVal nv[], short code)
+{
+  short i;
+
+  for (i=0; nv[i].val != eEnumInvalid; i++)
+  {
+    if (nv[i].val == code)
+      return nv[i].name;
+  }
+
+  printf("Error: Did not find string for enum %d for NameVals starting with %s\n", code, nv[0].name);
+
+  return "Error:Enum2Str_NotFound";
+}
+
+short Str2Enum(NameVal nv[], char* name)
+{
+  short i;
+
+  for (i=0; nv[i].val != eEnumInvalid; i++)
+  {
+    if (!strcmp(nv[i].name, name))
+      return nv[i].val;
+  }
+
+  return eEnumInvalid;
+}
+
+// End
+@
+
+
+1.5
+log
+@1. Moved individual class NameVal into respective class implementation
+   files (*.cc).
+2. Added entries to TypesNV.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d41 1
+a43 1
+  eType_ProcessBlockedOnSemaphoreInfo, "ProcessBlockedOnSemaphoreInfo", 
+d51 1
+@
+
+
+1.4
+log
+@1. Added NameVal for: TypesNV, SignalEdgeNV, Process_RW_StateNV.
+2. Modified logic to use eEnumInvalid instead of using strlen(enam_name)==0.
+3. Added enum ValueConstCharConstPtr to ValueTypeNV.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a12 26
+NameVal ValueTypeNV[] =
+{
+  eValueUnknown,            "Type:???",
+  eValueBit,                "Type:Bit",
+  eValueChar,               "Type:Char",
+  eValueCharPtr,            "Type:CharPtr",
+  eValueConstCharConstPtr,  "Type:ConstCharPtr",
+  eValueString,             "Type:String",
+  eValueUnsigned,           "Type:Unsigned",
+  eEnumInvalid,             ""
+};
+
+NameVal OperatorNV[] =
+{
+  eValueOperatorNone,         "none",
+  eValueLessThan,             "<",
+  eValueGreaterThan,          ">",
+  eValueEqualTo,              "==",
+  eValueNotEqualTo,           "!=",
+  eValueGreaterThanOrEqualTo, ">=",
+  eValueLessThanOrEqualTo,    "<=",
+  eValueOperatorLike,         "like",
+  eValueOperatorInvalid,      "x?",
+  eEnumInvalid,               ""
+};
+
+d21 1
+a22 1
+  eType_Char,                   "Char",
+d30 1
+d35 1
+d38 1
+a39 1
+  eType_ModuleTop,              "ModuleTop",
+d43 1
+d55 1
+a68 23
+NameVal SignalEdgeNV[] =
+{
+  eSignalEdge_None,                    "EdgeNone",
+  eSignalEdge_PositiveEdge,            "PositiveEdge",
+  eSignalEdge_PositiveLevel,           "PositiveLevel",
+  eSignalEdge_NegativeEdge,            "NegativeEdge",
+  eSignalEdge_NegativeLevel,           "NegativeLevel",
+  eSignalEdge_PositiveAndNegativeEdge, "PositiveAndNegativeEdge",
+  eSignalEdge_Invalid,                 "EdgeInvalid"
+};
+
+// TBD: This should be in a separate file as it is not part of Verif Engine.
+NameVal Process_RW_StateNV[] =
+{
+  Process_RW::eRW_WaitForTran, "RW_WaitForTran",
+  Process_RW::eRW_Delay,       "RW_Delay",
+  Process_RW::eRW_Addr,        "RW_Addr",
+  Process_RW::eRW_WaitForReq,  "RW_WaitForReq",
+  Process_RW::eRW_WaitForAck,  "RW_WaitForAck",
+  Process_RW::eRW_AckDone,     "RW_AckDone",
+  eEnumInvalid,                ""
+};
+
+@
+
+
+1.3
+log
+@1. Adjusted for renamed enums (eOperator->eValueOperator).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d4 1
+d8 2
+a9 1
+
+d11 1
+d15 8
+a22 8
+  eValueUnknown,      "Type:???",
+  eValueBit,          "Type:Bit",
+  eValueChar,         "Type:Char",
+  eValueCharPtr,      "Type:CharPtr",
+  eValueConstCharPtr, "Type:ConstCharPtr",
+  eValueString,       "Type:String",
+  eValueUnsigned,     "Type:Unsigned",
+  eEnumInvalid,       ""
+d27 62
+a88 10
+  eValueNoOperator,           "Operator:None",
+  eValueLessThan,             "Operator:LessThan",
+  eValueGreaterThan,          "Operator:GreaterThan",
+  eValueEqualTo,              "Operator:EqualTo",
+  eValueNotEqualTo,           "Operator:NotEqualTo",
+  eValueGreaterThanOrEqualTo, "Operator:GreaterThanOrEqualTo",
+  eValueLessThanOrEqualTo,    "Operator:LessThanOrEqualTo",
+  eValueLikeOperator,         "Operator:Like",
+  eValueInvalidOperator,      "Operator:Invalid",
+  eEnumInvalid,          ""
+d91 24
+a114 1
+short EnumExists(NameVal nv[], short code)
+d118 1
+a118 1
+  for (i=0; strlen(nv[i].name) != 0; i++)
+d121 1
+a121 1
+      return code;
+d124 1
+a124 1
+  return nv[i].val;
+d131 1
+a131 1
+  for (i=0; strlen(nv[i].name) != 0; i++)
+d137 3
+a139 1
+  return nv[i].name;
+d146 1
+a146 1
+  for (i=0; strlen(nv[i].name) != 0; i++)
+d152 1
+a152 1
+  return nv[i].val;
+@
+
+
+1.2
+log
+@1. Added enums to ValueTypeNV[].
+2. Removed inclusion of Database.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d24 9
+a32 9
+  eNoOperator,           "Operator:None",
+  eLessThan,             "Operator:LessThan",
+  eGreaterThan,          "Operator:GreaterThan",
+  eEqualTo,              "Operator:EqualTo",
+  eNotEqualTo,           "Operator:NotEqualTo",
+  eGreaterThanOrEqualTo, "Operator:GreaterThanOrEqualTo",
+  eLessThanOrEqualTo,    "Operator:LessThanOrEqualTo",
+  eLikeOperator,         "Operator:Like",
+  eInvalidOperator,      "Operator:Invalid",
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d6 2
+a7 1
+#include "Database.h"
+a8 1
+#include "Enum.h"
+d12 8
+a19 4
+  "CharValue",     eValueChar,
+  "CharPtrValue",  eValueString,
+  "UnsignedValue", eValueUnsigned,
+  "",              eValueUnknown
+d24 10
+a33 9
+  "NoOperator",           eNoOperator,
+  "LessThan",             eLessThan,
+  "GreaterThan",          eGreaterThan,
+  "EqualTo",              eEqualTo,
+  "NotEqualTo",           eNotEqualTo,
+  "GreaterThanOrEqualTo", eGreaterThanOrEqualTo,
+  "LessThanOrEqualTo",    eLessThanOrEqualTo,
+  "eLikeOperator",        eLikeOperator,
+  "",                     eInvalidOperator,
+@

@@ -1,0 +1,57 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.12.20.17.21.01;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@A Pseudo-Random-Number-Generator using Complementary-Multiply-with-Carry-Adder.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile:$
+// $Revision:$
+
+#ifndef PRNG_CLASS
+#define PRNG_CLASS
+
+// CMCA algorithm as mentioned on Wikipedia.
+
+#include <stdint.h> // needed for uint32_t, uint64_t
+
+class PRNG
+{
+public:
+  PRNG(uint32_t seed);
+ ~PRNG();
+
+  uint32_t RandomValueGet();
+  uint32_t RandomValueGet(uint32_t max);
+  uint32_t RandomValueGet(uint32_t min, uint32_t max);
+
+private:
+  uint32_t mSeed;
+
+  uint32_t Q[4096];
+  uint32_t c;
+  uint32_t mCMWC_i;
+  //
+  void     init_rand(uint32_t x);
+  uint32_t rand_cmwc(void);
+};
+
+#endif
+@

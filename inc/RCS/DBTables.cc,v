@@ -1,0 +1,125 @@
+head	1.3;
+access;
+symbols;
+locks
+	robert:1.3; strict;
+comment	@// @;
+
+
+1.3
+date	2011.12.03.10.31.40;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.13.23.07.20;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.43.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@1. Removed unused Attribute definitions.
+2. Added attribute Porcess Execute Reason.
+@
+text
+@// $RCSfile: DBTables.cc,v $
+// $Revision: 1.2 $
+
+#include "DBTables.h"
+
+// Define Table attributes here. Tables are:
+// Synchronous_Process_table or simply called Process_table for short
+// Asynchronous_Process_table
+
+/////////// Process_table
+const char* cAttr_Processes_SimTime       = "SimTime";
+const char* cAttr_Processes_Name          = "ProcessName";
+const char* cAttr_Processes_Clock         = "Clock";
+const char* cAttr_Processes_ClockEdge     = "ClockEdge";
+const char* cAttr_Processes_ProcessPtr    = "ProcessPtr";
+const char* cAttr_Processes_ExecReasonPtr = "ExecReasonPtr";
+const char* cAttr_Processes_InterfacePtr  = "InterfacePtr";
+const char* cAttr_Processes_Region        = "Region";
+
+TableAttributes cProcessesTableAttr [] =
+{
+  cAttr_Processes_SimTime,      eValueUnsigned,
+  cAttr_Processes_Name,         eValueCharPtr,
+  cAttr_Processes_Clock,        eValueVoidPtr,
+  cAttr_Processes_ClockEdge,    eValueUnsigned,
+  cAttr_Processes_ProcessPtr,   eValueVoidPtr,
+  cAttr_Processes_ExecReasonPtr,eValueVoidPtr,
+  cAttr_Processes_InterfacePtr, eValueVoidPtr,
+  cAttr_Processes_Region,       eValueUnsigned,
+  "",                           eValueUnknown
+};
+
+/////////// Asynchronous_Process_table
+const char* cAttr_AsyncProcesses_ProcessPtr    = "ProcessPtr";
+const char* cAttr_AsyncProcesses_InterfacePtr  = "InterfacePtr";
+
+TableAttributes cAsyncProcessesTableAttr [] =
+{
+  cAttr_AsyncProcesses_ProcessPtr,   eValueVoidPtr,
+  cAttr_AsyncProcesses_InterfacePtr, eValueVoidPtr,
+  "",                                eValueUnknown
+};
+
+// End
+@
+
+
+1.2
+log
+@1. Added attribute for Process name.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 1
+a7 2
+// Process_table
+// Synchronous_Process_table
+d10 1
+a10 17
+/////////// Process_table ////////////////////////////
+const char* const cProcessName        = "ProcessName";
+const char* const cProcessPtr         = "ProcessPtr";
+const char* const cProcessState       = "ProcessState";
+const char* const cProcessClockName   = "ProcessClkName";
+const char* const cProcessClockEdge   = "ProcessesClkEdge";
+
+TableAttributes cProcessTableAttr[] = {
+  { cProcessName        , eValueCharPtr     },
+  { cProcessPtr         , eValueVoidPtr     },
+  { cProcessState       , eValueUnsigned    },
+  { cProcessClockName   , eValueCharPtr     },
+  { cProcessClockEdge   , eValueUnsigned    },
+  { ""                  , eValueDontCare    }
+};
+
+/////////// Synchronous_Process_table
+d16 1
+d27 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d29 1
+d39 1
+@

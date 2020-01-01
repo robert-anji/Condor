@@ -1,0 +1,279 @@
+head	1.7;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.7
+date	2011.05.25.13.20.01;	author ranji;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.13.23.19.47;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.13.06.12;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.23.50.10;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@Added const TriggerActionFnPtrNone to help specify no Trigger callback function.
+@
+text
+@// $RCSfile: Database.h,v $
+// $Revision: 1.6 $
+
+#ifndef DatabaseClass
+#define DatabaseClass
+
+#include "Global.h"
+#include "DBDefines.h"
+#include "List.h"
+
+class Attribute;
+class DBTransaction;
+class Query;
+class Record;
+class Scheduler;
+class Table;
+class Trigger;
+class Value;
+class View;
+
+typedef void (*TriggerActionFunctionPtr)(Trigger *trigger);
+typedef        TriggerActionFunctionPtr  TriggerActionFnPtr;
+
+const TriggerActionFnPtr TriggerActionFnPtrNone = (TriggerActionFnPtr)eType_Max;
+
+enum eDBTransactionOperation {
+  eDBTransRecOper_RecordAdd,
+  eDBTransRecOper_RecordDelete,
+  eDBTransRecOper_RecordValueModify,
+  eDBTransRecOper_TableDelete,
+  eDBTransRecOper_Invalid,
+};
+
+class Database
+{
+  friend class Scheduler;
+
+public:
+  // Constructor/Destructor:
+  Database(const char* path_to_db, const char* db_name);
+  ~Database();
+
+  // Database Table API:
+  Table*   TableOpen (const char* table_name, int flags);
+  bool     TableClose(Table* tbl);
+
+  // Database Transactions API:
+  //   Note: We add prefix DB to differentiate it from hardware 'transactions'.
+  //   Note: Currently, only Table class expected to call these functions.
+  void     DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record *rec);
+  void     DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record *rec, const Attribute* attr, const Value &v);
+  short    DBTransactionsCommitView(View* view);
+
+private:
+  // Data:
+  const char*          mpPathToDB;
+  const char*          mpName;
+  //
+  List<Table>          mTableList;
+  List<DBTransaction>  mDBTransactionList;
+  List<Trigger>        mTriggerList;
+
+  // Member functions.
+  short    DBTransactionsCommitAll() { return DBTransactionsCommitView(0); }
+};
+
+#endif
+
+// End
+@
+
+
+1.6
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d7 1
+d24 2
+@
+
+
+1.5
+log
+@Cosmetic change (changed location where friend class is declared).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d7 1
+a7 1
+#include "DefinesAndEnum.h"
+@
+
+
+1.4
+log
+@1. Allow commit for a specific view.
+2. Made Scheduler a friend class.
+3. Replaced eBoolean with bool.
+4. TableOpen() now uses eTableOpenFlags arg instead of int.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a32 1
+public:
+d35 1
+@
+
+
+1.3
+log
+@1. Added typedef for the 'trigger action' prototype function.
+2. The DBTransactionsAdd() function needs the View argument instead of Table, changed.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d14 1
+d20 1
+a20 1
+typedef void (*TriggerActionFunctionPtr)(Trigger *trigger, View* view, void* trg_owner_obj);
+d34 2
+d41 2
+a42 2
+  Table*   TableOpen (const char* table_name, eTableOpenFlags flags);
+  eBoolean TableClose(Table* tbl);
+d48 2
+a49 2
+  void     DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record *rec, Attribute *const attr, Value &v);
+  short    DBTransactionsCommit();
+d53 2
+a54 2
+  const char          *mPathToDB;
+  const char          *mName;
+d59 3
+@
+
+
+1.2
+log
+@This is an entirely new code file representing an actual Database class
+instead of a generic header for database related files.
+1. The initial Database class provides functionality for:
+   - Opening/closing Tables
+   - Committing all queued database transactions.
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d10 1
+d12 1
+d15 1
+d17 4
+d25 1
+a25 1
+  eDBTransRecOper_RecordModify,
+d33 1
+d37 1
+d41 5
+a45 3
+  // Note: We add prefix DB to differentiate it from hardware transactions.
+  void     DBTransactionsAdd(eDBTransactionOperation oper, Table *tbl, Record *rec);
+  void     DBTransactionsAdd(eDBTransactionOperation oper, Table *tbl, Record *rec, short attr_pos, Value &v);
+a48 1
+
+d52 1
+a52 1
+
+d55 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d4 2
+a5 2
+#ifndef DatabaseHeader
+#define DatabaseHeader
+d7 2
+a8 1
+#include <limits.h>
+d10 11
+a20 12
+#define MAX_RECORD_LENGTH 1024
+
+enum eOperator {
+  eNoOperator,
+  eLessThan,
+  eGreaterThan,
+  eEqualTo,
+  eNotEqualTo,
+  eGreaterThanOrEqualTo,
+  eLessThanOrEqualTo,
+  eLikeOperator,
+  eInvalidOperator
+d23 23
+a45 7
+enum eBucket          { eFirstBucket, eLastBucket };
+enum eEnd             { eFirst, eLast };
+enum eConstType       { eNonConst, eConst };
+enum eAddDirection    { eSouth, eNorth, eEast, eWest };
+enum eSearchDirection { eForward, eBackward };
+enum                  { eMaxRecords    = SHRT_MAX };
+enum                  { eMaxAttributes = SHRT_MAX };
+@

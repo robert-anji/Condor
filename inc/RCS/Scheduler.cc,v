@@ -1,0 +1,2210 @@
+head	1.9;
+access;
+symbols;
+locks
+	robert:1.9; strict;
+comment	@// @;
+
+
+1.9
+date	2011.12.20.17.26.42;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.12.07.16.54.39;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.12.07.06.49.04;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.05.25.13.24.17;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.04.22.21.01.24;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.01.30.18.13.22;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.22.19.04.53;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.43.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.9
+log
+@1. Added a Sentinel record and query to ease record insertion for processes.
+2. Implemented FlushSemaphoreGets().
+3. Fixed a bug in ScheduleTheEntry(), entry should be added Last instead
+   of After-Current.
+@
+text
+@// $RCSfile: Scheduler.cc,v $
+// $Revision: 1.8 $
+
+#include <assert.h>
+#include <unistd.h>
+
+#include "Scheduler.h"
+//
+#include "Clock.h"
+#include "Database.h"
+#include "Global.h"
+#include "Interface.h"
+#include "Module.h"
+#include "Process.h"
+#include "Query.h"
+#include "Record.h"
+#include "Semaphore.h"
+#include "SimulatorDefines.h"
+#include "Stack.h"
+#include "Table.h"
+#include "Timer.h"
+#include "Trigger.h"
+#include "Value.h"
+#include "Vcd.h"
+#include "View.h"
+
+extern Scheduler*     gScheduler;
+extern Database*      gDB;
+extern int            gDbg;
+extern SimulationTime gSimTime;
+extern Vcd*           gVcd;
+
+M_ExternConstructDestructCountInt;
+
+extern TableAttributes cProcessesTableAttr;
+extern TableAttributes cAsyncProcessesTableAttr;
+
+static bool sLocalDbg = 0;
+static unsigned sMaxReasons = 50;
+
+Scheduler::Scheduler() :
+  mSimulationTime             (0),
+  mSchedulerState             (eSchedulerState_NotStarted),
+  mTimescale                  (eTimeScale_s),
+  mpProcessesTable            (0),
+  mpProcessesView             (0),
+  mpAsyncProcessesTable       (0),
+  mpAsyncProcessesView        (0),
+  mUseInternalClock           (TRUE),
+  mScheduleEntriesProcessed   (0),
+  mIsFirstSyncProcessExecuted (FALSE),
+  mSimulationTimeMax          (UINT_MAX),
+  mpCurrentSchedulerRecord    (0),
+  mCurrentRegion              (eSchedulerRegion_Invalid),
+  mpSentinelRecord            (0),
+  impQueryTmGtEq              (0),
+  impQueryTmGtRgGt            (0)
+{
+  int tbl_open_flags =  eTableOpenFlags_PermAll;
+
+  // Table for scheduler processes (clocks, synchronous, timers).
+  assert(gDB);
+  mpProcessesTable = gDB->TableOpen("ProcessScheduleTable", tbl_open_flags);
+  assert(mpProcessesTable);
+  //
+  mpProcessesTable->AttributesAdd(&cProcessesTableAttr);
+  mpProcessesView = mpProcessesTable->ViewCreate("ScheduleAllEntries", eRecPerm_OwnerAll);
+  assert(mpProcessesView);
+  assert(mpProcessesTable->ViewEnable(mpProcessesView, TRUE));
+  //
+  mpAttrSimTime       = mpProcessesTable->AttributeFind(cAttr_Processes_SimTime);
+  mpAttrProcName      = mpProcessesTable->AttributeFind(cAttr_Processes_Name);
+  mpAttrClock         = mpProcessesTable->AttributeFind(cAttr_Processes_Clock);
+  mpAttrClockEdge     = mpProcessesTable->AttributeFind(cAttr_Processes_ClockEdge);
+  mpAttrProcess       = mpProcessesTable->AttributeFind(cAttr_Processes_ProcessPtr);
+  mpAttrExecReason    = mpProcessesTable->AttributeFind(cAttr_Processes_ExecReasonPtr);
+  mpAttrInterface     = mpProcessesTable->AttributeFind(cAttr_Processes_InterfacePtr);
+  mpAttrRegion        = mpProcessesTable->AttributeFind(cAttr_Processes_Region);
+  MacroAssert5(mpAttrSimTime, mpAttrClock, mpAttrClockEdge, mpAttrProcess, mpAttrInterface)
+  MacroAssert3(mpAttrProcName, mpAttrRegion, mpAttrExecReason)
+  // Note: Need mpAttrClockEdge until we have reference records implemented as an attribute.
+
+  // Table for 'Asynchronous processes'.
+  mpAsyncProcessesTable = gDB->TableOpen("AsyncProcessesTable", tbl_open_flags);
+  assert(mpAsyncProcessesTable);
+  //
+  mpAsyncProcessesTable->AttributesAdd(&cAsyncProcessesTableAttr);
+  //
+  mpAsyncProcessesView  = mpAsyncProcessesTable->ViewCreate("AsyncProcessesAllEntries", eRecPerm_All);
+  assert(mpAsyncProcessesView);
+  assert(mpAsyncProcessesTable->ViewEnable(mpAsyncProcessesView, TRUE));
+  //
+  mpAttrAsyncProcess   = mpAsyncProcessesTable->AttributeFind(cAttr_AsyncProcesses_ProcessPtr);
+  mpAttrAsyncInterface = mpAsyncProcessesTable->AttributeFind(cAttr_AsyncProcesses_InterfacePtr);
+  MacroAssert2(mpAttrAsyncProcess, mpAttrAsyncInterface)
+
+  if (!gScheduler) gScheduler = this;
+  else             assert(0); // only one Scheduler instance allowed
+
+  // Allocate some iterators that we will need.
+  mpProcessesViewIterUnblock = mpProcessesView->ViewIteratorNew();
+  mpProcessesViewIterSearch  = mpProcessesView->ViewIteratorNew();
+  mpProcessesViewIterSearch1 = mpProcessesView->ViewIteratorNew();
+  mpProcessesViewIterSearch2 = mpProcessesView->ViewIteratorNew();
+  MacroAssert2(mpProcessesViewIterUnblock, mpProcessesViewIterSearch);
+  MacroAssert2(mpProcessesViewIterSearch1, mpProcessesViewIterSearch2);
+
+  ProcessAddSentinel();
+  mpSentinelRecord = mpProcessesView->RecordSearchFirst();
+  assert(mpSentinelRecord);
+
+  mSentinelQuery = *mpProcessesTable->mpAttr_RecordPtr == mpSentinelRecord;
+
+  M_UpdConstructCount(eType_Scheduler);
+}
+
+Scheduler::~Scheduler()
+{
+  if (mpProcessesView->RecordSearchFirst()) {
+    Record* rec;
+    Stack<ProcessExecuteReason>* rsn_stack;
+
+    do {
+      rec = mpProcessesView->RecordCurrentGet();
+      assert(rec);
+      rsn_stack = (Stack<ProcessExecuteReason>*)(rec->GetValueAsPointer(mpAttrExecReason));
+
+      if (rsn_stack) delete rsn_stack;
+    } while (mpProcessesView->RecordSearchNext());
+  }
+
+  if (mpProcessesViewIterUnblock) {
+    assert(mpProcessesView->ViewIteratorFree(mpProcessesViewIterUnblock));
+    mpProcessesViewIterUnblock = 0;
+  }
+
+  if (mpProcessesViewIterSearch) {
+    assert(mpProcessesView->ViewIteratorFree(mpProcessesViewIterSearch));
+    mpProcessesViewIterSearch = 0;
+  }
+
+  if (mpProcessesViewIterSearch1) {
+    assert(mpProcessesView->ViewIteratorFree(mpProcessesViewIterSearch1));
+    mpProcessesViewIterSearch1 = 0;
+  }
+
+  if (mpProcessesViewIterSearch2) {
+    assert(mpProcessesView->ViewIteratorFree(mpProcessesViewIterSearch2));
+    mpProcessesViewIterSearch2 = 0;
+  }
+
+  if (mpProcessesTable) {
+    if (mpProcessesView) {
+      mpProcessesTable->ViewDelete(mpProcessesView); mpProcessesView = 0;
+    }
+
+    gDB->TableClose(mpProcessesTable); mpProcessesTable = 0;
+  }
+
+  if (mpAsyncProcessesTable) {
+    if (mpAsyncProcessesView) {
+      mpAsyncProcessesTable->ViewDelete(mpAsyncProcessesView); mpAsyncProcessesView = 0;
+    }
+
+    gDB->TableClose(mpAsyncProcessesTable); mpAsyncProcessesTable = 0;
+  }
+
+  if (impQueryTmGtEq)   { delete impQueryTmGtEq;   impQueryTmGtEq   = 0; }
+  if (impQueryTmGtRgGt) { delete impQueryTmGtRgGt; impQueryTmGtRgGt = 0; }
+
+  M_ListDeleteAll(mProcessAndEdgeList, ProcessAndEdgeInfo);
+
+  M_UpdDestructCount(eType_Scheduler);
+}
+
+// Add a dummy (sentinel) record entry to make it more convenient to
+// relink records (sometimes gets tricky to relink the current record).
+void Scheduler::ProcessAddSentinel()
+{
+  bool auto_commit;
+  Record* rec_new = mpProcessesView->RecordNew(auto_commit=TRUE);
+  rec_new->mpView = mpProcessesView;
+  assert(rec_new);
+
+  eSchedulerRegion region         = eSchedulerRegion_First;
+  SimulationTime   sched_sim_time = 0;
+
+  Record& rec = *rec_new;
+  //
+  rec[mpAttrSimTime]       = sched_sim_time;
+  rec[mpAttrProcName]      = "";
+  rec[mpAttrClock]         = (void*)0;
+  rec[mpAttrClockEdge]     = eSignalEdge_None;
+  rec[mpAttrProcess]       = (void*)0;
+  rec[mpAttrExecReason]    = (void*)0;
+  rec[mpAttrInterface]     = (void*)0;
+  rec[mpAttrRegion]        = region;
+
+  ScheduleTheEntry(eScheduleRecord_New, sched_sim_time, region, 0, rec_new);
+}
+
+bool Scheduler::ProcessAdd(Process* proc)
+{
+  assert (proc);
+
+  switch (proc->ProcessType()) {
+    case eProcessType_Asynchronous: return ProcessAddAsync   (proc,   proc->InterfaceGet());
+    case eProcessType_Synchronous:  return ProcessAddSync    (        proc);
+    case eProcessType_Clock:        return ProcessAddClock   ((Clock*)proc);
+    case eProcessType_Timer:        return ProcessAddTimer   ((Timer*)proc);
+    case eProcessType_Software:     return ProcessAddSoftware(        proc);
+    default: assert(0);
+  }
+
+  return FALSE;
+}
+
+bool Scheduler::ProcessAddAsync(Process* process, Interface* intf)
+{
+  assert (intf);
+
+  bool auto_commit;
+  Record* r = mpAsyncProcessesView->RecordNew(auto_commit=TRUE);
+
+  assert(r);
+
+  Record& rec = *r;
+
+  rec[mpAttrAsyncProcess]   = (void*)process;
+  rec[mpAttrAsyncInterface] = (void*)intf;
+
+  // Use non-transactional record add.
+  mpAsyncProcessesView->RecordAdd(r, eListAddPosition_AfterCurrent);
+
+  return TRUE;
+}
+
+bool Scheduler::ProcessAddClock(Clock* clk)
+{
+  return ProcessAddCommon(clk, clk, eSignalEdge_PositiveAndNegativeEdge);
+}
+
+bool Scheduler::ProcessAddTimer(Timer* timer)
+{
+  // Simply call ProcessAdd with intf=0 and clk=0.
+  return ProcessAddCommon((Process*)timer, 0, eSignalEdge_Invalid);
+}
+
+bool Scheduler::ProcessAddSoftware(Process* process)
+{
+  // IMPR: Dont add software processes to Sync view, use separate structure.
+  // Simply call ProcessAddCommon with intf=0 and clk=0.
+  return ProcessAddCommon(process, 0, eSignalEdge_Invalid);
+}
+
+bool Scheduler::ProcessAddSync(Process* process)
+{
+  bool ok = TRUE;
+
+  Interface* intf = process->InterfaceGet();
+  assert(intf);
+
+  // By this time each Sync process has its interface signals connected, now
+  // to correctly schedule the synchronous process we need to know the clock
+  // that is connected to each sensitive signal edge. The clock is known in the
+  // interface info while the sensitive edge is known in the process info
+  // because we used the following approach within a module:
+  //   ConnectClock(intf, signal_name, clock);  // updates interface info
+  //   ProcessIsSensitiveTo(signal_name, edge); // updates process   info
+
+  bool found_clk = FALSE;
+
+  for (M_ListIterateAll(process->mSensitiveEdgeList)) {
+    SensitiveEdgeInfo* sensitive_edge_info = process->mSensitiveEdgeList.Get();
+    assert(sensitive_edge_info);
+
+    if (sensitive_edge_info->mEdge == eSignalEdge_None) continue;
+
+    Signal* signal = process->mpInterface->SignalGet(sensitive_edge_info->mSignalName);
+    assert(signal);
+
+    // Find out if the signal is being driven by a clock.
+    signal->mConnectedSignalsList.First();
+    Signal*  signal_out         = signal->mConnectedSignalsList.Get();
+    Process* signal_out_process = signal_out->mpInterface->mpOwningProcess;
+
+    if (signal_out_process->ProcessType() == eProcessType_Clock) {
+      found_clk = TRUE;
+
+      signal->IsDrivenByClock(TRUE);
+
+      ok = ok && ProcessAddCommon(process, (Clock*)signal_out_process, sensitive_edge_info->mEdge);
+    }
+    // else: We permit sensitive inputs on non-clock signals also.
+  }
+
+  if (! found_clk) {
+    printf("Error: could not find any connected Clock for synchronous process %s\n", process->Name());
+
+    ok = FALSE;
+  }
+
+  // TBD: Check if there are any unconnected interface clocks:
+
+  return (ok == TRUE);
+}
+
+// Add Process/Interface/ClockEdge triple to the Scheduler.
+// This mechanism of adding a synchronous process also allows a single process
+// to be shared among multiple identical interface instances. In this case
+// the process state should be stored in the interface object.
+// Note: a Process can have either one or no clock and maximum one Interface.
+// Note: a Process can be added at any time.
+bool Scheduler::ProcessAddCommon(Process* process, Clock* clk, eSignalEdge clk_edge)
+{
+  // TBD: confirm this process and interface are not already scheduled.
+
+  SimulationTime       sched_sim_time;
+  ProcessExecuteReason per;
+  Stack<ProcessExecuteReason>* reason = 0;
+
+  Interface* intf = process->InterfaceGet();
+
+  switch (process->ProcessType()) {
+    case eProcessType_Timer:
+      sched_sim_time = mSimulationTime + ((Timer*)process)->TimeoutValue();
+      break;
+    case eProcessType_Software:
+      sched_sim_time = gSimTime; // schedule immidiately
+      reason         = new Stack<ProcessExecuteReason>(sMaxReasons);
+      //
+      per.mExecuteReason = eExecuteReason_Initial;
+      per.mpReasonObject = 0;
+      //
+      reason->Push(per);
+      break;
+    case eProcessType_Clock:
+      clk->Start();
+      sched_sim_time = clk->NextTransitionTimeGet();
+      break;
+    case eProcessType_Synchronous:
+      assert(clk); // clk should be connected already
+
+      // Note: The process will not run if it is or gets suspended
+      //       or if its clock is not running, see Step9.
+      sched_sim_time = mSimulationTime + clk->SimTimeForNextClockEdgeGet(clk_edge);
+      break;
+    default: assert(0);
+  }
+
+  eSchedulerRegion region = RegionGet(process, clk_edge);
+
+  bool auto_commit;
+  Record* rec_new = mpProcessesView->RecordNew(auto_commit=TRUE);
+  rec_new->mpView = mpProcessesView;
+  assert(rec_new);
+
+  Record& rec = *rec_new;
+
+  rec[mpAttrSimTime]       = sched_sim_time;
+  rec[mpAttrProcName]      = process->Name();
+  rec[mpAttrClock]         = (void*)clk;
+  rec[mpAttrClockEdge]     = clk_edge;
+  rec[mpAttrProcess]       = (void*)process;
+  rec[mpAttrExecReason]    = (void*)reason;
+  rec[mpAttrInterface]     = (void*)intf;
+  rec[mpAttrRegion]        = region;
+
+  ScheduleTheEntry(eScheduleRecord_New, sched_sim_time, region, 0, rec_new);
+
+//mpProcessesView->Print();
+
+  return TRUE;
+}
+
+bool Scheduler::ProcessRemove(Process* p)
+{
+  Query q;
+
+  q = (*mpAttrProcess == (void*)p);
+
+  Record* rec_q = mpProcessesViewIterSearch->RecordSearchFirst(&q);
+
+  if (rec_q) {
+    mpProcessesView->TranRecordDelete(rec_q);
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+// Used to schedule a Sync process that also has asynchronous sensitivity.
+bool Scheduler::ScheduleSensitiveProcess(Process* process)
+{
+  Query q;
+
+  q = (*mpAttrProcess == (void*)process);
+
+  mpProcessesViewIterSearch1->PositionSetSameAsView();
+
+  // TBD: Confirm we can start search from Next (or should it be from current?).
+  Record* rec_q = mpProcessesViewIterSearch1->RecordSearchNext(&q);
+
+  if (rec_q) {
+    // Reschedule the process only if it isnt already for the current time.
+    if ((*rec_q)[mpAttrSimTime] > mSimulationTime) {
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch1);
+    }
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool Scheduler::ScheduleEventNotify(Event* e)
+{
+  return mEventSetList.Add(e);
+}
+
+bool Scheduler::Start()
+{
+  bool all_ok = TRUE;
+
+  // There is a special case for the execution order of Synchronous Interfaces
+  // at timestamp 0 due to the setting of eClockPhase for each process.
+  Record*        r;
+  Interface*     intf;
+  Process*       proc;
+  eProcessType   proc_type;
+  SimulationTime next_process_sim_time;
+  eSignalEdge    clk_edge;
+  Clock*         clk;
+  Interface*     intf_to_commit[100];
+  short          intf_count;
+  //
+
+  // Position to the first valid record (one past the Sentinel record).
+  mpProcessesView->RecordSearchFirst();
+  assert(mpProcessesView->RecordCurrentGet() == mpSentinelRecord);
+  //
+  mpProcessesView->RecordSearchNext();
+
+  // Algorithm steps from notes.txt: Scheduler_logic_overall_with_interfaces.
+  //
+  // Step1: start scheduler (commit all tables and set simulation time to 0).
+  mSchedulerState = eSchedulerState_Started;
+  gDB->DBTransactionsCommitAll();
+  mSimulationTime = 0;
+
+  // Step2: sync-i/f are set to default by constructor/owning process and commited.
+  // Step3: async-i/f are set to default by constructor/owning process or strapped.
+  // Note:  Step2 and Step3 are accomplished outside the Scheduler.
+
+  View* async_view = mpAsyncProcessesView;
+
+  // SchedulerMainLoop:
+  while (mSchedulerState == eSchedulerState_Started)
+  {
+    bool    redo       = TRUE; // need at least one pass in the loop
+    short   redo_count = 0;
+
+    // Step4: find & update any ready async-i/f, propagate outputs to connected inputs.
+    while (redo) {
+      redo_count++;
+      redo = FALSE;
+
+      // IMPR: Use a dedicated list of async processes that have inputs modified
+      //       as updated during the signal commit phase instead of looking in all.
+      for (r=async_view->RecordSearchFirst(); r; r=async_view->RecordSearchNext())
+      {
+        proc = (Process*  )r->GetValueAsPointer(mpAttrAsyncProcess);
+        intf = (Interface*)r->GetValueAsPointer(mpAttrAsyncInterface);
+        assert(proc);
+        assert(intf);
+
+        if (0) { // if (intf->mInputsUpdated)
+          impProcExecReason.mExecuteReason = eExecuteReason_InterfaceModified;
+          impProcExecReason.mpReasonObject = (void*)proc; // note: intf is available from proc
+          //
+          proc->ProcessExecute(impProcExecReason);
+
+          intf->PropagateInterfaceSignals(all_ok);
+        //intf->NeedsCommit(TRUE);
+
+          // Step5: due to cascading of i/f redo Step4 if any ready i/f found, else Step6.
+          redo = TRUE;
+        }
+      }
+
+      if (redo_count >= cAsyncProcReadyLoopCountMax) assert(0);
+    }
+
+    // Step6: commit the modified async i/f's.
+    for (r=async_view->RecordSearchFirst(); r; r=async_view->RecordSearchNext())
+    {
+      proc = (Process*  )r->GetValueAsPointer(mpAttrAsyncProcess);
+      intf = (Interface*)r->GetValueAsPointer(mpAttrAsyncInterface);
+      assert(intf);
+
+      if (intf->NeedsCommit()) intf->Commit();
+    }
+
+    // Step7: invoke all softproc, flush Sync objs & repeat proc invocation as needed.
+    do {
+      mpCurrentSchedulerRecord = mpProcessesView->RecordCurrentGet();
+      //
+      if (mpCurrentSchedulerRecord == mpSentinelRecord) {
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+      }
+      //
+      // Position the Sentinel to avoid issues relinking the current
+      // record using an iterator which is not allowed.
+      assert(mpProcessesViewIterSearch2->RecordSearchFirst(mSentinelQuery));
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch2);
+
+      while (mpCurrentSchedulerRecord) {
+        if (mpCurrentSchedulerRecord == mpSentinelRecord)
+          break;
+
+        proc = (Process*)(mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrProcess));
+        assert(proc);
+
+        proc_type = proc->ProcessType();
+
+        if (proc_type==eProcessType_Timer
+        ||  proc_type==eProcessType_Software)
+        {
+          mCurrentRegion = (eSchedulerRegion)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrRegion);
+
+          mScheduleEntriesProcessed++;
+
+          if (proc->mProcessState != eProcessState_Running) {
+            mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+            continue;
+          }
+
+          Stack<ProcessExecuteReason>* rsn_stack;
+          rsn_stack = (Stack<ProcessExecuteReason>*)(mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrExecReason));
+          assert(rsn_stack);
+
+          while (rsn_stack->Size()) {
+            proc->ProcessExecute(rsn_stack->Pop());
+          }
+
+          // No need to reschedule the timer/software process. If the process
+          // wanted to be rescheduled then it would have been indicated to the
+          // Scheduler when the process was executed. For example: the process
+          // could have invoked mbox.ScheduleGet();
+
+          mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+        }
+        else {
+          break; // done with all Software and Timer processes
+        }
+      }
+    // All mailboxes are flushed and no more sofware or timer processes
+    } while (FlushMailboxPuts() || FlushEventsSet() || FlushSemaphoreGets());
+
+    // 7a.  advance sim-time & clk edge to next scheduled sync process, end if none.
+    if (mUseInternalClock) {
+      mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+
+      if (mpCurrentSchedulerRecord) {
+        mpCurrentSchedulerRecord->ValueCopyGet(mpAttrSimTime, iValSimTime);
+
+        mSimulationTime       = (unsigned)iValSimTime;
+        next_process_sim_time = mSimulationTime;
+
+        assert(mIsFirstSyncProcessExecuted==FALSE || mSimulationTime>gSimTime); // guarantee forward progress
+
+        gSimTime = mSimulationTime;
+
+        if (mSimulationTime >= mSimulationTimeMax) {
+          mSchedulerState = eSchedulerState_SimTimeMaxReached;
+          if (gDbg) printf("[%u] EndOfSim", mSimulationTime), M_FL;
+
+          break;
+        }
+
+        //if (gDbg) printf("[%u]\n", mSimulationTime);
+
+        mIsFirstSyncProcessExecuted = TRUE;
+        mScheduleEntriesProcessed++;
+      }
+      else {
+        mSchedulerState = eSchedulerState_Finished;
+
+        if (gDbg) printf("[%u] EndOfSim (no more scheduler entries)", mSimulationTime), M_FL;
+
+        break;
+      }
+    }
+    else {
+      // Step7b: wait for next clock indication from SystemVerilog simulation.
+      // Once we can connect to a hardware simulator we should use this step.
+      assert(0); // not supported for now
+    }
+
+    gVcd->DumpSimulationTime(mSimulationTime);
+
+    // CONT: Need to add handling of Events & Semaphore similar to Mailbox.
+
+    intf_count = 0;
+
+    // Step8: for all sync processes at the current sim. time and clock edge
+    while (mpCurrentSchedulerRecord && (mSimulationTime==next_process_sim_time))
+    {
+      if (gDbg) { printf("Considering record: "); mpCurrentSchedulerRecord->Print(); }
+      // Step9: invoke process (use committed inputs from Step2 or StepB).
+      proc      = (Process*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrProcess);
+      proc_type = proc->ProcessType();
+      clk       = 0;
+
+      if (proc_type != eProcessType_Synchronous) break;
+
+      //Record& rr = *mpCurrentSchedulerRecord;
+      //const Value& val_c = rr[mpAttrAsyncProcess->PositionGet()];
+
+      if (proc->mProcessState != eProcessState_Running) {
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+
+        goto SkipExecuteProcess;
+      }
+
+      clk = (Clock*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrClock);
+      assert(clk);
+
+      if (clk->ProcessStateGet() != eProcessState_Running) {
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+
+        goto SkipExecuteProcess;
+      }
+
+      intf = (Interface*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrInterface);
+      assert(intf);
+
+      // Save interface to commit for StepC.
+      intf_to_commit[intf_count++] = intf;
+
+      // Clear the mProcessIsBlocked, this can get set
+      // when the current process is executed (below).
+      mProcessIsBlocked = FALSE;
+
+      if (clk->ClockEdgeGet() == eSignalEdge_PositiveEdge)
+        impProcExecReason.mExecuteReason = eExecuteReason_ClockPosedge;
+      else
+        impProcExecReason.mExecuteReason = eExecuteReason_ClockNegedge;
+      //
+      impProcExecReason.mpReasonObject = (void*)clk;
+
+      // Important: Here is where we actually execute a process.
+      // printf("Executing: "); mpCurrentSchedulerRecord->Print();
+      proc->ProcessExecute(impProcExecReason);
+
+      // StepA: sync outputs were computed, now propagate outputs to connected inputs.
+      intf->PropagateInterfaceSignals(all_ok);
+
+      // StepB: if not blocked, schedule process for next sync indication (clock edge).
+      if (!mProcessIsBlocked) {
+        clk      = (Clock*     )mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrClock);
+        clk_edge = (eSignalEdge)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrClockEdge);
+
+        SimulationTime   next_sim_time;
+
+        next_sim_time = clk->SimTimeForNextClockEdgeGet(clk_edge);
+
+        assert (next_sim_time > gSimTime);
+
+        (*mpCurrentSchedulerRecord)[mpAttrSimTime] = next_sim_time;
+
+        mCurrentRegion = (eSchedulerRegion)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrRegion);
+
+        // The scheduling call below will also advance the view to the next record.
+        ScheduleTheEntry(eScheduleRecord_Current, next_sim_time, mCurrentRegion);
+
+        // Update the current record after the relink operation.
+        mpCurrentSchedulerRecord = mpProcessesView->RecordCurrentGet();
+      }
+      else {
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+      }
+
+SkipExecuteProcess:
+      if (mpCurrentSchedulerRecord) {
+        mpCurrentSchedulerRecord->ValueCopyGet(mpAttrSimTime, iValSimTime);
+        next_process_sim_time = (unsigned)iValSimTime;
+      }
+    }
+
+    // No more processes to run, proceed with commits, triggers etc.
+
+    // StepC: commit all sync i/f's modified in Step8.
+    for (int i=0; i<intf_count; i++)
+      intf_to_commit[i]->Commit();
+
+    // StepD: commit all tables in the database.
+    gDB->DBTransactionsCommitAll();
+
+    // StepE: invoke all triggers that were activated in StepC and StepD.
+    for (MacroListIterateAll(mTriggerList)) {
+      Trigger* trg = mTriggerList.Get();
+      assert(trg);
+
+      trg->TriggerActionExecute();
+    }
+
+    // Empty out the list without deleting the contained triggers.
+    mTriggerList.DeleteLinkAll();
+  }
+
+  return TRUE;
+}
+
+void Scheduler::SimulationTimeMax(SimulationTime tm)
+{
+  mSimulationTimeMax = tm;
+}
+
+void Scheduler::ProcessBlock(Process* process)
+{
+  // Just mark the process as blocked, it will not get rescheduled
+  // when the current process returns control to the Scheduler.
+  mProcessIsBlocked = TRUE;
+}
+
+void Scheduler::ProcessUnblock(Process* process, bool schedule_process)
+{
+  Clock*      clk;
+  eSignalEdge clk_edge;
+  Record*     rec;
+  bool        found;
+
+  // Blocked process are at the beginning of the list (time at which they were
+  // blocked), we need to search from there until the current time (worst case).
+  found = FALSE;
+  if (rec = mpProcessesViewIterUnblock->RecordSearchFirst()) {
+    do {
+      if ((*rec)[mpAttrProcess] == ((void*)process))
+        found = TRUE;
+      else
+        rec = mpProcessesViewIterUnblock->RecordSearchNext();
+    } while (!found && rec && ((*rec)[mpAttrSimTime] <= gSimTime));
+  }
+
+  assert(found);
+
+  // In some cases we no longer wish to run (schedule) the unblocked process.
+  if (!schedule_process) {
+    mpProcessesView->TranRecordDelete(rec);
+
+    return;
+  }
+
+  SimulationTime    sched_sim_time;
+  eSchedulerRegion  region;
+
+  if (process->ProcessType() == eProcessType_Synchronous) {
+    clk_edge = (eSignalEdge)      rec->GetValueAsUnsigned(mpAttrClockEdge);
+    region   = (eSchedulerRegion) rec->GetValueAsUnsigned(mpAttrRegion);
+    clk      = (Clock*)           rec->GetValueAsPointer (mpAttrClock);
+
+    // Schedule for next clock (will be greater than current simulation time).
+    sched_sim_time = clk->SimTimeForNextClockEdgeGet(clk_edge);
+    (*rec)[mpAttrSimTime] = sched_sim_time;
+  }
+  else if (process->ProcessType() == eProcessType_Software) {
+    region   = (eSchedulerRegion) rec->GetValueAsUnsigned(mpAttrRegion);
+
+    if (mCurrentRegion <= region) {
+      sched_sim_time = mSimulationTime;
+    }
+    else {
+      // Too late to schedule for the current mSimulationTime, earliest is +1.
+      sched_sim_time = mSimulationTime+1;
+    }
+  }
+  else assert(0);
+
+  ScheduleTheEntry(eScheduleRecord_FromIter, sched_sim_time, region, mpProcessesViewIterUnblock);
+}
+
+bool Scheduler::TriggerSchedule(Trigger* trg)
+{
+  return (mTriggerList.Add(trg));
+}
+
+void Scheduler::Print()
+{
+  printf("View records:"), M_FL;
+  mpProcessesView->Print();
+}
+
+eSchedulerRegion Scheduler::RegionGet(Process* process, eSignalEdge clk_edge)
+{
+  eProcessType process_type = process->ProcessType();
+
+  return RegionGet(process_type, clk_edge);
+}
+
+eSchedulerRegion Scheduler::RegionGet(eProcessType process_type, eSignalEdge clk_edge)
+{
+  eSchedulerRegion region;
+
+  switch (process_type) {
+    case eProcessType_Timer:         region = eSchedulerRegion_0; break;
+    case eProcessType_Software:      region = eSchedulerRegion_1; break;
+    case eProcessType_Clock:         region = eSchedulerRegion_2; break;
+    case eProcessType_Asynchronous:  region = eSchedulerRegion_Invalid; break;
+    case eProcessType_Invalid:       region = eSchedulerRegion_Invalid; break;
+    case eProcessType_Synchronous: {
+      if (clk_edge == eSignalEdge_PositiveEdge
+      ||  clk_edge == eSignalEdge_NegativeEdge
+      ||  clk_edge == eSignalEdge_PositiveAndNegativeEdge)
+      {
+        region = eSchedulerRegion_3;
+      }
+      else if (clk_edge == eSignalEdge_PositiveLevel
+           ||  clk_edge == eSignalEdge_NegativeLevel)
+      {
+        region = eSchedulerRegion_4;
+      }
+      else
+        region = eSchedulerRegion_Invalid;
+    }
+    break;
+  }
+
+  assert (region != eSchedulerRegion_Invalid);
+
+  return region;
+}
+
+void Scheduler::ScheduleTheEntry(eScheduleRecord sched_type, SimulationTime entry_sim_time, eSchedulerRegion region, ViewIterator* iter_for_relink, Record* rec_new)
+{
+  // Insert the entry based on simulation time (lowest first, highest last)
+  // and then the same way for region.
+
+  // found=FALSE;
+  // Note: We start scanning from the current record once sim is in progress.
+  // for (i=0; rec.next() && !found; i++) {
+  //   if      (t<rec.time)                  { found=TRUE; }
+  //   else if (t==rec.time && r<rec.region) { found=TRUE; }
+  // }
+  // if      (i==0)  insert=none;   // when relinking the rec can already be in position
+  // else if (found) insert=before;
+  // else            insert=last;
+
+  Record* rec_q;
+  int     i;
+  bool    found;
+
+  eListAddPosition pos_add;
+
+  found = FALSE;
+
+  // If the Scheduler has started then we allow
+  // adding records only after the current record.
+  if (mSchedulerState == eSchedulerState_Started) {
+    mpProcessesViewIterSearch->PositionSetSameAsView();
+    mpProcessesViewIterSearch->RecordSearchNext();
+  }
+  else
+    mpProcessesViewIterSearch->RecordSearchFirst();
+
+  for (i=0; !found && (rec_q=mpProcessesViewIterSearch->RecordCurrentGet()); i++) {
+    if ((*rec_q)[mpAttrSimTime] > entry_sim_time)  {
+      found=TRUE; break;
+    }
+    // Note: If we could add a unsigned cast operator to Record then we could
+    //       allow rec_q to be on the rhs as well, as in:
+    //       > if (entry_sim_time == (unsigned)(*rec_q)[mpAttrSimTime])
+    //       however, adding this is causinig compile errors in Interface.cc:467 .
+    else if ((*rec_q)[mpAttrSimTime] == entry_sim_time
+         &&  (*rec_q)[mpAttrRegion] > region)
+    {
+      found=TRUE; break;
+    }
+
+    if (!mpProcessesViewIterSearch->RecordSearchNext()) break;
+  }
+
+  if      (found && i==0 && !rec_new)  pos_add = eListAddPosition_NoChange;
+  else if (found)                      pos_add = eListAddPosition_BeforeCurrent;
+  else                                 pos_add = eListAddPosition_Last;
+
+  if (sched_type == eScheduleRecord_New) {
+    // Insert the new rec to the computed position.
+    mpProcessesView->RecordAdd(rec_new, pos_add, mpProcessesViewIterSearch);
+  }
+  else if (sched_type == eScheduleRecord_FromIter
+       &&  pos_add   != eListAddPosition_NoChange)
+  {
+    // Either move the current record Or the one indicated by 'iter_for_relink'.
+    if (! iter_for_relink) {
+      mpProcessesView->RecordMoveCurrToIter(mpProcessesViewIterSearch, pos_add,
+       eListCurrentLinkAfterUnlink_Next);
+    }
+    else {
+      mpProcessesView->RecordMoveIterToIter(iter_for_relink, mpProcessesViewIterSearch,
+       pos_add, eListCurrentLinkAfterUnlink_Next);
+    }
+  }
+
+  if (mSchedulerState == eSchedulerState_NotStarted) {
+    // If the Scheduler has not started always make sure
+    // the first record becomes the current record.
+    mpProcessesView->RecordSearchFirst();
+  }
+
+  if (sLocalDbg) printf("Schedule entries at time %u are:\n", gSimTime);
+  if (sLocalDbg) mpProcessesView->Print(-1);
+}
+
+// If a higher resolution timescale is specified adjust all the
+// entries already in the Scheduler to reflect the new timescale.
+// If a lower resolution timescale is specified we need only
+// adjust that entry before scheduling it.
+// Note: No more adjustments are possible after the Scheduler starts.
+void Scheduler::AdjustTimeScale(eTimeScale timescale)
+{
+  if (timescale > mTimescale) {
+    int multiplier = (timescale - mTimescale)*1000;
+
+    for (mpProcessesViewIterSearch->RecordSearchFirst();
+          !mpProcessesViewIterSearch->RecordSearchIsDone();
+           mpProcessesViewIterSearch->RecordSearchNext())
+    {
+      Record* rec = mpProcessesViewIterSearch->RecordCurrentGet();
+
+      assert(rec);
+
+      unsigned sim_time = (unsigned)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrSimTime);
+      (*rec)[mpAttrSimTime] = sim_time * multiplier;
+    }
+  }
+}
+
+bool Scheduler::FlushSemaphoreGets()
+{
+  unsigned found = 0;
+
+  for (M_ListIterateAll(mSemaphoreList)) {
+    Semaphore* sem = mSemaphoreList.Get();
+    assert(sem);
+
+    Process* process;
+
+    while (process = sem->FlushGets()) {
+      found++;
+
+      printf("process %s got its semaphore\n", process->Name());
+      Stack<ProcessExecuteReason>* rsn_stack;
+      Record*                      rec;
+
+      impQueryProcFind = (*mpAttrProcess==(void*)process);
+      rec = mpProcessesViewIterSearch2->RecordSearchFirst(impQueryProcFind);
+      assert(rec);
+      // Add event-reason to list-of-reasons attribute
+      rsn_stack = (Stack<ProcessExecuteReason>*)(rec->GetValueAsPointer(mpAttrExecReason));
+      assert(rsn_stack);
+      //
+      impProcExecReason.mExecuteReason = eExecuteReason_SemaphoreGet;
+      impProcExecReason.mpReasonObject = (void*)sem;
+      rsn_stack->Push(impProcExecReason);
+      // Schedule the event_proc
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch2);
+    }
+  }
+
+  return (found > 0);
+}
+
+bool Scheduler::FlushMailboxPuts()
+{
+  unsigned found=0;
+
+  for (MacroListIterateAll(mMboxList)) {
+    MailboxBase* mbox = mMboxList.Get();
+    if (! mbox) break;
+
+    Stack<ProcessExecuteReason>* rsn_stack;
+    //
+    Process* put_proc;
+    Process* get_proc;
+    Record*  rec;
+    void*    elm;
+
+    // For each mailbox that has 'Put' and 'Get' entries
+    while (mbox->FlushPuts(&put_proc, &get_proc, &elm)) {
+      found++;
+
+      // 1. Find put_proc in view.
+      impQueryProcFind = (*mpAttrProcess==(void*)put_proc);
+      rec = mpProcessesViewIterSearch2->RecordSearchFirst(impQueryProcFind);
+      assert(rec);
+      // 2. Add put-reason to list-of-reasons attribute
+      rsn_stack = (Stack<ProcessExecuteReason>*)(rec->GetValueAsPointer(mpAttrExecReason));
+      assert(rsn_stack);
+      //
+      impProcExecReason.mExecuteReason = eExecuteReason_MailboxPut;
+      impProcExecReason.mpReasonObject = (void*)mbox;
+      rsn_stack->Push(impProcExecReason);
+      // 3. Schedule the put_proc
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch2);
+      //
+      if (found==1) mpProcessesView->RecordSearchNext();
+      //
+      // 1. Find get_proc in view
+      impQueryProcFind = (*mpAttrProcess==(void*)get_proc);
+      rec = mpProcessesViewIterSearch2->RecordSearchFirst(impQueryProcFind);
+      assert(rec);
+      // 2. Add get-reason to list-of-reasons attribute
+      rsn_stack = (Stack<ProcessExecuteReason>*)(rec->GetValueAsPointer(mpAttrExecReason));
+      assert(rsn_stack);
+      //
+      impProcExecReason.mExecuteReason = eExecuteReason_MailboxGet;
+      impProcExecReason.mpReasonObject = elm;
+      rsn_stack->Push(impProcExecReason);
+      // 3. Schedule the get_proc
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch2);
+    }
+  }
+
+  return (found > 0);
+}
+
+bool Scheduler::FlushEventsSet()
+{
+  unsigned found = 0;
+
+  // for all 'set' events, check all processes waiting
+  for (M_ListIterateAll(mEventSetList)) {
+    Event* event = mEventSetList.Get();
+    assert(event);
+
+    for (M_ListIterateAll(event->mProcessedWaitingForEventList)) {
+      Process* event_p = event->mProcessedWaitingForEventList.Get();
+      assert(event_p);
+
+      found++;
+
+      Stack<ProcessExecuteReason>* rsn_stack;
+      Record*                      rec;
+
+      impQueryProcFind = (*mpAttrProcess==(void*)event_p);
+      rec = mpProcessesViewIterSearch2->RecordSearchFirst(impQueryProcFind);
+      assert(rec);
+      // Add event-reason to list-of-reasons attribute
+      rsn_stack = (Stack<ProcessExecuteReason>*)(rec->GetValueAsPointer(mpAttrExecReason));
+      assert(rsn_stack);
+      //
+      impProcExecReason.mExecuteReason = eExecuteReason_Event;
+      impProcExecReason.mpReasonObject = (void*)event;
+      rsn_stack->Push(impProcExecReason);
+      // Schedule the event_proc
+      ScheduleTheEntry(eScheduleRecord_FromIter, mSimulationTime, mCurrentRegion, mpProcessesViewIterSearch2);
+
+      event->mProcessedWaitingForEventList.DeleteLinkThenNext();
+    }
+
+    mEventSetList.DeleteLinkThenNext();
+  }
+
+  return (found > 0);
+}
+
+// Quick print from debugger, doesnt like this function in the header file.
+void Scheduler::p() { mpProcessesView->PrintHeader(); mpProcessesView->Print(); }
+
+// End
+@
+
+
+1.8
+log
+@1. Added event handling.
+2. Got rid of using local ProcessExecuteReason obj, using class obj instead.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d17 1
+d23 1
+a24 1
+#include "Value.h"
+d38 1
+a38 1
+static bool sLocalDbg = 1;
+d55 1
+d108 6
+d176 26
+d437 1
+a437 1
+  // Position to the first record.
+d439 3
+d503 1
+a503 5
+    // Step7: invoke all softproc, flush Sync objs & repeat proc invokation as needed.
+    bool found_soft;
+    bool found_other;
+    bool found_at_least_one_soft;
+    //
+d505 1
+a505 3
+      found_soft  = FALSE;
+      found_other = FALSE;
+      found_at_least_one_soft = FALSE;
+d507 8
+a514 1
+      mpCurrentSchedulerRecord = mpProcessesView->RecordCurrentGet();
+d517 4
+a520 1
+        proc      = (Process*)(mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrProcess));
+d522 1
+a527 3
+          found_soft = TRUE;
+          found_at_least_one_soft = TRUE;
+
+a552 1
+          found_other = TRUE;
+a555 7
+      // Before Flush() make sure we are at the last Software/TImer process.
+      if (found_soft) {
+        if (found_other) {
+          mpProcessesView->RecordSearchPrev();
+        }
+      }
+    } while (FlushMailboxPuts() || FlushEventsSet());
+d557 1
+d561 1
+a561 3
+      if (found_at_least_one_soft) {
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+      }
+d846 1
+a846 1
+  // else            insert=after;
+d884 1
+a884 1
+  else                                 pos_add = eListAddPosition_AfterCurrent;
+d887 1
+a887 1
+    // Insert the new rec to the found position.
+d893 1
+a893 1
+    // Either move the current record or the one indicated by 'iter_for_relink'.
+d938 35
+@
+
+
+1.7
+log
+@1. All created Mailboxes are stored in Scheduler and Mailbox Puts and Gets
+   are resolved at the appropriate time (before running Sync processes).
+2. The eExecuteReason is now stored within the mpProcessesTable instead of
+   being computed inline. This change was mandated with the introduction
+   of Mailboxes which use the reasons eExecuteReason_MailboxPut and
+   eExecuteReason_MailboxGet. When processes are scheduled for Mailbox
+   reasons we need to store the reason for later execution.
+3. Needed to insert the step where Mailbox Puts and Gets are resolved.
+4. Added eExecuteReason attribute to the Processes table.
+5. Added missing check for null for gDB pointer.
+6. Renamed ProcessAdd(...) to ProcessAddCommon(...).
+7. Implemented function MailboxesFlushPuts() to move objects from Put process
+   to a Get process.
+8. Renamed mpSyncProcessesTable to mpProcessesTable and same for View as
+   this table currently also stores Software and Timer processes in addition
+   to Sync processes.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d381 5
+a401 1
+  ProcessExecuteReason  proc_exec_reason;
+d440 2
+a441 2
+          proc_exec_reason.mExecuteReason = eExecuteReason_InterfaceModified;
+          proc_exec_reason.mpReasonObject = (void*)proc; // note: intf is available from proc
+d443 1
+a443 1
+          proc->ProcessExecute(proc_exec_reason);
+d466 1
+a466 1
+    // Step7: invoke all softproc, flush Mailbox's & repeat proc invokation as needed.
+d524 1
+a524 2
+    // Step7d: update all Mailbox's and repeat Step7c if any Process got unblocked.
+    } while (MailboxesFlushPuts());
+d615 1
+a615 1
+        proc_exec_reason.mExecuteReason = eExecuteReason_ClockPosedge;
+d617 1
+a617 1
+        proc_exec_reason.mExecuteReason = eExecuteReason_ClockNegedge;
+d619 1
+a619 1
+      proc_exec_reason.mpReasonObject = (void*)clk;
+d623 1
+a623 1
+      proc->ProcessExecute(proc_exec_reason);
+d908 1
+a908 1
+bool Scheduler::MailboxesFlushPuts()
+a915 1
+    ProcessExecuteReason         proc_exec_reason;
+d935 3
+a937 3
+      proc_exec_reason.mExecuteReason = eExecuteReason_MailboxPut;
+      proc_exec_reason.mpReasonObject = (void*)mbox;
+      rsn_stack->Push(proc_exec_reason);
+d951 3
+a953 3
+      proc_exec_reason.mExecuteReason = eExecuteReason_MailboxGet;
+      proc_exec_reason.mpReasonObject = elm;
+      rsn_stack->Push(proc_exec_reason);
+d962 40
+@
+
+
+1.6
+log
+@Decoupled Trigger and Processes, this is now done in new class: EventFromTrigger.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d18 1
+d38 1
+d44 2
+a45 2
+  mpSyncProcessesTable        (0),
+  mpSyncProcessesView         (0),
+d50 1
+d60 3
+a62 2
+  mpSyncProcessesTable = gDB->TableOpen("ProcessScheduleTable", tbl_open_flags);
+  assert(mpSyncProcessesTable);
+d64 4
+a67 4
+  mpSyncProcessesTable->AttributesAdd(&cProcessesTableAttr);
+  mpSyncProcessesView  = mpSyncProcessesTable->ViewCreate("ScheduleAllEntries", eRecPerm_OwnerAll);
+  assert(mpSyncProcessesView);
+  assert(mpSyncProcessesTable->ViewEnable(mpSyncProcessesView, TRUE));
+d69 8
+a76 7
+  mpAttrSimTime       = mpSyncProcessesTable->AttributeFind(cAttr_Processes_SimTime);
+  mpAttrProcName      = mpSyncProcessesTable->AttributeFind(cAttr_Processes_Name);
+  mpAttrClock         = mpSyncProcessesTable->AttributeFind(cAttr_Processes_Clock);
+  mpAttrClockEdge     = mpSyncProcessesTable->AttributeFind(cAttr_Processes_ClockEdge);
+  mpAttrProcess       = mpSyncProcessesTable->AttributeFind(cAttr_Processes_ProcessPtr);
+  mpAttrInterface     = mpSyncProcessesTable->AttributeFind(cAttr_Processes_InterfacePtr);
+  mpAttrRegion        = mpSyncProcessesTable->AttributeFind(cAttr_Processes_Region);
+d78 1
+a78 1
+  MacroAssert2(mpAttrProcName, mpAttrRegion)
+d99 4
+a102 3
+  mpProcessesViewIterUnblock = mpSyncProcessesView->ViewIteratorNew();
+  mpProcessesViewIterSearch  = mpSyncProcessesView->ViewIteratorNew();
+  mpProcessesViewIterSearch1 = mpSyncProcessesView->ViewIteratorNew();
+d104 1
+a104 1
+  MacroAssert1(mpProcessesViewIterSearch1);
+d111 18
+d130 2
+a131 1
+    mpSyncProcessesView->ViewIteratorFree(mpProcessesViewIterSearch); mpProcessesViewIterSearch = 0;
+d135 2
+a136 1
+    mpSyncProcessesView->ViewIteratorFree(mpProcessesViewIterSearch1); mpProcessesViewIterSearch1 = 0;
+d139 3
+a141 2
+  if (mpProcessesViewIterUnblock) {
+    mpSyncProcessesView->ViewIteratorFree(mpProcessesViewIterUnblock); mpProcessesViewIterUnblock = 0;
+d144 3
+a146 3
+  if (mpSyncProcessesTable) {
+    if (mpSyncProcessesView) {
+      mpSyncProcessesTable->ViewDelete(mpSyncProcessesView); mpSyncProcessesView = 0;
+d149 1
+a149 1
+    gDB->TableClose(mpSyncProcessesTable); mpSyncProcessesTable = 0;
+d173 5
+a177 5
+    case eProcessType_Asynchronous: return ProcessAddAsync(proc, proc->InterfaceGet());
+    case eProcessType_Synchronous:  return ProcessAddSync(proc);
+    case eProcessType_Clock:        return ProcessAddClock((Clock*)proc);
+    case eProcessType_Timer:        return ProcessAddTimer((Timer*)proc);
+    case eProcessType_Software:     return ProcessAddSoftware(proc);
+d206 1
+a206 1
+  return ProcessAdd(clk, clk, eSignalEdge_PositiveAndNegativeEdge);
+d212 1
+a212 1
+  return ProcessAdd((Process*)timer, 0, eSignalEdge_Invalid);
+d217 3
+a219 2
+  // Simply call ProcessAdd with intf=0 and clk=0.
+  return ProcessAdd(process, 0, eSignalEdge_Invalid);
+d229 1
+a229 1
+  // At this time each Sync process has its interface signals connected, now
+d258 1
+a258 1
+      ok = ok && ProcessAdd(process, (Clock*)signal_out_process, sensitive_edge_info->mEdge);
+d280 1
+a280 1
+bool Scheduler::ProcessAdd(Process* process, Clock* clk, eSignalEdge clk_edge)
+d284 3
+a286 1
+  SimulationTime sched_sim_time;
+d295 7
+a301 1
+      sched_sim_time = gSimTime; // schedule immediately
+d320 2
+a321 2
+  Record* rec_new = mpSyncProcessesView->RecordNew(auto_commit=TRUE);
+  rec_new->mpView = mpSyncProcessesView;
+d331 1
+d337 1
+a337 1
+//mpSyncProcessesView->Print();
+d351 1
+a351 1
+    mpSyncProcessesView->TranRecordDelete(rec_q);
+d400 1
+a400 1
+  mpSyncProcessesView->RecordSearchFirst();
+d408 1
+a408 1
+ 
+d413 2
+a417 1
+    View*   async_view = mpAsyncProcessesView;
+d435 1
+a435 1
+        if (0) { // if (intf->mInputsUpdated) 
+d462 63
+d526 3
+a528 2
+      // Step7a: upd. sim. time & clock edge to next scheduled sync process, end if none.
+      mpCurrentSchedulerRecord = mpSyncProcessesView->RecordCurrentGet();
+d535 4
+a538 1
+        gSimTime              = mSimulationTime;
+d549 1
+d568 2
+d572 1
+a572 1
+    // Step8: for all processes(soft|sync) at the current sim. time and clock edge
+d581 2
+d587 1
+a587 1
+        mpCurrentSchedulerRecord = mpSyncProcessesView->RecordSearchNext();
+d592 2
+a593 4
+      if (proc_type == eProcessType_Synchronous
+      ||  proc_type == eProcessType_Clock)
+      {
+        clk = (Clock*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrClock);
+d595 2
+a596 2
+        if (clk->ProcessStateGet() != eProcessState_Running) {
+          mpCurrentSchedulerRecord = mpSyncProcessesView->RecordSearchNext();
+d598 2
+a599 2
+          goto SkipExecuteProcess;
+        }
+d601 2
+a602 2
+        intf = (Interface*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrInterface);
+        assert(intf);
+d604 2
+a605 3
+        // Save interface to commit for StepC.
+        intf_to_commit[intf_count++] = intf;
+      }
+d611 5
+a617 10
+      switch (proc_type) {
+      case eProcessType_Synchronous: proc_exec_reason.mExecuteReason = eExecuteReason_Clock;     break;
+      case eProcessType_Clock:       proc_exec_reason.mExecuteReason = eExecuteReason_Scheduler; break;
+      case eProcessType_Timer:       proc_exec_reason.mExecuteReason = eExecuteReason_Timer;     break;
+      default:
+        proc_exec_reason.mExecuteReason = eExecuteReason_Scheduler;
+        proc_exec_reason.mpReasonObject = (void*)0;
+        assert(0); // "ROB: Find out which processes are getting scheduled here.
+      }
+
+d623 1
+a623 5
+      if (proc_type == eProcessType_Clock
+      ||  proc_type == eProcessType_Synchronous)
+      {
+        intf->PropagateInterfaceSignals(all_ok);
+      }
+d626 1
+a626 3
+      if (!mProcessIsBlocked
+      && (proc_type==eProcessType_Clock || proc_type==eProcessType_Synchronous))
+      {
+d634 1
+a634 2
+        if (next_sim_time <= gSimTime)
+          assert (next_sim_time > gSimTime);
+d644 1
+a644 1
+        mpCurrentSchedulerRecord = mpSyncProcessesView->RecordCurrentGet();
+d647 1
+a647 1
+        mpCurrentSchedulerRecord = mpSyncProcessesView->RecordSearchNext();
+d657 1
+a657 2
+    // All processes for the current timestamp are now done,
+    // proceed with commits, triggers etc.
+d677 2
+d716 1
+a716 1
+    mpSyncProcessesView->TranRecordDelete(rec);
+d757 1
+a757 1
+  mpSyncProcessesView->Print();
+d772 3
+a774 3
+    case eProcessType_Clock:         region = eSchedulerRegion_0; break;
+    case eProcessType_Timer:         region = eSchedulerRegion_1; break;
+    case eProcessType_Software:      region = eSchedulerRegion_2; break;
+d820 1
+a820 1
+  
+d833 1
+a833 1
+    if ((*rec_q)[mpAttrSimTime] > entry_sim_time)  { 
+d838 3
+a840 4
+    //
+    //      if (entry_sim_time == (unsigned)(*rec_q)[mpAttrSimTime])
+    //      however, adding this is causinig compile errors in Interface.cc:467 .
+    else if ((*rec_q)[mpAttrSimTime] == entry_sim_time 
+d855 1
+a855 1
+    mpSyncProcessesView->RecordAdd(rec_new, pos_add, mpProcessesViewIterSearch);
+d862 1
+a862 1
+      mpSyncProcessesView->RecordMoveCurrToIter(mpProcessesViewIterSearch, pos_add,
+d866 1
+a866 1
+      mpSyncProcessesView->RecordMoveIterToIter(iter_for_relink, mpProcessesViewIterSearch,
+d874 1
+a874 1
+    mpSyncProcessesView->RecordSearchFirst();
+d878 1
+a878 1
+  if (sLocalDbg) mpSyncProcessesView->Print(-1);
+d905 57
+a961 2
+// Quick print from debugger, doesnt like this function in the header file. 
+void Scheduler::p() { mpSyncProcessesView->Print(); }
+@
+
+
+1.5
+log
+@1. PropagateOutputs() renamed to PropagateInterfaceSignals() in Interface.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d655 1
+a655 14
+  Process* blocked_process = trg->BlockedProcessGet();
+
+  if (blocked_process) {
+    // Trigger action is to unblock a process.
+    trg->BlockedProcessClear();
+
+    ProcessUnblock(blocked_process);
+
+    trg->TriggerStateSet(eTriggerState_RemoveTrigger);
+  }
+  else {
+    // Trigger action is to invoke a callback function.
+    return (mTriggerList.Add(trg));
+  }
+@
+
+
+1.4
+log
+@1. Added 'Sync' to member name mpSyncProcessesView.
+2. Completed ScheduleSensitiveProcess().
+3. ScheduleTheEntry() now takes the kinf of Scheduling as first arg.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d403 1
+a403 1
+          intf->PropagateOutputs(all_ok);
+d524 1
+a524 1
+        intf->PropagateOutputs(all_ok);
+@
+
+
+1.3
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d42 2
+a43 2
+  mpProcessesTable            (0),
+  mpProcessesView             (0),
+d57 2
+a58 2
+  mpProcessesTable = gDB->TableOpen("ProcessScheduleTable", tbl_open_flags);
+  assert(mpProcessesTable);
+d60 4
+a63 4
+  mpProcessesTable->AttributesAdd(&cProcessesTableAttr);
+  mpProcessesView  = mpProcessesTable->ViewCreate("ScheduleAllEntries", eRecPerm_OwnerAll);
+  assert(mpProcessesView);
+  assert(mpProcessesTable->ViewEnable(mpProcessesView, TRUE));
+d65 7
+a71 7
+  mpAttrSimTime       = mpProcessesTable->AttributeFind(cAttr_Processes_SimTime);
+  mpAttrProcName      = mpProcessesTable->AttributeFind(cAttr_Processes_Name);
+  mpAttrClock         = mpProcessesTable->AttributeFind(cAttr_Processes_Clock);
+  mpAttrClockEdge     = mpProcessesTable->AttributeFind(cAttr_Processes_ClockEdge);
+  mpAttrProcess       = mpProcessesTable->AttributeFind(cAttr_Processes_ProcessPtr);
+  mpAttrInterface     = mpProcessesTable->AttributeFind(cAttr_Processes_InterfacePtr);
+  mpAttrRegion        = mpProcessesTable->AttributeFind(cAttr_Processes_Region);
+d94 5
+a98 3
+  mpProcessesViewIterUnblock = mpProcessesView->ViewIteratorNew();
+  mpProcessesViewIterTemp    = mpProcessesView->ViewIteratorNew();
+  MacroAssert2(mpProcessesViewIterUnblock, mpProcessesViewIterTemp);
+d105 6
+a110 2
+  if (mpProcessesViewIterTemp) {
+    mpProcessesView->ViewIteratorFree(mpProcessesViewIterTemp); mpProcessesViewIterTemp = 0;
+d114 1
+a114 1
+    mpProcessesView->ViewIteratorFree(mpProcessesViewIterUnblock); mpProcessesViewIterUnblock = 0;
+d117 3
+a119 3
+  if (mpProcessesTable) {
+    if (mpProcessesView) {
+      mpProcessesTable->ViewDelete(mpProcessesView); mpProcessesView = 0;
+d122 1
+a122 1
+    gDB->TableClose(mpProcessesTable); mpProcessesTable = 0;
+d284 2
+a285 2
+  Record* rec_new = mpProcessesView->RecordNew(auto_commit=TRUE);
+  rec_new->mpView = mpProcessesView;
+d298 1
+a298 1
+  ScheduleTheEntry(sched_sim_time, region, rec_new, eSchedulerPosition_Add);
+d300 1
+a300 1
+//mpProcessesView->Print();
+d311 1
+a311 1
+  Record* rec_q = mpProcessesViewIterTemp->RecordSearchFirst(&q);
+d314 1
+a314 1
+    mpProcessesView->TranRecordDelete(rec_q);
+d321 1
+d324 18
+a341 2
+  // CONT: Implement ScheduleSensitiveProcess().
+  return TRUE;
+d363 1
+a363 1
+  mpProcessesView->RecordSearchFirst();
+d426 1
+a426 1
+      mpCurrentSchedulerRecord = mpProcessesView->RecordCurrentGet();
+d455 1
+a455 1
+      // Step7b: wait for next clock event from SystemVerilog simulation.
+d477 1
+a477 1
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+d488 1
+a488 1
+          mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+d527 1
+a527 1
+      // StepB: if not blocked, schedule process for next sync event (clock edge).
+d546 1
+a546 2
+        Record* rec_new;
+        ScheduleTheEntry(next_sim_time, mCurrentRegion, rec_new=0, eSchedulerPosition_Relink);
+d549 1
+a549 1
+        mpCurrentSchedulerRecord = mpProcessesView->RecordCurrentGet();
+d552 1
+a552 1
+        mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext();
+d620 1
+a620 1
+    mpProcessesView->TranRecordDelete(rec);
+d650 1
+a650 2
+  Record* rec_new;
+  ScheduleTheEntry(sched_sim_time, region, rec_new=0, eSchedulerPosition_Relink, mpProcessesViewIterUnblock);
+d674 1
+a674 1
+  mpProcessesView->Print();
+d717 1
+a717 1
+void Scheduler::ScheduleTheEntry(SimulationTime entry_sim_time, eSchedulerRegion region, Record* rec_new, eSchedulerPosition sched_pos, ViewIterator* iter_for_relink)
+d743 2
+a744 2
+    mpProcessesViewIterTemp->PositionSetSameAsView();
+    mpProcessesViewIterTemp->RecordSearchNext();
+d747 1
+a747 1
+    mpProcessesViewIterTemp->RecordSearchFirst();
+d749 1
+a749 1
+  for (i=0; !found && (rec_q=mpProcessesViewIterTemp->RecordCurrentGet()); i++) {
+d764 1
+a764 1
+    if (!mpProcessesViewIterTemp->RecordSearchNext()) break;
+d771 3
+a773 2
+  if (sched_pos == eSchedulerPosition_Add) {
+    mpProcessesView->RecordAdd(rec_new, pos_add, mpProcessesViewIterTemp);
+d775 1
+a775 1
+  else if (sched_pos == eSchedulerPosition_Relink
+d778 4
+a781 4
+    // No rec provided, we move the current record to the iterator position.
+    if (iter_for_relink) {
+      mpProcessesView->RecordMoveIterToIter(iter_for_relink, mpProcessesViewIterTemp,
+       pos_add, eListCurrentLinkAfterUnlink_Next);
+d784 2
+a785 2
+      mpProcessesView->RecordMoveCurrToIter(mpProcessesViewIterTemp, pos_add,
+       eListCurrentLinkAfterUnlink_Next);
+d792 1
+a792 1
+    mpProcessesView->RecordSearchFirst();
+d796 1
+a796 1
+  if (sLocalDbg) mpProcessesView->Print(-1);
+d809 3
+a811 3
+    for (mpProcessesViewIterTemp->RecordSearchFirst();
+          !mpProcessesViewIterTemp->RecordSearchIsDone();
+           mpProcessesViewIterTemp->RecordSearchNext())
+d813 1
+a813 1
+      Record* rec = mpProcessesViewIterTemp->RecordCurrentGet();
+d824 1
+a824 1
+void Scheduler::p() { mpProcessesView->Print(); }
+@
+
+
+1.2
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  Added mTimeScale.
+3.  Removed ViewIterator for current process.
+4.  Free all ViewIterator's in destructor.
+5.  Added member for mpAttrProcName.
+6.  Added ViewIterator for processes to unblock.
+7.  Implemented common ProcessAdd(proc), this will launch process specific add.
+8.  Use auto_commit for Sync and Async process add and specify add position.
+9.  Renamed eClockEdge with eSignalEdge.
+10. When adding Sync process, now need to determine the clock its connected to.
+11. Support eProcessType_Software.
+12. Use arg ExecuteReason when executing a process (was bool and intf).
+13. Treat Clock the same as a Synchronous process.
+14. Fix suspend logic for processes.
+15. Always check that 'next_sim_time' is greater than 'current_sim_time'.
+16. Improved ProcessBlock() to not need a new Record.
+17. Removed needing separate list for process that can be unblocked.
+18. Fixed and improved the Scheduling algorithm in ScheduleTheEntry().
+19. Implemented AdjustTimeScale().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+a10 1
+#include "DefinesAndEnum.h"
+d17 1
+a283 4
+ // CONT: switch to this usage?
+ //rec[mpAttrClockEdge].Set(clk_edge);
+ //const Value& val = rec[mpAttrClockEdge]; //
+
+d732 5
+a736 3
+  // CONT: For Record, add cast operator for unsigned, short and int.
+  //else if (entry_sim_time == (unsigned)(*rec_q)[mpAttrSimTime])
+  //{}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d4 2
+a5 1
+#include "assert.h"
+a8 1
+#include "Attribute.h"
+a9 1
+#include "Condition.h"
+d12 1
+d21 2
+d29 3
+d36 2
+d41 1
+d50 3
+a52 1
+  mCurrentRegion              (eSchedulerRegion_Invalid)
+d61 1
+a61 1
+  mpProcessesView  = mpProcessesTable->ViewCreate("ScheduleAllEntries", eRecPerm_All);
+d66 1
+d73 1
+a73 1
+  MacroAssert1(mpAttrRegion)
+d94 5
+a98 3
+  mpProcessesViewIterCurr = mpProcessesView->ViewIteratorNew();
+  mpProcessesViewIterTemp = mpProcessesView->ViewIteratorNew();
+  MacroAssert2(mpProcessesViewIterCurr, mpProcessesViewIterTemp);
+d103 8
+d126 23
+d155 2
+a156 5
+  // We can add processes to owning Module automatically by having forced
+  // all Process objects to provide the Module object in the constructor.
+  (process->ModuleGet())->ProcessAdd(process);
+
+  Record* r = mpAsyncProcessesView->RecordNew();
+d166 1
+a166 1
+  mpAsyncProcessesView->RecordAdd(r);
+d173 1
+a173 1
+  return ProcessAdd(0, 0, clk, eClockEdge_PositiveAndNegativeEdge);
+d179 7
+a185 1
+  return ProcessAdd((Process*)timer, 0, 0, eClockEdge_Invalid);
+d188 1
+a188 1
+bool Scheduler::ProcessAddSync(Process* process, Clock* clk, eClockEdge clk_edge)
+d190 2
+d195 43
+a237 1
+  return ProcessAdd(process, intf, clk, clk_edge);
+d242 1
+a242 1
+// to be shared to for multiple identical interfaces instances. In this case
+d246 1
+a246 1
+bool Scheduler::ProcessAdd(Process* process, Interface* intf, Clock* clk, eClockEdge clk_edge)
+d252 1
+a252 2
+  bool is_timer = (intf==0 && clk==0 && clk_edge==eClockEdge_Invalid);
+  bool is_clock = (process==0 && clk!=0);
+d254 13
+a266 9
+  if (is_timer) {
+    sched_sim_time = mSimulationTime + ((Timer*)process)->TimeoutValue();
+  }
+  else if (is_clock) {
+    sched_sim_time = clk->StartTimeGet();
+    process        = (Process*)clk;
+  }
+  else {
+    // Synchronous process.
+d268 5
+a272 9
+    process->InterfaceSet(intf); // let process know of its interface
+
+    if (! clk->Running()) {
+      mProcessesWaitingOnClockList.Add(process);
+
+      return TRUE;
+    }
+
+    sched_sim_time = mSimulationTime + clk->GetSimTimeForNextClockEdge(clk_edge);
+d277 3
+a279 1
+  Record* rec_new = mpProcessesView->RecordNew();
+d284 4
+d289 1
+d296 1
+a296 1
+  ScheduleTheEntry(sched_sim_time, region, rec_new);
+d298 1
+a298 1
+  mpProcessesView->Print();
+d319 1
+a319 1
+bool Scheduler::TimerRemove(Timer* timer)
+d321 2
+a322 1
+  return ProcessRemove((Process*)timer);
+d335 2
+a336 2
+  SimulationTime tm;
+  eClockEdge     clk_edge;
+d338 4
+a341 3
+
+  ViewIterator* iter_first = mpProcessesView->ViewIteratorNew();
+  assert(iter_first);
+d344 1
+a344 1
+  mpProcessesViewIterCurr->RecordSearchFirst();
+d348 1
+a348 1
+  // Step1. start scheduler (commit all tables and set simulation time to 0).
+d352 1
+a352 1
+
+d358 2
+a359 1
+  while (mSchedulerState == eSchedulerState_Started) {
+d369 2
+d375 1
+d378 5
+a382 2
+        if (intf->InputsReady()) {
+          proc->Execute(all_ok, intf);
+d385 1
+a385 2
+          intf->InputsProcessedDone();
+          intf->NeedsCommit(TRUE);
+d406 2
+a407 7
+      // Step7a. upd. sim. time & clock edge to next scheduled sync process, end if none.
+      if (mScheduleEntriesProcessed > 0)
+        mpCurrentSchedulerRecord = mpProcessesViewIterCurr->RecordSearchNext();
+      else
+        mpCurrentSchedulerRecord = mpProcessesViewIterCurr->RecordCurrentGet();
+
+      iter_first->PositionSet(mpProcessesViewIterCurr);
+d410 1
+a410 1
+        Value val_sim_time;
+d412 3
+a414 4
+        mpCurrentSchedulerRecord->ValueCopyGet(mpAttrSimTime, val_sim_time);
+
+        mSimulationTime = (unsigned)val_sim_time;
+        gSimTime        = mSimulationTime;
+d418 1
+a418 1
+          if (gDbg) printf("[%u] EndOfSim\n", mSimulationTime);
+d423 1
+a423 1
+        if (gDbg) printf("[%u]\n", mSimulationTime);
+d430 1
+a430 1
+        if (gDbg) printf("[%u] EndOfSim (no more scheduler entries)\n", mSimulationTime);
+d436 1
+a436 1
+      // Step7b. wait for next clock event from SystemVerilog simulation.
+d441 10
+a450 8
+    // Step8. for (all processes(soft/sync) at the current sim. time and clock edge)
+    Query         q_sim_time_eq("SimTimeEqual");
+    //
+    q_sim_time_eq = (*mpAttrSimTime == mSimulationTime);
+
+    while (mpCurrentSchedulerRecord) {
+      // Step9. invoke process (use committed inputs from Step2 or StepB).
+      proc = (Process*)mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrProcess);
+d452 21
+a473 1
+      if (proc_type == eProcessType_Synchronous) {
+d476 3
+d481 15
+a495 1
+      unsigned blocked_processes_prev = mListSchedulerEntriesBlocked.Size();
+d497 8
+a504 4
+      proc->Execute(all_ok, intf);
+
+      // StepA. sync outputs were computed, now propagate outputs to connected inputs.
+      if (proc_type == eProcessType_Synchronous)
+d506 1
+d508 6
+a513 5
+      // StepB. if not blocked, schedule process for next sync event (clock edge).
+      if (mListSchedulerEntriesBlocked.Size() == blocked_processes_prev) {
+        // 'proc' was not blocked.
+        Record* rec_new = mpProcessesView->RecordNew();
+        assert(rec_new);
+d515 1
+a515 2
+        clk      = (Clock*    )mpCurrentSchedulerRecord->GetValueAsPointer(mpAttrClock);
+        clk_edge = (eClockEdge)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrClockEdge);
+d517 1
+a517 1
+        SimulationTime   next_sim_time;
+d519 2
+a520 1
+        next_sim_time = clk->GetSimTimeForNextClockEdge(clk_edge);
+d522 1
+a522 1
+        *rec_new      = *mpCurrentSchedulerRecord; // simply copy over values
+d524 1
+a524 2
+        (*rec_new)[mpAttrSimTime] = next_sim_time;
+        //mpCurrentSchedulerRecord[mpAttrSimTimeNext] = next_sim_time;
+d526 3
+a528 2
+        // PREV: (*rec_new)[mpAttrSimTime] += 2*clk->HalfPeriodGet();
+        // PREV: next_sim_time = rec_new->GetValueAsUnsigned(mpAttrSimTime);
+d530 5
+a534 2
+        mCurrentRegion = (eSchedulerRegion)mpCurrentSchedulerRecord->GetValueAsUnsigned(mpAttrRegion);
+        ScheduleTheEntry(next_sim_time, mCurrentRegion, rec_new);
+d537 5
+a541 4
+      mpCurrentSchedulerRecord = mpProcessesView->RecordSearchNext(&q_sim_time_eq);
+
+      // Keep our 'current' iterator in sync with View's internal iterator.
+      if (mpCurrentSchedulerRecord) mpProcessesViewIterCurr->PositionSet(mpProcessesView);
+d547 3
+a549 9
+    // StepC. commit all sync i/f's modified in Step8.
+    mpProcessesView->PositionSet(iter_first);
+    for (r=mpProcessesView->RecordCurrentGet(); r;
+          r=mpProcessesView->RecordSearchNext(&q_sim_time_eq))
+    {
+      // if ((*r)[mpAttrSimTime] != gSimTime) break;
+
+      proc = (Process*  )r->GetValueAsPointer(mpAttrProcess);
+      intf = (Interface*)r->GetValueAsPointer(mpAttrInterface);
+d551 1
+a551 15
+      proc_type = proc->ProcessType();
+
+      if (proc_type == eProcessType_Synchronous) {
+        assert(intf);
+        intf->Commit();
+      }
+
+      // next_sim_time       = (*r)[mpAttrSimTimeNext]);
+      // (*r)[mpAttrSimTime] = next_sim_time;
+      // region              = (eSchedulerRegion)r->GetValueAsUnsigned(mpAttrRegion);
+      // ScheduleTheEntry(next_sim_time, region, r);
+      // mpProcessesView->DeleteLinkThenNext();
+    }
+
+    // StepD. commit all tables in the database.
+d554 1
+a554 1
+    // StepE. invoke all triggers that were activated in StepC and StepD.
+d561 1
+d564 1
+a564 15
+
+  //// TBD: StepF, delete any entries are older than some threshold value.
+  //for (r=mpProcessesView->RecordSearchFirst(&q_sim_time_eq); r;
+  // r=mpProcessesView->RecordSearchNext(&q_sim_time_eq))
+  //{
+  //  intf = (Interface*)r->GetValueAsPointer(mpAttrProcess);
+  //  assert(intf);
+
+  //  mpProcessesView->TranRecordDelete(r);
+  //  short commited = gDB->DBTransactionsCommitView(mpProcessesView);
+  //}
+
+  } // Repeat SchedulerMainLoop
+
+  // TBD: Simulation ended, do any necessary cleanup.
+d574 3
+a576 6
+  // Make a copy of the current record (as old Scheduler entries are deleted).
+  Record* rec_new = mpProcessesView->RecordNew();
+  assert (rec_new);
+
+  *rec_new = *mpCurrentSchedulerRecord;
+  mListSchedulerEntriesBlocked.Add(rec_new);
+d581 15
+a595 21
+  // First find the entry in our mListSchedulerEntriesBlocked list.
+  // If found, check the process type:
+  //   Synchronous: schedule it for its next clock edge.
+  //   Software   : check the region and schedule at current or next sim. time.
+
+  Clock*     clk;
+  eClockEdge clk_edge;
+  Record*    rec_unblock;
+
+  bool found = FALSE;;
+
+  for (MacroListIterateAll(mListSchedulerEntriesBlocked)) {
+    rec_unblock = mListSchedulerEntriesBlocked.Get();
+    assert(rec_unblock);
+
+    if ((*rec_unblock)[mpAttrProcess] == process) {
+      found = TRUE;
+
+      mListSchedulerEntriesBlocked.DeleteLinkThenNext(); // dont care next|prev
+      break;
+    }
+d602 1
+a602 1
+    mpProcessesView->TranRecordDelete(rec_unblock);
+d611 3
+a613 3
+    clk_edge = (eClockEdge)       rec_unblock->GetValueAsUnsigned(mpAttrClockEdge);
+    region   = (eSchedulerRegion) rec_unblock->GetValueAsUnsigned(mpAttrRegion);
+    clk      = (Clock*)           rec_unblock->GetValueAsPointer (mpAttrClock);
+d616 2
+a617 2
+    sched_sim_time = clk->GetSimTimeForNextClockEdge(clk_edge);
+    (*rec_unblock)[mpAttrSimTime] = sched_sim_time;
+d620 1
+a620 1
+    region   = (eSchedulerRegion) rec_unblock->GetValueAsUnsigned(mpAttrRegion);
+d632 2
+a633 1
+  ScheduleTheEntry(sched_sim_time, region, rec_unblock);
+d656 1
+a656 3
+  Record* rec;
+
+  printf("View records:\n");
+a657 6
+//printf("Current view record:\n");
+//rec = mpProcessesView->Print(ePrintViewCurrentRecord);
+
+  printf("Current iterator record:\n");
+  rec = mpProcessesViewIterCurr->RecordCurrentGet();
+  if (rec) rec->Print();
+d660 1
+a660 1
+eSchedulerRegion Scheduler::RegionGet(Process* process, eClockEdge clk_edge)
+d667 1
+a667 1
+eSchedulerRegion Scheduler::RegionGet(eProcessType process_type, eClockEdge clk_edge)
+d678 3
+a680 3
+      if (clk_edge == eClockEdge_PositiveEdge
+      ||  clk_edge == eClockEdge_NegativeEdge
+      ||  clk_edge == eClockEdge_PositiveAndNegativeEdge)
+d684 2
+a685 2
+      else if (clk_edge == eClockEdge_PositiveLevel
+           ||  clk_edge == eClockEdge_NegativeLevel)
+d700 1
+a700 1
+void Scheduler::ScheduleTheEntry(SimulationTime sched_sim_time, eSchedulerRegion region, Record* rec)
+d702 2
+a703 16
+  // Insert entry algorithm (see notes.txt: SortingProcessInScheduler).
+  // > found = iter->FindNext("time">=t);
+  // > if (!found)   insert_after;
+  // > else {
+  // >   found_gt = ("time" > t);
+  // >   if (found_gt) insert_before;
+  // >   else {
+  // >     found = iter->Find("time">t || "region">r);
+  // >     if (found) insert_before;
+  // >     else       insert_after;
+  // >   }
+  // > }
+
+  Query            q("InsertRec");
+  eListAddPosition add_pos;
+  Record*          rec_q;
+d705 39
+a743 1
+  q = (*mpAttrSimTime >= sched_sim_time);
+d745 2
+a746 1
+  mpProcessesViewIterTemp->PositionSet(mpProcessesViewIterCurr);
+d748 3
+a750 1
+  rec_q = mpProcessesViewIterTemp->RecordSearchNext(&q);
+d752 2
+a753 2
+  if (!rec_q) {
+    add_pos = eListAddPosition_AfterCurrent;
+d755 7
+a761 3
+  else {
+    if ((*rec_q)[mpAttrSimTime] > sched_sim_time) {
+      add_pos = eListAddPosition_BeforeCurrent;
+d764 4
+a767 1
+      q = ((*mpAttrSimTime>sched_sim_time) || (*mpAttrRegion>region));
+d769 5
+a773 1
+      rec_q = mpProcessesViewIterTemp->RecordSearchNext(&q);
+d775 3
+a777 4
+      if (rec_q) add_pos = eListAddPosition_BeforeCurrent;
+      else       add_pos = eListAddPosition_AfterCurrent;
+    }
+  }
+d779 9
+a787 3
+  // Set the view to the iterator position (only view can add a record,
+  // an iterator cannot), then use non-transactional record add.
+  mpProcessesView->PositionSet(mpProcessesViewIterTemp);
+d789 5
+a793 1
+  mpProcessesView->RecordAdd(rec, add_pos);
+d795 1
+a795 2
+  // Restore views position to what is was before the record add.
+  mpProcessesView->PositionSet(mpProcessesViewIterCurr);
+d797 4
+a800 2
+  if (mpProcessesView->Size() == 1)
+    mpProcessesViewIterCurr->PositionSet(mpProcessesView);
+d803 2
+a804 4
+void Scheduler::p()
+{
+  mpProcessesView->Print();
+}
+@

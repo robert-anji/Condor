@@ -1,0 +1,91 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2011.10.11.22.15.25;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.33.32;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Preparing to remove this file.
+@
+text
+@// $RCSfile: Mutex.cc,v $
+// $Revision: 1.1 $
+
+#include <assert.h>
+
+#include "Mutex.h"
+
+#include "Global.h"
+#include "Semaphore.h"
+
+M_ExternConstructDestructCountInt;
+
+static const int TOTAL_SEMAPHORE_KEYS_NEEDED = 1;
+
+Mutex::Mutex() :
+  mpSemaphore(0)
+{
+  mpSemaphore = new Semaphore(TOTAL_SEMAPHORE_KEYS_NEEDED);
+
+  M_UpdConstructCount(eType_Mutex);
+}
+
+Mutex::~Mutex()
+{
+  delete mpSemaphore;
+}
+
+bool Mutex::MutexLock(Process* process)
+{
+  return mpSemaphore->SemGetElseBlock(1, process);
+}
+
+bool Mutex::MutexRelease(Process* process)
+{
+  mpSemaphore->SemPut(1);
+
+  return FALSE; // CONT: Fix
+}
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d28 1
+a28 1
+bool Mutex::MutexLockElseBlock(Process* process)
+d33 1
+a33 1
+bool Mutex::MutexTryLock()
+d35 1
+a35 2
+  return mpSemaphore->SemGetButNoBlock(1);
+}
+d37 1
+a37 3
+void Mutex::MutexRelease()
+{
+  return mpSemaphore->SemPut(1);
+@

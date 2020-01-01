@@ -1,0 +1,986 @@
+head	1.5;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.3
+	C1_00:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.5
+date	2011.09.07.04.36.43;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.21.23.57.35;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.06.18.00.51.00;	author Roberto;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.02.15.14.17.33;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@1. Moved the Record::Match(Query) function to Query::Match(Record*).
+2. Member mValue was renamed to mValueRHS.
+@
+text
+@// $RCSfile: Query.cc,v $
+// $Revision: 1.4 $
+
+#include "Query.h"
+//
+#include "Condition.h"
+#include "Global.h"
+#include "Value.h"
+
+M_ExternConstructDestructCountInt;
+
+Query::Query() :
+  mpName("NoName")
+{
+  M_UpdConstructCount(eType_Query);
+}
+
+Query::Query(const char* name) :
+  mpName(name)
+{
+  M_UpdConstructCount(eType_Query);
+}
+
+Query::Query(Query &q) :
+  mpName("NoName")
+{
+  mConditionBktList.CopyDeep(q.mConditionBktList);
+
+  M_UpdConstructCount(eType_Query);
+}
+
+Query::~Query()
+{
+  for (MacroBucketList_BucketIterateAll(mConditionBktList)) {
+    for (MacroBucketList_ListIterateAll(mConditionBktList)) {
+      Condition* c = mConditionBktList.Get();
+
+      if (c) { delete c;  }
+      else   { assert(0); }
+    }
+  }
+
+  M_UpdDestructCount(eType_Query);
+}
+
+bool Query::Match(Record* rec)
+{
+  // This Match handles non-join queries. All conditions within the query are
+  // expected to contain just one Attribute which will be for the LHS. The RHS
+  // will be a value or value pointer.
+  //
+  // Note: This function is also used for rec=0
+
+  BucketList<Condition> & cbl = mConditionBktList;
+
+  if (!cbl.BktSetPosition(ePositionFirst)) {
+    // If query is empty then there are no conditions
+    // and the record is defined to always match.
+    return TRUE;
+  }
+
+  // We have a match IF the conditions within ANY bucket are ALL true
+  for (cbl.BktSetPosition(ePositionFirst); !cbl.BktDone(); cbl.BktSetPosition(ePositionNext))
+  {
+    // Process the 'and' condition, break as soon as there is no match.
+    for (cbl.SetLinkPosition(ePositionFirst); !cbl.LinkDone(); cbl.SetLinkPosition(ePositionNext))
+    {
+      Condition* c = cbl.Get();
+
+      // TBD: Will check for RecordReference here and find the referred to record.
+
+      if (c->Match(rec))  continue;
+      else                break;
+    }
+
+    // Check how we broke out of the previous loop.
+    // If all conditions in the 'and' term matched then we are done,
+    // else, move on to the next bucket to check for 'or' condititions.
+    if (cbl.LinkDone()) return TRUE;
+  }
+
+  return FALSE;
+}
+
+Query& Query::operator=(Condition& c)
+{
+  // First free any existing entries in mConditionBktList.
+  if (mConditionBktList.Size()) {
+    for (MacroBucketList_BucketIterateAll(mConditionBktList)) {
+      for (MacroBucketList_ListIterateAll(mConditionBktList)) {
+        Condition* c = mConditionBktList.Get();
+
+        if (c) { delete c; c = 0; }
+        else   { assert(0);       }
+      }
+    }
+  }
+  mConditionBktList.Clean();
+
+  // BucketList assignment operator does all the work.
+  if (c.mIsAllocatedAuto) mConditionBktList.CopyShallow(c.mConditionBktList);
+  else                    mConditionBktList.CopyDeep   (c.mConditionBktList);
+
+  return *this;
+}
+
+Query& Query::operator&&(Query& q)
+{
+  OperationAnd(mConditionBktList, q.mConditionBktList);
+
+  return *this;
+}
+
+Query& Query::operator&=(Query& q)
+{
+  return (*this && q);
+}
+
+Query& Query::operator||(Query& q)
+{
+  OperationOr(mConditionBktList, q.mConditionBktList);
+
+  return *this;
+}
+
+Query& Query::operator|=(Query& q)
+{
+  return (*this || q);
+}
+
+void Query::Print()
+{
+  for (MacroBucketList_BucketIterateAll(mConditionBktList)) {
+    for (MacroBucketList_ListIterateAll(mConditionBktList)) {
+      Condition* c = mConditionBktList.Get();
+
+      c->Print(stdout);
+      printf(" ");
+    }
+    printf("\n");
+  }
+}
+
+bool Query::QueryModifyConditionFirst(Value* val, eCondOperatorType oper)
+{
+  mConditionBktList.BktSetPosition(ePositionFirst);
+  mConditionBktList.SetLinkPosition(ePositionFirst);
+
+  Condition* c = mConditionBktList.Get();
+  assert(c);
+
+  if (c) {
+    c->mValueRHS = *val;
+
+    if (oper != eCondOper_Invalid) c->mCondOperator = oper;
+  }
+
+  return (c != 0);
+}
+
+bool Query::QueryEdit(short condition_id, Value& val)
+{
+  BucketList<Condition> & cbl = mConditionBktList; // shortcut
+
+  bool found = FALSE;
+
+  // We have to scan the entire bucket list as multiple
+  // conditions can have the value index set.
+
+  for (cbl.BktSetPosition(ePositionFirst); !cbl.BktDone(); cbl.BktSetPosition(ePositionNext))
+  {
+    // Process all links in the bucket.
+    for (cbl.SetLinkPosition(ePositionFirst); !cbl.LinkDone(); cbl.SetLinkPosition(ePositionNext))
+    {
+      Condition* c = cbl.Get();
+      assert(c);
+
+      if (c->mValueIndex == condition_id) {
+        found = TRUE;
+
+        // Update the conditions value.
+        c->mValueRHS = val;
+      }
+    }
+  }
+
+  return found;
+}
+
+bool Query::QueryEdit(short condition_id, unsigned u)
+{
+  BucketList<Condition> & cbl = mConditionBktList; // shortcut
+
+  bool found = FALSE;
+
+  // We have to scan the entire bucket list as multiple
+  // conditions can have the value index set.
+
+  for (cbl.BktSetPosition(ePositionFirst); !cbl.BktDone(); cbl.BktSetPosition(ePositionNext))
+  {
+    // Process all links in the bucket.
+    for (cbl.SetLinkPosition(ePositionFirst); !cbl.LinkDone(); cbl.SetLinkPosition(ePositionNext))
+    {
+      Condition* c = cbl.Get();
+      assert(c);
+
+      if (c->mValueIndex == condition_id) {
+        found = TRUE;
+
+        // Update the conditions value.
+        c->mValueRHS = u;
+      }
+    }
+  }
+
+  return found;
+}
+
+// End
+@
+
+
+1.4
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Added default constructor which allows noquery name.
+3. Added copy constructor.
+4. renamed mName with mpName.
+5. Destructor should delete all Condition objects contained in the Query.
+6. Fix operator=(Condition& cond).
+7. Added option to edit a query using QueryEdit(unsigned|Value), permits reuse.
+8. Added Print().
+9. Implemented operators && || &= |= .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d8 1
+d46 39
+d144 1
+a144 1
+bool Query::QueryModifyConditionFirst(Value* val, eValueOperator oper)
+d153 1
+a153 1
+    c->mValue = *val;
+d155 1
+a155 1
+    if (oper != eValueOperatorInvalid) c->mValueOperator = oper;
+d182 1
+a182 1
+        c->mValue = val;
+d211 1
+a211 1
+        c->mValue = u;
+@
+
+
+1.3
+log
+@1. All the logic formely implemented here is now done in a new class called
+   Condition and the Query class is just used to store the final
+   sum-of-products condition result. This also gives us the ability to cleanly
+   concatenate individual queuries into larger queries making the whole Query
+   class usage simpler and more intuitive.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d5 1
+d7 9
+d18 7
+a24 2
+  mName(name),
+  mHasConditions(0)
+d26 3
+d33 10
+d47 13
+d61 5
+a65 1
+  mConditionBktList = c.mConditionBktList;
+d67 3
+a69 1
+  if (mConditionBktList.TotalElems()) mHasConditions = TRUE;
+d74 6
+a79 1
+Query& Query::operator&=(Condition& c)
+d81 2
+a82 1
+  // TBD: operator &= Condition
+d86 6
+a91 1
+Query& Query::operator|=(Condition& c)
+d93 9
+a101 2
+  // TBD: operator != Condition
+  return *this;
+d104 16
+d121 1
+a121 1
+Query& Query::operator&&(Query& q)
+d123 25
+a147 2
+  // TBD: operator && Query
+  return *this;
+d150 1
+a150 1
+Query& Query::operator||(Query& q)
+d152 25
+a176 2
+  // TBD: operator || Query
+  return *this;
+@
+
+
+1.2
+log
+@1. Preparing for Bit class support (added new members).
+@
+text
+@a3 5
+#include <assert.h>
+
+#include "BucketList.h"
+#include "Database.h"
+#include "Enum.h"
+d5 1
+d7 3
+a9 6
+Query::Query(const char* attrib_name) :
+  attributeName(attrib_name),
+  oper(eNoOperator),
+  lsbBit(SHRT_MAX), // set for maximum surprise, faster debug
+  msbBit(SHRT_MAX), // set for maximum surprise, faster debug
+  bitWidthSet(FALSE)
+d17 1
+a17 5
+void Query::p() { Print(stdout); }
+void Query::d() { Dump(stdout); }
+void Query::Name(FILE* fp) { fprintf(fp, "%s", attributeName); }
+
+Query::Query(Query& q)
+d19 2
+a20 8
+  attributeName = q.attributeName;
+  oper          = q.oper;
+  value         = q.value;
+
+  lsbBit        = q.lsbBit;
+  msbBit        = q.msbBit;
+  bitWidthSet   = q.bitWidthSet;
+}
+d22 1
+a22 57
+Query& Query::operator&&(Query& q)
+{
+  // The && operation for queries is essentially the multiply operation.
+  // Example: Qx=q0||q1, Qy=q2||q3&&q4, (Qx=2rows,2elems, Qy=2rows,3elems)
+  //          if we use + for && and use . for || we can rewrite this as:
+  //          Qx=q0+q1,  Qy=q2+q3.q4
+  // then     Qx&&Qy (ie Qx.Qy)
+  // equals = (q0+q1).(q2+q3.q4)
+  //        = (q0+q1).q2 + (q0+q1).q3.q4
+  //        = q0.q2 + q1.q2 + q0.q3.q4 + q1.q3.q4
+  // by simply expanding the terms, the resulting bucketlist has 4rows,10elems.
+  //
+  // We implement this by REPLICATING the rows of Qx N-1 times where N is the
+  // number of rows in Qy and APPEND each row of Qy to Qx.
+  // Note that if there is only one row in Qy then only append is needed.
+
+  int need_to_replicate;
+
+  BucketList<Query> &bl1 = qBucketList;
+  BucketList<Query> &bl2 = q.qBucketList;
+
+  if (bl2.TotalBuckets() > 1) need_to_replicate = TRUE;
+  else                        need_to_replicate = FALSE;
+
+  bl1.BktSetPosition(ePositionFirst);
+
+  for (; !bl1.BktDone(); bl1.BktSetPosition(ePositionNext)) {
+    Bucket<Query> *bkt_first;
+
+    bl2.BktSetPosition(ePositionFirst);
+
+    for (; !bl2.BktDone(); bl2.BktSetPosition(ePositionNext)) {
+      if (bl2.BktGetPosition() == ePositionFirst) {
+        // No replication.
+        // Check if we will need a copy of the first bucket for replication.
+        if (need_to_replicate) {
+          bkt_first  = new Bucket<Query>;
+          *bkt_first = *(bl1.BktGet(ePositionCurrent));
+        }
+      }
+      else {
+        // Replicate.
+        // For the last iteration use up the 'bkt_first' copy we already have.
+        if (bl2.BktGetPosition() == ePositionLast && need_to_replicate) {
+          bl1.BktAdd(bkt_first, ePositionNext); // insert bucket
+        }
+        else {
+          Bucket<Query> *bkt = new Bucket<Query>;
+          *bkt = *bkt_first;
+          bl1.BktAdd(bkt, ePositionNext); // insert bucket
+        }
+      }
+
+      // Append current bl bucket to this current bucket.
+      bl1.BktAppend(bl2);
+    }
+  }
+d27 1
+a27 1
+Query& Query::operator||(Query& q)
+d29 1
+a29 11
+  if (qBucketList.TotalBuckets())
+  {
+    BucketList<Query> qbl = q.qBucketList; // make a copy
+    qBucketList.Attach(qbl, eSouth); // TBD: Deprecate Attach().
+  }
+  else {
+    // the qBucketList is empty so it should
+    // be ok to simply copy the one in q.
+    qBucketList = q.qBucketList;
+  }
+
+d33 1
+a33 2
+/* Initializing Query with Value's */
+Query& Query::operator<(Value& val)
+d35 1
+a35 5
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+a38 4
+Query& Query::operator>(Value& val)
+{
+  oper = eGreaterThan;
+  value = val;
+d40 1
+a40 6
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(Value& val)
+d42 1
+a42 5
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+d46 1
+a46 255
+Query& Query::operator<=(Value& val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(Value& val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(Value& val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator%=(Value& val)
+{
+  oper = eLikeOperator;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with int's */
+Query& Query::operator<(int val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(int val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(int val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(int val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(int val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(int val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with unsigned int's */
+Query& Query::operator<(unsigned int val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(unsigned int val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(unsigned int val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(unsigned int val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(unsigned int val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(unsigned int val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with short's */
+Query& Query::operator<(short val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(short val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(short val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(short val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(short val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(short val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with unsigned short */
+Query& Query::operator<(unsigned short val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(unsigned short val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(unsigned short val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(unsigned short val)
+d48 1
+a48 206
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(unsigned short val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(unsigned short val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with char* */
+Query& Query::operator<(char* val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(char* val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(char* val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(char* val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(char* val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(char* val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+/* Initializing Query with const char* */
+Query& Query::operator<(const char* val)
+{
+  oper = eLessThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>(const char* val)
+{
+  oper = eGreaterThan;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator>=(const char* val)
+{
+  oper = eGreaterThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator<=(const char* val)
+{
+  oper = eLessThanOrEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator==(const char* val)
+{
+  oper = eEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+Query& Query::operator!=(const char* val)
+{
+  oper = eNotEqualTo;
+  value = val;
+
+  qBucketList.Clean();
+  qBucketList.Add(*this, eSouth);
+  return *this;
+}
+
+void Query::Print(FILE* fp)
+{
+  fprintf(fp, "  %s: ", attributeName);
+  fprintf(fp, "  %s ", Enum2Str(OperatorNV, oper));
+  value >> (fp);
+  fprintf(fp, "\n");
+}
+
+void Query::Dump(FILE* fp)
+{
+  Query* q;
+  short count = 0;
+
+  BucketList<Query>& ql = qBucketList;
+
+  for (ql.BktSetPosition(ePositionFirst); !ql.BktDone(); )
+  {
+    fprintf(fp, "Bucket %d\n", ++count);
+
+    for (ql.SetLinkPosition(ePositionFirst); !ql.LinkDone(); )
+    {
+      if (q=ql.Get()) q->Print(fp);
+
+      ql.SetLinkPosition(ePositionNext);
+    }
+
+    ql.BktSetPosition(ePositionNext);
+  }
+}
+
+Query& Query::operator[](const char* width_str)
+{
+  short lsb, msb, temp;
+
+  if (width_str != 0) {
+
+    int ret = sscanf(width_str, "%hd:%hd", &msb, &lsb);
+
+    if (ret == 1) lsb = msb;
+
+    assert(ret);
+
+    if (ret==1 || ret==2) {
+      lsbBit = lsb;
+      msbBit = msb;
+
+      bitWidthSet = TRUE;
+    }
+
+    if (lsbBit > msbBit) {
+      temp   = lsbBit;
+      lsbBit = msbBit;
+      msbBit = temp;
+    }
+  }
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d14 3
+a16 2
+  lsbBit(0),
+  msbBit(0)
+d36 1
+d598 2
+@

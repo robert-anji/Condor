@@ -1,0 +1,485 @@
+head	1.7;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.7; strict;
+comment	@ * @;
+
+
+1.7
+date	2011.08.16.03.01.39;	author robert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2010.09.03.23.30.04;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2009.07.19.15.59.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.13.18.03;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.17.22.00.09;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.02.25;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@1. Removed Match(record) and Match(condition), handled by Query now.
+2. Added Value* ValueGet(const Attribute).
+3. Made SetMsbLsb() public from private.
+@
+text
+@// $RCSfile: Record.h,v $
+// $Revision: 1.6 $
+
+#ifndef RecordClass
+#define RecordClass
+
+#include <stdio.h>
+
+#include "DBDefines.h"
+#include "List.h"
+#include "TableRecord.h"
+#include "Value.h"
+#include "View.h"
+
+class Attribute;
+class DBTransaction;
+class Condition;
+class Query;
+//class TableRecord;
+
+class Record
+{
+//------------------------------------------------------------------------------
+  friend class Database;
+  friend class Table;
+  friend class View;
+//------------------------------------------------------------------------------
+public:
+  // Constructors are private, only View should create/destruct them.
+
+  Record& operator[](const Attribute* attr);
+  Record& Set(unsigned u);
+
+  Record&  operator= (const Record& rec);
+  bool     operator==(const Record& rec) const;
+  bool     operator!=(const Record& rec) const;
+
+  const Value& operator[](int index) { return mpTableRecord->mpValues[index]; }
+  const Value* ValueGet(const Attribute* attr);
+
+  // Comparison operators.
+  // Record:
+  bool     operator==(Record& rec);
+  bool     operator!=(Record& rec);
+  bool     operator>=(Record& rec);
+  bool     operator> (Record& rec);
+  bool     operator<=(Record& rec);
+  bool     operator< (Record& rec);
+  // Value:
+  bool     operator==(const Value& val);
+  bool     operator!=(const Value& val);
+  bool     operator>=(const Value& val);
+  bool     operator> (const Value& val);
+  bool     operator<=(const Value& val);
+  bool     operator< (const Value& val);
+  bool     operator+=(const Value& val);
+  bool     operator-=(const Value& val);
+  // unsigned:
+  bool     operator==(unsigned u);
+  bool     operator!=(unsigned u);
+  bool     operator>=(unsigned u);
+  bool     operator> (unsigned u);
+  bool     operator<=(unsigned u);
+  bool     operator< (unsigned u);
+  bool     operator+=(unsigned u);
+  bool     operator-=(unsigned u);
+  // int:
+  bool     operator==(int i);
+  bool     operator!=(int i);
+  bool     operator>=(int i);
+  bool     operator> (int i);
+  bool     operator<=(int i);
+  bool     operator< (int i);
+  bool     operator+=(int i);
+  bool     operator-=(int i);
+  // char*:
+  bool     operator==(char* s);
+  bool     operator!=(char* s);
+  bool     operator>=(char* s);
+  bool     operator> (char* s);
+  bool     operator<=(char* s);
+  bool     operator< (char* s);
+  // const char*:
+  bool     operator==(const char* s);
+  bool     operator!=(const char* s);
+  bool     operator>=(const char* s);
+  bool     operator> (const char* s);
+  bool     operator<=(const char* s);
+  bool     operator< (const char* s);
+  // Bit
+  bool     operator==(const Bit& b);
+  bool     operator!=(const Bit& b);
+  bool     operator>=(const Bit& b);
+  bool     operator> (const Bit& b);
+  bool     operator<=(const Bit& b);
+  bool     operator< (const Bit& b);
+  // void*:
+  bool     operator==(void* ptr);
+  bool     operator!=(void* ptr);
+  // bool:
+  bool     operator==(bool b);
+  bool     operator!=(bool b);
+
+  bool     operator! ();
+
+  // Value assignment operator, if the record belongs
+  // to a view this will cause a database transaction.
+  bool     operator=(const Value&   val);
+  bool     operator=(const char*    val);
+  bool     operator=(void*          val);
+  bool     operator=(unsigned       val);
+  bool     operator=(Bit&           bit);
+
+  // Compare() used by List<> to sort
+  eCompare Compare(Record& rec);
+
+  // Retrieve Value 'by value'. This should be ok because a client can only
+  // have the record reference if it has read permission which is sufficient
+  // to permit retrieving 'by value'.
+  void     ValueCopyGet(const Attribute* attr, Value &val);
+  void     ValueCopyGet(short pos, Value &val);
+  void     ValueCopyGet(const Attribute* attr, Bit &bit);
+  void     ValueCopyGet(short pos, Bit &bit);
+  void*    GetValueAsPointer(const Attribute* attr);
+  unsigned GetValueAsUnsigned(const Attribute* attr);
+  // TBD: Also allow retrieving short, int, char etc.
+
+  // Cast functions. // TBD: Find out why enabling this affects the Interface compile
+//operator unsigned();
+
+  // Initialize the View
+  bool     ViewSet(View* v);
+
+  // Needed to support Bit comparisons.
+  void SetMsbLsb(short msb, short lsb);
+
+  void Print();
+  void Print(short total); // use when Record doesnt have a view yet
+  void p() { Print(); } // shortcut for use in debugger
+
+  View*              mpView;        // make public for dbg
+//------------------------------------------------------------------------------
+private:
+  // Data:
+  TableRecord*       mpTableRecord; // pointer to TableRecord for actual Record values
+//View*              mpView;        // view the record belongs to, moved to public for now
+  //
+  const Attribute*   mpAttribute;   // identify which record attribute to operate on
+  bool               mAllowValUpdBeforeCommit;
+
+  // Functions:
+  Record(short attr_total, bool auto_commit);
+  Record(TableRecord* tbl_rec);
+  ~Record();
+
+  bool     ValueSet(const Attribute* attr, Value &val); // TBD: remove after change in Database
+//------------------------------------------------------------------------------
+};
+
+#endif
+
+// End
+@
+
+
+1.6
+log
+@[2010_Sep_22]
+Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d23 1
+d27 1
+a27 1
+
+a30 2
+  bool Match(Query *q);
+
+d39 1
+d134 3
+d142 1
+a155 1
+  bool     Match(Condition& c);
+d157 1
+a157 3
+
+  // Needed to support Bit comparisons.
+  void SetMsbLsb(short msb, short lsb);
+@
+
+
+1.5
+log
+@1. Added comparison operators with Bit objects.
+2. Added some more flavors of ValueCopyGet().
+3. Made mpView private again (was public for debug).
+4. Added 'auto-commit' as in some cases we dont need a transaction to modify
+   attributes.
+5. See if we can find a use of returning const Value using operator[index],
+   currently we prevent users from directly accessing Values but const may
+   be ok but we need to be careful when user casts away the const-ness.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d9 1
+a9 1
+#include "DefinesAndEnum.h"
+d128 1
+a128 1
+  // Cast functions. // CONT: Find out why this affects the Interface compile
+@
+
+
+1.4
+log
+@1. Added constructor that just supplies the total number of attributes. This
+   is used to delay setting the view so that the record values can be ini-
+   tialized without needing database transactions.
+2. Changed return type of Match() from eBoolean to bool.
+3. Removed member mAttributePosition since we have mAttribute which includes
+   that info.
+4. Added 'negation operator, !'.
+5. Removed ValueGet(), found better way whenever Value reference was needed.
+6. Removed Save() and Load(), this functionality is better suited in Table.
+7. Added overloaded comparison operators for unsigned, int, bool, char* and
+   Record.
+8. Added value assignment for Value, const char*, void*, unsigned and Bit.
+8. Added TableRecord.
+9. Made View class a friend.
+10.Changed eBoolean to bool.
+11. Added functions: void* GetValueAsPointer(const Attribute* attr), and
+                     unsigned GetValueAsUnsigned(const Attribute* attr).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a22 1
+public:
+d27 1
+d33 1
+d39 2
+d90 13
+a105 3
+  bool operator==(bool b);
+  bool operator!=(bool b);
+
+d121 3
+d128 3
+d135 1
+d138 1
+d142 1
+a142 1
+  View*              mpView;        // view the record belongs to
+d145 1
+d148 1
+a148 1
+  Record(short attr_total);
+@
+
+
+1.3
+log
+@1. Values in Record are now indexed by an Attribute object (instead of
+   short position, or const char* attribute_name.
+2. Added function to retrieve any Record value by 'value' using new
+   function: ValueGetCopy(Attribute *const attr, Value &val).
+   This is allowed because if a client has obtained a Record reference
+   it has at a minimum access permission (Read, Modify, Delete).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d11 1
+d19 1
+d26 1
+d28 1
+a28 5
+  Record(View *view);
+  Record(Record& rec);
+  ~Record();
+
+  eBoolean Match(Query *q);
+d30 1
+a30 1
+  Record& operator[](Attribute *const attr);
+d32 1
+a32 11
+  Record&  operator= (Record& rec);
+  eBoolean operator==(Record& rec);
+  eBoolean operator!=(Record& rec);
+
+  // Value Comparison operators
+  eBoolean operator==(Value& val);
+  eBoolean operator!=(Value& val);
+  eBoolean operator>=(Value& val);
+  eBoolean operator> (Value& val);
+  eBoolean operator<=(Value& val);
+  eBoolean operator< (Value& val);
+d34 66
+a99 2
+  // Value Assignment operator
+  eBoolean operator=(Value& val);
+d107 4
+a110 1
+  void ValueCopyGet(Attribute *const attr, Value &val);
+d113 1
+a113 4
+  eBoolean ViewSet(View* v);
+
+  eBoolean Read(FILE* fp);
+  eBoolean Save(FILE* fp);
+d116 1
+d119 16
+a134 14
+  eBoolean Match(Condition& c);
+  Value&   ValueGet();
+  eBoolean ValueSet(Attribute *const attr, Value &val);
+
+  // Get/Update the reference count
+  short ReferenceCountGet();
+  short ReferenceCountIncrement();
+  short ReferenceCountDecrement();
+
+  Value             *mValues;           // pointer array of all Record Values
+  View              *mView;             // set if record belongs to a View (set to owner)
+  short              mAttributePosition;// next operation is for this attribute
+  short              mReferenceCount;   // Count of views that refer the Record
+  Attribute         *mAttribute;
+@
+
+
+1.2
+log
+@1. After adding View feature, Record constructor now uses View instead of Table.
+2. Table class made a friend of Record class.
+3. Record attribute compares now use only Value objects (from int, short etc).
+4. Added reference counting to Records.
+5. Added new assignment operator=(Value&).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d14 1
+d22 1
+d31 1
+a31 2
+  Record& operator[](const char* attr_name);
+  Record& operator[](short index);
+d51 5
+d66 2
+a67 2
+  eBoolean Set(const char* attrib, Value& val);
+  Value&   GetValue();
+d74 5
+a78 5
+  Value             *mValues;         // pointer array of all Record Values
+  View              *mView;           // only set if record belongs to a View
+  short              mAttrPosition;   // Attribute set before Value retrieved
+  short              mReferenceCount; // Count of views that refer the Record
+  eBoolean           mRecordMarkedForDeletion;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d9 2
+d12 1
+d14 2
+a15 1
+class Table;
+d21 3
+a23 1
+  Record(Table* tt);
+d27 1
+a27 10
+  eBoolean Match(Query& q);
+
+  Record& operator <<(Value& val);
+  Record& operator<<(short r);
+  Record& operator<<(unsigned short r);
+  Record& operator<<(int r);
+  Record& operator<<(unsigned int r);
+  Record& operator<<(char r);
+  Record& operator<<(char* r);
+  Record& operator<<(const char* r);
+d29 2
+a30 2
+  Value&  operator[](const char* attrib) const;
+  Value&  operator[](short index) const;
+d32 1
+a32 1
+  Record& operator=(Record& rec);
+d36 12
+a47 1
+  /* Compare() used by List<> to sort */
+d50 3
+a55 2
+  eBoolean Valid() { return valid; }
+
+d59 1
+a59 1
+  eBoolean Evaluate(Query& q);
+d61 1
+d63 10
+a72 5
+  Table*   table;
+  Value*   values;
+  short    current;
+  short    size;
+  eBoolean valid;
+@

@@ -1,0 +1,56 @@
+Before Interface Record usage reduction:
+Eq: 0  Type:           Attribute Constructed/Destructed=18/18
+Eq: 1  Type:                 Bit Constructed/Destructed=3835/3835
+Eq: 2  Type:              Bucket Constructed/Destructed=1550/1550
+Eq: 3  Type:          BucketList Constructed/Destructed=1384/1384
+Eq: 4  Type:               Clock Constructed/Destructed=2/2
+Eq: 5  Type:           Condition Constructed/Destructed=858/858
+Eq: 6  Type:    DBTransactionRec Constructed/Destructed=188/188
+Eq: 7  Type:            Database Constructed/Destructed=1/1
+Eq: 8  Type:           Interface Constructed/Destructed=2/2
+Eq: 9  Type:                List Constructed/Destructed=76/76
+Eq:10  Type:        ListIterator Constructed/Destructed=2/2
+Eq:11  Type:              Module Constructed/Destructed=1/1
+Eq:12  Type:             Process Constructed/Destructed=6/6
+Eq:13  Type:          Process_RW Constructed/Destructed=2/2
+Eq:14  Type:               Query Constructed/Destructed=360/360
+Eq:15  Type:              Record Constructed/Destructed=386/386
+Eq:16  Type:           Scheduler Constructed/Destructed=1/1
+Eq:17  Type:           Simulator Constructed/Destructed=1/1
+Eq:18  Type:               Table Constructed/Destructed=4/4
+Eq:19  Type:         TableRecord Constructed/Destructed=193/193
+Eq:20  Type:               Timer Constructed/Destructed=2/2
+Eq:21  Type:             Trigger Constructed/Destructed=2/2
+Eq:22  Type:               Value Constructed/Destructed=6313/6313
+Eq:23  Type:                 Vcd Constructed/Destructed=1/1
+Eq:24  Type:                View Constructed/Destructed=4/4
+Eq:25  Type:        ViewIterator Constructed/Destructed=2/2
+
+After Interface Record cleanup:
+Eq: 0  Type:           Attribute Constructed/Destructed=18/18
+Eq: 1  Type:              Bucket Constructed/Destructed=1550/1550
+Eq: 2  Type:          BucketList Constructed/Destructed=1384/1384
+Eq: 3  Type:               Clock Constructed/Destructed=2/2
+Eq: 4  Type:           Condition Constructed/Destructed=858/858
+Eq: 5  Type:    DBTransactionRec Constructed/Destructed=18/18
+Eq: 6  Type:            Database Constructed/Destructed=1/1
+Eq: 7  Type:           Interface Constructed/Destructed=2/2
+Eq: 8  Type:                List Constructed/Destructed=76/76
+Eq: 9  Type:        ListIterator Constructed/Destructed=4/4
+Eq:10  Type:              Module Constructed/Destructed=1/1
+Eq:11  Type:             Process Constructed/Destructed=6/6
+Eq:12  Type:          Process_RW Constructed/Destructed=2/2
+Eq:13  Type:               Query Constructed/Destructed=360/360
+Eq:14  Type:              Record Constructed/Destructed=48/48
+Eq:15  Type:           Scheduler Constructed/Destructed=1/1
+Eq:16  Type:           Simulator Constructed/Destructed=1/1
+Eq:17  Type:               Table Constructed/Destructed=4/4
+Eq:18  Type:               Timer Constructed/Destructed=2/2
+Eq:19  Type:             Trigger Constructed/Destructed=2/2
+Eq:20  Type:                 Vcd Constructed/Destructed=1/1
+Eq:21  Type:                View Constructed/Destructed=4/4
+Eq:22  Type:        ViewIterator Constructed/Destructed=4/4
+
+Neq: 0 Type:                 Bit Constructed/Destructed=2995/2985
+Neq: 1 Type:         TableRecord Constructed/Destructed=25/23
+Neq: 2 Type:               Value Constructed/Destructed=5473/5463

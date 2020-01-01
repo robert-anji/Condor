@@ -1,0 +1,65 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2011.12.20.17.34.43;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@A test template to use as a starting point for a new test.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: Stack.cc,v $
+// $Revision: 1.1 $
+
+#include <stdio.h>
+
+#include "Global.h"
+#include "Database.h"
+#include "Enum.h"
+#include "List.h"
+#include "Simulator.h"
+#include "Vcd.h"
+//
+int            gConstructCount[eType_Max];
+int            gDestructCount[eType_Max];
+Database*      gDB;
+Simulator*     gSimulator;
+SimulationTime gSimTime;
+Vcd*           gVcd;
+bool           gDbg;
+//
+void show_memory_usage();
+
+void test_mailbox();
+
+int main(int argc, char* argv[])
+{
+  test_mailbox();
+
+  show_memory_usage();
+
+  return 1;
+}
+
+void test_mailbox()
+{
+}
+
+#include "MemoryUsage.cc"
+
+// End
+@

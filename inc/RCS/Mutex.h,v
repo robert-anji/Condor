@@ -1,0 +1,67 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2011.10.11.22.14.54;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.33.45;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Preparing to remove this file.
+@
+text
+@// $RCSfile: Mutex.h,v $
+// $Revision: 1.1 $
+
+// CONT: Remove Mutex class, use Semaphore instead.
+
+#ifndef MutexClass
+#define MutexClass
+
+class Process;
+class Semaphore;
+
+class Mutex
+{
+public:
+  Mutex();
+ ~Mutex();
+
+  bool MutexLock   (Process* process);
+  bool MutexRelease(Process* process);
+
+private:
+  Semaphore *mpSemaphore;
+};
+
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d4 2
+d18 2
+a19 3
+  bool MutexLockElseBlock(Process* process);
+  bool MutexTryLock();
+  void MutexRelease();
+@

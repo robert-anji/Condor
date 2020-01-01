@@ -1,0 +1,67 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2011.12.07.16.49.22;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.06.26.15.34.34;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Utility class that combines a Trigger with an Event. When the trigger
+matches it will Notify the event.
+@
+
+
+1.2
+log
+@Renamed Notify() to Set().
+@
+text
+@// $RCSfile: EventFromTrigger.cc,v $
+// $Revision: 1.1 $
+
+#include "EventFromTrigger.h"
+
+EventFromTrigger::EventFromTrigger(const char* ev_name, eTriggerType type, View *v, Query *q, Record *rec) :
+  Trigger(ev_name, type, (void*)0, TriggerActionFnPtrNone, v, q, rec),
+  Event(ev_name)
+{
+  M_UpdConstructCount(eType_EventFromTrigger);
+}
+
+EventFromTrigger::~EventFromTrigger()
+{
+  M_UpdDestructCount(eType_EventFromTrigger);
+}
+
+void EventFromTrigger::TriggerActionExecute()
+{
+  Set();
+}
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: EventFromTrigger.h,v $
+d20 1
+a20 1
+  Notify();
+@

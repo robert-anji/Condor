@@ -1,0 +1,816 @@
+head	1.6;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.6
+date	2011.06.26.16.06.53;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.01.30.08.21.36;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.25.00.02.11;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.14.17.49.40;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.14.39.54;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.01.00.43;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@1. The initial Database class provides functionality for:
+   - Opening/closing Tables
+   - Committing all queued database transactions.
+@
+
+
+1.6
+log
+@TriggerMatchRecord() was renamed to TriggerMatch() as we dont have
+TriggerMatchAggregate() anymore so no need to differentiate.
+@
+text
+@// $RCSfile: Database.cc,v $
+// $Revision: 1.5 $
+
+#include <assert.h>
+#include <string.h>
+
+#include "Database.h"
+//
+#include "Attribute.h"
+#include "DBTransaction.h"
+#include "DBTransactionRec.h"
+#include "DBTransactionRecValue.h"
+#include "Global.h"
+#include "Record.h"
+#include "Scheduler.h"
+#include "Table.h"
+#include "TableRecord.h"
+#include "Trigger.h"
+
+extern Scheduler* gScheduler;
+
+M_ExternConstructDestructCountInt;
+
+Database::Database(const char* path_to_db, const char* db_name) :
+  mpName       (db_name),
+  mpPathToDB   (path_to_db)
+{
+  M_UpdConstructCount(eType_Database);
+}
+
+Database::~Database()
+{
+  if (mDBTransactionList.Size()) {
+    assert(0);
+  }
+
+  if (mTableList.Size()) {
+    assert(0); // change to warning later, better to explicitly close all tables
+
+    mTableList.DeleteLinkAll();
+  }
+
+  M_UpdDestructCount(eType_Database);
+}
+
+Table* Database::TableOpen(const char* table_name, int flags)
+{
+  // TBD: Database check table file lock or put the lock.
+
+  bool name_exists = FALSE;
+
+  for (MacroListIterateAll(mTableList))
+  {
+    Table *tbl = mTableList.Get();
+
+    if (tbl && (!strcmp(tbl->Name(), table_name))) {
+      name_exists = TRUE;
+      break;
+    }
+  }
+
+  Table* new_tbl = 0;
+
+  if (! name_exists) {
+    new_tbl = new Table(this, table_name, flags);
+
+    if (new_tbl != 0) mTableList.Add(new_tbl);
+    else              assert(0);
+  }
+  else {
+    assert(0);
+  }
+
+  return new_tbl;
+}
+
+bool Database::TableClose(Table *tbl)
+{
+  bool ret;
+  MacroListDeleteElm(mTableList, tbl, ret);
+  assert(ret);
+}
+
+void Database::DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record *rec)
+{
+  switch (oper) {
+    case eDBTransRecOper_RecordAdd:
+    case eDBTransRecOper_RecordDelete:
+    {
+      DBTransactionRec *tran_rec = new DBTransactionRec(oper, view, rec);
+
+      if (tran_rec) mDBTransactionList.Add((DBTransaction*)tran_rec);
+      else          assert(0);
+
+      break;
+    }
+    default: assert(0);
+  }
+}
+
+void Database::DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record* rec, const Attribute* attr, const Value& val)
+{
+  switch (oper) {
+    case eDBTransRecOper_RecordValueModify: {
+      DBTransactionRecValue *tran_rec_val = new DBTransactionRecValue(oper, view, rec, attr, val);
+
+      if (tran_rec_val) mDBTransactionList.Add((DBTransaction*)tran_rec_val);
+      else              assert(0);
+
+      break;
+    }
+    default: assert(0);
+  }
+}
+
+short Database::DBTransactionsCommitView(View* view)
+{
+  bool     ret;
+  bool     del_elm;
+  short    count;
+  
+  count = 0;
+
+  for (M_ListIterateAndDelete(mDBTransactionList, del_elm=TRUE))
+  {
+    // The 'commit' steps are:
+    // 1. Check if commit is invoked for a specific view?
+    // 2. Perform the actual operation.
+    // 3. Update any 'aggregates'.
+    // 4. Examine trigger conditions on records and invoke actions if true.
+    // 5. Lastly, invoke triggers on aggregates.
+    // The exception is 'Delete', here the actual operation is performed last
+    // because we need the record until aggregate and trigger logic is done.
+
+    // TBD: Remember to perform the 'commit' in a safe order. For example first
+    //      do record transactions, then table transactions so that table is not
+    //      deleted before any of its records are committed.
+    //      Currently we have not implemented transaction for table delete so no
+    //      special handling is needed yet.
+
+    DBTransaction *db_tran = mDBTransactionList.Get();
+    assert(db_tran);
+
+    switch (db_tran->mTransOper) {
+      case eDBTransRecOper_RecordAdd: {
+
+        DBTransactionRec* db_tran_rec = (DBTransactionRec*)db_tran;
+
+        // Check if 'add' commit is invoked for a specific view?
+        if (view && db_tran_rec->mpView!=view) continue;
+
+        // Perform the commit operation.
+      //db_tran_rec->mpView->mpTable->mTableRecordList.Add(db_tran_rec->mpRecord->mpTableRecord);
+        db_tran_rec->mpView->mpTable->RecordAdd(view, db_tran_rec->mpRecord);
+        db_tran_rec->mpRecord->mpView = view;
+        db_tran_rec->mpView->mpRecordPtrList->Add(db_tran_rec->mpRecord);
+
+        count++;
+
+        // Update Aggregates:
+        // Update for Aggregate is possible for db_tran_rec->mpView
+        // and is postphoned for other views that will add this record via
+        // triggers.
+        // TBD: Maybe aggregate update needs to be scheduled too?
+        if (db_tran_rec->mpView->mAggregatePtrList.Size()) // add fn like HasAggregates()
+          db_tran_rec->mpView->AggregatesUpdate(eAggrUpdType_RecordAdd, db_tran_rec->mpRecord);
+        // Check 'Add' for Triggers.
+        List<Trigger> &trg_list = db_tran_rec->mpView->mpTable->mTriggerRecordAddList;
+        if (! trg_list.IsEmpty()) {
+          for (MacroListIterateAll(trg_list)) {
+            Trigger *trg = trg_list.Get();
+
+            if (trg->TriggerStateGet() == eTriggerState_Active) {
+              if (trg->TriggerMatch(db_tran_rec->mpRecord)) {
+                trg->TriggerRecordSet(db_tran_rec->mpRecord);
+                gScheduler->TriggerSchedule(trg);
+
+                if (trg->TriggerStateGet() == eTriggerState_RemoveTrigger) {
+                  trg_list.DeleteLinkThenIterationDone();
+                }
+              }
+            }
+          }
+        }
+
+        delete db_tran_rec;
+
+        // Check for 'Add' Triggers on Aggregates:
+        // Cannot accomplish this here (see 2 above).
+        // The current mechanism is that only when the record is imported into 
+        // the view will the table class update the aggregates and evaluate the
+        // aggregate triggers.
+
+        break;
+      }
+      // Done case eDBTransRecOper_RecordAdd.
+
+      case eDBTransRecOper_RecordDelete: {
+        DBTransactionRec *db_tran_rec = (DBTransactionRec*)db_tran;
+        View             *tran_view   = db_tran_rec->mpView;
+        Record           *tran_rec    = db_tran_rec->mpRecord;
+
+        // Check if 'delete' commit is invoked for a specific view?
+        if (view && tran_view!=view) continue;
+
+        // Update Aggregate:
+        if (tran_view->mAggregatePtrList.Size()) // maybe use fn like HasAggregates()
+          tran_view->AggregatesUpdate(eAggrUpdType_RecordDelete, tran_rec);
+
+        // Check for 'Delete' Triggers.
+        List<Trigger> &trg_list = db_tran_rec->mpView->mpTable->mTriggerRecordDeleteList;
+        if (! trg_list.IsEmpty()) {
+          for (MacroListIterateAll(trg_list)) {
+            Trigger *trg = trg_list.Get();
+
+            if (trg->TriggerStateGet() == eTriggerState_Active) {
+              if (trg->TriggerMatch(db_tran_rec->mpRecord)) {
+                // TBD: Determine if trg->mView contains mpRecord before proceeding.
+                //      Note, if reference count is 1 then only db_tran_rec->mpView has the record.
+                // TBD: Create and supply a copy of the record (not the orig).
+                trg->TriggerRecordSet(db_tran_rec->mpRecord);
+                gScheduler->TriggerSchedule(trg);
+
+                if (trg->TriggerStateGet() == eTriggerState_RemoveTrigger) {
+                  trg_list.DeleteLinkThenIterationDone();
+                }
+              }
+            }
+          }
+        }
+
+        // Lastly, perform the commit 'delete' operation.
+
+        TableRecord* table_record = tran_rec->mpTableRecord;
+
+        delete tran_rec;
+
+        // If there are no more references to this record
+        // then we can delete it from the view's table.
+        if (table_record->ReferenceCountGet() == 0) {
+          List<TableRecord> &tbl_rec_list = db_tran_rec->mpView->mpTable->mTableRecordList;
+          MacroListDeleteElm(tbl_rec_list, table_record, ret);
+          assert(ret);
+        }
+
+        List<Record>& rec_list = *tran_view->mpRecordPtrList;
+        MacroListDeleteElm(rec_list, tran_rec, ret);
+        assert(ret);
+
+        count++;
+
+        delete db_tran_rec;
+
+        break;
+      }
+      // Done case eDBTransRecOper_RecordDelete.
+
+      case eDBTransRecOper_RecordValueModify: {
+        DBTransactionRecValue *db_tran_rec_val = (DBTransactionRecValue*)db_tran;
+
+        // Check if 'modify' commit is invoked for a specific view?
+        if (view && db_tran_rec_val->mpView != view) continue;
+
+        const Attribute*    attr    = db_tran_rec_val->mpAttribute;
+        Record*             rec     = db_tran_rec_val->mpRecord;
+        Value*              new_val = db_tran_rec_val->mpValue; M_Constructed(Value);
+
+        // OPT: Check if possible to avoid making copy of current (old) value.
+        Value old_val; M_Constructed(Value);
+
+        // First perform the commit operation.
+        db_tran_rec_val->mpRecord->ValueCopyGet(attr, old_val);
+        db_tran_rec_val->mpRecord->ValueSet(attr, *new_val);
+        count++;
+
+        // Update Aggregate:
+        if (db_tran_rec_val->mpView->mAggregatePtrList.Size())
+          db_tran_rec_val->mpView->AggregatesUpdate(eAggrUpdType_RecordModify, rec, attr, &old_val);
+
+        // Check for 'Modify' Triggers.
+        List<Trigger> &trg_list = db_tran_rec_val->mpView->mpTable->mTriggerRecordModifyList;
+        if (! trg_list.IsEmpty()) {
+          for (MacroListIterateAll(trg_list)) {
+            Trigger *trg = trg_list.Get();
+
+            if (trg->TriggerStateGet() == eTriggerState_Active) {
+              if (trg->TriggerMatch(db_tran_rec_val->mpRecord)) {
+                // TBD: Determine if trg->mView contains mpRecord before proceeding.
+                //      Note, if reference count is 1 then only db_tran_rec->mpView has the record.
+                trg->TriggerRecordSet(db_tran_rec_val->mpRecord);
+                gScheduler->TriggerSchedule(trg);
+
+                if (trg->TriggerStateGet() == eTriggerState_RemoveTrigger) {
+                  trg_list.DeleteLinkThenIterationDone();
+                }
+              }
+            }
+          }
+        }
+
+        delete db_tran_rec_val;
+
+        break;
+      }
+      // Done case eDBTransRecOper_RecordValueModify.
+    }
+  }
+
+  return count;
+}
+
+// End
+@
+
+
+1.5
+log
+@1. Fixed extra reference count increment.
+2. Renamed TriggerRecordMatch() with TriggerMatchRecord().
+3. Do not need separate triggers for Aggregate on record modify or delete.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d174 1
+a174 1
+              if (trg->TriggerMatchRecord(db_tran_rec->mpRecord)) {
+d217 1
+a217 1
+              if (trg->TriggerMatchRecord(db_tran_rec->mpRecord)) {
+d287 1
+a287 1
+              if (trg->TriggerMatchRecord(db_tran_rec_val->mpRecord)) {
+@
+
+
+1.4
+log
+@1. Changed the delete Record slightly as Record destructor now automatically
+   decrements the mpTableRecord reference count so Database simply delete
+   the Record and then checks mpTableRecord's reference count, if it is 0 then
+   also delete the mpTableRecord in the view's table.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a155 1
+        db_tran_rec->mpRecord->mpTableRecord->ReferenceCountIncrement();
+d174 1
+a174 1
+              if (trg->TriggerRecordMatch(db_tran_rec->mpRecord)) {
+d217 1
+a217 1
+              if (trg->TriggerRecordMatch(db_tran_rec->mpRecord)) {
+a231 22
+        // Check for 'Delete' Triggers on Aggregates:
+        List<Trigger> &trg_aggr_list = db_tran_rec->mpView->mpTable->mTriggerAggregateList;
+        if (! trg_aggr_list.IsEmpty()) {
+          for (MacroListIterateAll(trg_aggr_list)) {
+            Trigger *trg = trg_aggr_list.Get();
+
+            // TBD: Only for views that contain the deleted record and
+            //      have aggregates do we need to update the aggregate.
+            if (trg->MatchView(db_tran_rec->mpView)) {
+              if (trg->TriggerStateGet() == eTriggerState_Active) {
+                if (trg->TriggerMatchAggregate()) {
+                  gScheduler->TriggerSchedule(trg); // note: not supplying record
+
+                  if (trg->TriggerStateGet() == eTriggerState_RemoveTrigger) {
+                    trg_list.DeleteLinkThenIterationDone();
+                  }
+                }
+              }
+            }
+          }
+        }
+
+d287 1
+a287 1
+              if (trg->TriggerRecordMatch(db_tran_rec_val->mpRecord)) {
+a300 22
+        // Check for 'Modify' Triggers on Aggregates:
+        List<Trigger> &trg_aggr_list = db_tran_rec_val->mpView->mpTable->mTriggerAggregateList;
+        if (! trg_aggr_list.IsEmpty()) {
+          for (MacroListIterateAll(trg_aggr_list)) {
+            Trigger *trg = trg_aggr_list.Get();
+
+            // TBD: Only for views that contain the modified record and
+            //      have aggregates do we need to update the aggregate.
+            if (trg->MatchView(db_tran_rec_val->mpView)) { // trigger belongs to this view
+              if (trg->TriggerStateGet() == eTriggerState_Active) {
+                if (trg->TriggerMatchAggregate()) {
+                  gScheduler->TriggerSchedule(trg); // note: not supplying record
+
+                  if (trg->TriggerStateGet() == eTriggerState_RemoveTrigger) {
+                    trg_list.DeleteLinkThenIterationDone();
+                  }
+                }
+              }
+            }
+          }
+        }
+
+@
+
+
+1.3
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Changed eBoolean to bool.
+3. Re-arranged and made some small fixes in DBTransactionCommitView().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d124 1
+a124 1
+  for (M_ListIterateAndDelete(mDBTransactionList, del_elm))
+d135 5
+a139 3
+    // TBD: Perform the 'commit' in a safe order. For example first do record
+    //      transactions, then table transactions so that table is not deleted
+    //      before any of its records are committed.
+a143 2
+    del_elm = FALSE;
+
+a160 2
+        del_elm = TRUE;
+
+d197 2
+d255 1
+a255 5
+        // Lastly, perform the commit operation.
+        if (tran_rec->mpTableRecord->ReferenceCountGet() != 0) {
+          List<Record>& rec_list = *tran_view->mpRecordPtrList;
+          MacroListDeleteElm(rec_list, tran_rec, ret);
+          count++;
+d257 1
+a257 1
+          assert(ret);
+d259 1
+a259 5
+          tran_rec->mpTableRecord->ReferenceCountDecrement();
+        }
+        else {
+          assert(0);
+        }
+d262 5
+a266 4
+        // we can delete it from the view's table.
+        if (tran_rec->mpTableRecord->ReferenceCountGet() == 0) {
+          List<TableRecord> &rec_list = db_tran_rec->mpView->mpTable->mTableRecordList;
+          MacroListDeleteElm(rec_list, tran_rec->mpTableRecord, ret);
+d269 2
+d273 2
+a275 1
+        del_elm = TRUE;
+d279 2
+a298 2
+        del_elm = TRUE;
+
+d350 1
+@
+
+
+1.2
+log
+@1. The DBTransactionsAdd() function needs the View argument instead of Table, changed.
+2. Switched to using Attribute objects instead of 'short attr_pos'.
+3. Improved the Commit() function to handle Aggregates and Triggers.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d8 1
+a8 1
+
+d13 1
+d15 1
+d17 1
+d20 4
+d25 2
+a26 2
+  mName       (db_name),
+  mPathToDB   (path_to_db)
+d28 1
+d34 2
+a35 1
+    assert(0); // Warning: "Uncommitted transactions"
+d37 4
+a40 1
+    // TBD: delete entries/links per type if the assert(0) above is removed.
+d43 1
+a43 1
+  mTableList.DeleteLinkAll();
+d46 1
+a46 1
+Table* Database::TableOpen(const char* table_name, eTableOpenFlags flags)
+a47 2
+  Table* new_tbl = 0;
+
+d50 1
+a50 1
+  eBoolean name_exists = FALSE;
+d52 1
+a52 1
+  for (mTableList.First(); ! mTableList.IsDone(); mTableList.Next())
+d62 2
+d65 1
+a65 1
+    Table *new_tbl = new Table(this, table_name, flags);
+d77 1
+a77 1
+eBoolean Database::TableClose(Table *tbl)
+d79 1
+a79 1
+  eBoolean ret;
+d101 1
+a101 1
+void Database::DBTransactionsAdd(eDBTransactionOperation oper, View *view, Record* rec, Attribute *const attr, Value& val)
+d116 1
+a116 1
+short Database::DBTransactionsCommit()
+d118 2
+a119 1
+  eBoolean ret;
+d124 1
+a124 1
+  for (mDBTransactionList.First(); !mDBTransactionList.IsDone(); mDBTransactionList.Next())
+d127 5
+a131 4
+    // 1. Perform the actual operation.
+    // 2. Update any 'aggregates'.
+    // 3. Examine trigger conditions on records and invoke actions if true.
+    // 4. Lastly, invoke triggers on aggregates.
+d142 1
+a142 5
+    if (db_tran) {
+      switch (db_tran->mTransOper) {
+        case eDBTransRecOper_RecordAdd: {
+
+          DBTransactionRec* db_tran_rec = (DBTransactionRec*)db_tran;
+d144 2
+a145 2
+          // 1. First perform the commit operation.
+          db_tran_rec->mView->mTable->mRecordList.Add(db_tran_rec->mRecord);
+d147 1
+a147 2
+          MacroListDeleteElm(mDBTransactionList, db_tran_rec, ret);
+          assert(ret);
+d149 36
+a184 15
+          // 2. Update Aggregate:
+          // Update for Aggregates for 'record add' cannot be done yet, this
+          // must be done after a view 'imports' the record which can happen
+          // automatically using triggers. A utility task may be defined to
+          // help accomplish this.
+
+          // 3. Check for Triggers.
+          List<Trigger> &trg_list = db_tran_rec->mView->mTable->mTriggerRecordAddList;
+          if (! trg_list.IsEmpty()) {
+            for (MacroListIterateAll(trg_list)) {
+              Trigger *trg = trg_list.Get();
+
+              if (trg->TriggerState() == eTriggerState_Active)
+                if (trg->TriggerMatchRecord(db_tran_rec->mRecord))
+                  trg->TriggerActionExecute();
+d187 3
+d191 5
+a195 5
+          // 4. Check for Triggers on Aggregates:
+          // Cannot accomplish this here (see 2 above).
+          // The current mechanism is that when the record is imported into the
+          // view the table class will update the aggregates and evaluate the
+          // aggregate triggers.
+d197 32
+a228 20
+          break;
+        }
+        case eDBTransRecOper_RecordDelete: {
+          DBTransactionRec *db_tran_rec = (DBTransactionRec*)db_tran;
+          View             *view        = db_tran_rec->mView;
+          Record           *rec         = db_tran_rec->mRecord;
+
+          // 1. Update Aggregate:
+          if (view->mAggregatePtrList.Size()) // maybe use fn like HasAggregates()
+            view->AggregatesUpdate(eAggrUpdType_RecordDelete, rec);
+
+          // 2. Check for Triggers.
+          List<Trigger> &trg_list = db_tran_rec->mView->mTable->mTriggerRecordDeleteList;
+          if (! trg_list.IsEmpty()) {
+            for (MacroListIterateAll(trg_list)) {
+              Trigger *trg = trg_list.Get();
+
+              if (trg->TriggerState() == eTriggerState_Active)
+                if (trg->TriggerMatchRecord(db_tran_rec->mRecord))
+                  trg->TriggerActionExecute();
+d231 1
+d233 18
+a250 10
+          // 3. Check for Triggers on Aggregates:
+          List<Trigger> &trg_aggr_list = db_tran_rec->mView->mTable->mTriggerAggregateList;
+          if (! trg_aggr_list.IsEmpty()) {
+            for (MacroListIterateAll(trg_aggr_list)) {
+              Trigger *trg = trg_aggr_list.Get();
+
+              if (trg->Match(db_tran_rec->mView))
+                if (trg->TriggerState() == eTriggerState_Active)
+                  if (trg->TriggerMatchAggregate())
+                    trg->TriggerActionExecute();
+d253 1
+d255 5
+a259 3
+          // 4. Lastly perform the commit operation.
+          if (rec->ReferenceCountGet() != 0) {
+            MacroListDeleteElm(view->mRecordPtrList, rec, ret);
+d261 1
+a261 1
+            assert(ret);
+d263 5
+a267 5
+            rec->ReferenceCountDecrement();
+          }
+          else {
+            assert(0);
+          }
+d269 6
+a274 9
+          // If there are no more references to this record
+          // we can delete it from the view's table.
+          if (rec->ReferenceCountGet() == 0) {
+            List<Record> &rec_list = db_tran_rec->mView->mTable->mRecordList;
+            MacroListDeleteElm(rec_list, rec, ret);
+          }
+
+          if (ret) count++;
+          else     assert(0);
+d276 1
+a276 2
+          MacroListDeleteElm(mDBTransactionList, db_tran_rec, ret);
+          assert(ret);
+d278 2
+a279 4
+          break;
+        }
+        case eDBTransRecOper_RecordValueModify: {
+          DBTransactionRecValue *db_tran_rec_val = (DBTransactionRecValue*)db_tran;
+d281 4
+a284 10
+          Attribute *const       attr            = db_tran_rec_val->mAttribute;
+          Record                *rec             = db_tran_rec_val->mRecord;
+          Value                 *new_val         = db_tran_rec_val->mValue;
+          // OPT: Check if possible to avoid making copy of current (old) value.
+          Value                  old_val;
+
+          // 1. First perform the commit operation.
+          db_tran_rec_val->mRecord->ValueCopyGet(attr, old_val);
+          db_tran_rec_val->mRecord->ValueSet(attr, *new_val);
+          count++;
+d286 2
+a287 2
+          MacroListDeleteElm(mDBTransactionList, db_tran_rec_val, ret);
+          assert(ret);
+d289 35
+a323 13
+          // 2. Update Aggregate:
+          if (db_tran_rec_val->mView->mAggregatePtrList.Size())
+            db_tran_rec_val->mView->AggregatesUpdate(eAggrUpdType_RecordModify, rec, attr, &old_val);
+
+          // 3. Check for Triggers.
+          List<Trigger> &trg_list = db_tran_rec_val->mView->mTable->mTriggerRecordModifyList;
+          if (! trg_list.IsEmpty()) {
+            for (MacroListIterateAll(trg_list)) {
+              Trigger *trg = trg_list.Get();
+
+              if (trg->TriggerState() == eTriggerState_Active)
+                if (trg->TriggerMatchRecord(db_tran_rec_val->mRecord))
+                  trg->TriggerActionExecute();
+d326 1
+d328 18
+a345 10
+          // 4. Check for Triggers on Aggregates:
+          List<Trigger> &trg_aggr_list = db_tran_rec_val->mView->mTable->mTriggerAggregateList;
+          if (! trg_aggr_list.IsEmpty()) {
+            for (MacroListIterateAll(trg_aggr_list)) {
+              Trigger *trg = trg_aggr_list.Get();
+
+              if (trg->Match(db_tran_rec_val->mView)) // trigger belongs to this view
+                if (trg->TriggerState() == eTriggerState_Active)
+                  if (trg->TriggerMatchAggregate())
+                    trg->TriggerActionExecute();
+d348 1
+d350 3
+a352 2
+          break;
+        }
+a354 2
+    else
+      assert(0);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d9 1
+d15 1
+d68 1
+a68 1
+  MacroListDeleteElm(mTableList, Table, tbl, ret);
+d72 1
+a72 1
+void Database::DBTransactionsAdd(eDBTransactionOperation oper, Table *tbl, Record *rec)
+d78 1
+a78 1
+      DBTransactionRec *tran_rec = new DBTransactionRec(oper, tbl, rec);
+d89 1
+a89 1
+void Database::DBTransactionsAdd(eDBTransactionOperation oper, Table* tbl, Record* rec, short attr_pos, Value& val)
+d92 2
+a93 2
+    case eDBTransRecOper_RecordModify: {
+      DBTransactionRecValue *tran_rec_val = new DBTransactionRecValue(oper, tbl, rec, attr_pos, val);
+d113 8
+d124 1
+d126 1
+d131 1
+a132 1
+          db_tran_rec->mTable->mRecordList.Add(db_tran_rec->mRecord);
+d134 4
+a137 1
+          MacroListDeleteElm(mDBTransactionList, DBTransactionRec, db_tran_rec, ret);
+d139 25
+d167 52
+a218 3
+          eBoolean ret;
+          DBTransactionRec* db_tran_rec = (DBTransactionRec*)db_tran;
+          MacroListDeleteElm(db_tran_rec->mTable->mRecordList, Record, db_tran_rec->mRecord, ret);
+d222 1
+a222 1
+          MacroListDeleteElm(mDBTransactionList, DBTransactionRec, db_tran_rec, ret);
+d224 1
+d227 12
+a238 4
+        case eDBTransRecOper_RecordModify: {
+          DBTransactionRecValue* db_tran_rec_val = (DBTransactionRecValue*)db_tran;
+          assert(db_tran_rec_val->mValue);
+          db_tran_rec_val->mRecord[db_tran_rec_val->mAttrPosition] = *(db_tran_rec_val->mValue);
+d241 1
+a241 1
+          MacroListDeleteElm(mDBTransactionList, DBTransactionRecValue, db_tran_rec_val, ret);
+d243 30
+@

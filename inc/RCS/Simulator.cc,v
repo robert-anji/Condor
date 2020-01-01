@@ -1,0 +1,275 @@
+head	1.6;
+access;
+symbols;
+locks
+	robert:1.6; strict;
+comment	@// @;
+
+
+1.6
+date	2011.12.20.17.27.33;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.12.04.05.02.07;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.04.22.21.02.19;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.21.23.19.27;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2009.08.02.02.15.15;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.38.40;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@Added seed that can be used for the Simulation.
+@
+text
+@// $RCSfile: Simulator.cc,v $
+// $Revision: 1.5 $
+
+#include <assert.h>
+
+#include "Simulator.h"
+//
+#include "Global.h"
+#include "Module.h"
+#include "Scheduler.h"
+
+Scheduler* gScheduler;
+Module*    gModuleTop;
+
+NameVal SignalEdgeNV[] =
+{
+  eSignalEdge_None,                    "EdgeNone",
+  eSignalEdge_PositiveEdge,            "PositiveEdge",
+  eSignalEdge_PositiveLevel,           "PositiveLevel",
+  eSignalEdge_NegativeEdge,            "NegativeEdge",
+  eSignalEdge_NegativeLevel,           "NegativeLevel",
+  eSignalEdge_PositiveAndNegativeEdge, "PositiveAndNegativeEdge",
+  eSignalEdge_Invalid,                 "EdgeInvalid"
+};
+
+Simulator::Simulator(unsigned seed) :
+  mSimulatorVersion     ("0.1"),
+  mSeed                 (seed),
+  mpScheduler           (0),
+  mpModuleTop           (0)
+{
+  M_UpdConstructCount(eType_Simulator);
+
+  mpScheduler = new Scheduler();
+  assert(mpScheduler);
+
+  gScheduler = mpScheduler; // make available globally
+}
+
+Simulator::~Simulator()
+{
+  delete mpScheduler; mpScheduler = 0;
+
+  M_UpdDestructCount(eType_Simulator);
+}
+
+void Simulator::SimulationTimeMax(SimulationTime tm)
+{
+  gScheduler->SimulationTimeMax(tm);
+}
+
+bool Simulator::Start(Module* top_module)
+{
+  mpModuleTop = gModuleTop = top_module;
+
+  assert(ElaborateModule(mpModuleTop));
+
+  return gScheduler->Start();
+}
+
+bool Simulator::ElaborateModule(Module* module)
+{
+  return ElaborateModuleRecursive(mpModuleTop);
+}
+
+// The 'Elaborate' step will wrap up any unfinished business needed before
+// actual simulation can start:
+// - schedule all proceeses within modules
+// - do a post-check on interface connections (legality or output-ouput
+//   connections etc.
+bool Simulator::ElaborateModuleRecursive(Module* parent_module) const
+{
+  // This function adds all processes within the module to the Scheduler.
+  assert (parent_module);
+
+  // First, 'elaborate' any child modules within this module.
+  for (M_ListIterateAll(parent_module->mSubModulesList)) {
+    Module* sub_module = (Module*)(parent_module->mSubModulesList.Get());
+    assert (sub_module);
+
+    return ElaborateModuleRecursive(sub_module);
+  }
+
+  bool result = TRUE;
+
+  // Second, elaborate: add all processes within this module.
+  for (M_ListIterateAll(parent_module->mProcessesList)) {
+    Process* process = parent_module->mProcessesList.Get();
+    assert(process);
+
+    printf("Adding process %s to Scheduler", process->Name()), M_FL;
+    result = result & gScheduler->ProcessAdd(process);
+  }
+
+  return result;
+}
+
+// End
+@
+
+
+1.5
+log
+@Moved SignalEdgeNV here from Enum.cc .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d26 1
+a26 1
+Simulator::Simulator() :
+d28 1
+@
+
+
+1.4
+log
+@1. Moved gTopModule here from main().
+2. The Start(Module*) function will catpure the top module.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d15 11
+d55 1
+a55 3
+  if (ElaborateModule(mpModuleTop)) {
+    return gScheduler->Start();
+  }
+d57 1
+a57 1
+  return FALSE;
+@
+
+
+1.3
+log
+@1. Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2. Moved Start() and SimulationTimeMax() from Scheduler to here.
+3. Instantiate Scheduler in constructor.
+4. Build() is now accomplished via Start(top_module) and ElaborateModule().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d13 1
+d42 3
+a44 1
+  if (ElaborateModule(top_module)) {
+d51 1
+a51 1
+bool Simulator::ElaborateModule(Module* top_module)
+a52 3
+  if (! mpModuleTop) mpModuleTop = top_module;
+  else               assert(0); // only one top module allowed
+
+d56 5
+d66 1
+a66 1
+  // First, add any child modules within module.
+d76 1
+a76 1
+  // Second, add any processes within this module.
+@
+
+
+1.2
+log
+@1. Added memory tracking in constructors and destructors.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d7 1
+a7 1
+
+d10 1
+d12 1
+a12 1
+M_ExternConstrutDestructCountInt;
+d16 1
+d19 4
+a22 1
+  mpModuleTop = new Module();
+d24 1
+a24 1
+  M_UpdConstructCount(eType_Simulator);
+d29 1
+a29 1
+  delete mpModuleTop; mpModuleTop = 0;
+d34 23
+a56 1
+bool Simulator::Build()
+d58 12
+a69 1
+  bool error = FALSE;
+d71 4
+a74 3
+  for (MacroListIterateAll(mpModuleTop->mListSubModules)) {
+    Module* sub_module = mpModuleTop->mListSubModules.Get();
+    assert(sub_module);
+d76 2
+a77 1
+    if (!sub_module->Build()) error = TRUE;
+d80 1
+a80 1
+  return (error==FALSE);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: Simulator.h,v $
+d8 1
+d11 2
+d18 2
+d25 2
+@

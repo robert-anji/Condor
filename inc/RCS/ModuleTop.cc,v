@@ -1,0 +1,117 @@
+head	1.3;
+access;
+symbols;
+locks
+	robert:1.3; strict;
+comment	@// @;
+
+
+1.3
+date	2011.12.20.17.30.33;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.23.23.12.49;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.45.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@Parent module pointer is no longer optional for Module constructor, added.
+@
+text
+@// $RCSfile: ModuleTop.cc,v $
+// $Revision: 1.2 $
+
+#include "ModuleTop.h"
+//
+#include "Clock.h"
+#include "Interfaces.h"
+#include "Process_RW.h"
+#include "SimulatorDefines.h"
+
+#include "Interface_RW.cc"
+
+M_ExternConstructDestructCountInt;
+
+ModuleTop::ModuleTop(const char* name) :
+  Module(name, 0)
+{
+  Clock* clk4 = new Clock("Clock1", this, 4, eTimeScale_ns);
+  Clock* clk6 = new Clock("Clock2", this, 6, eTimeScale_ns);
+
+  Interface* intf_mas = new Interface("Interface_RW_Mas", RW_Interface);
+  Interface* intf_slv = new Interface("Interface_RW_Slv", RW_Interface, eIntfModifier_SignalDirInvert);
+
+  ConnectInterfaceGroup(intf_mas, intf_slv,  "RW");
+  ConnectInterfaceGroup(intf_mas, clk4->InterfaceGet(), "CLK");
+  ConnectInterfaceGroup(intf_slv, clk4->InterfaceGet(), "CLK");
+
+  Process* master_proc = new Process_RW("Master", this, Process_RW::eRW_Master);
+  Process* slave_proc  = new Process_RW("Slave",  this, Process_RW::eRW_Slave);
+
+  master_proc->InterfaceSet(intf_mas);
+  slave_proc->InterfaceSet(intf_slv);
+
+  // Note: it is ok to mark signals as sensitive before/after connecting them.
+  master_proc->ProcessIsSensitiveTo(cRWIntf_Clk, eSignalEdge_PositiveEdge);
+  slave_proc->ProcessIsSensitiveTo(cRWIntf_Clk,  eSignalEdge_PositiveEdge);
+
+  // Q. How to assert reset pin if present, need another process for this?
+  // Maybe add reset pin for the RW interface, syntax will be:
+  // intf_mas[cRWIntf_Reset] = 0;
+  // Or, can we construct a PinReset object?
+  // PinReset pin_reset(start_tm, end_tm, reset_level);
+  // ConnectInterfaceGroup(intf_mas, pin_reset->InterfaceGet(), "RST");
+
+  M_UpdConstructCount(eType_ModuleTop);
+}
+
+ModuleTop::~ModuleTop()
+{
+  // Allocated processes are stored and deleted in the Module base class.
+
+  M_UpdDestructCount(eType_ModuleTop);
+}
+
+// End
+@
+
+
+1.2
+log
+@ Split DefinesAndEnum.h into DBDefines.h, Global.h and SimulatorDefines.h .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d16 1
+a16 1
+  Module(name)
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: template.txt,v $
+a6 1
+#include "DefinesAndEnum.h"
+d9 1
+@

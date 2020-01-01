@@ -1,0 +1,145 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2011.12.20.17.34.12;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Mailbox test.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: Stack.cc,v $
+// $Revision: 1.1 $
+
+#include <stdio.h>
+
+#include "Global.h"
+#include "Database.h"
+#include "Enum.h"
+#include "List.h"
+#include "Mailbox.h"
+#include "Simulator.h"
+#include "Vcd.h"
+//
+#include "Process.h"
+extern Module* gModuleTop;
+//
+int            gConstructCount[eType_Max];
+int            gDestructCount[eType_Max];
+Database*      gDB;
+Simulator*     gSimulator;
+SimulationTime gSimTime;
+Vcd*           gVcd;
+bool           gDbg;
+//
+void show_memory_usage();
+void process_fn1(ProcessExecuteReason& rsn, Process* proc);
+void process_fn2(ProcessExecuteReason& rsn, Process* proc);
+
+void test_mailbox();
+
+int main(int argc, char* argv[])
+{
+  for (unsigned u=0; u<eType_Max; u++) { gConstructCount[u]=gDestructCount[0]=0; }
+
+  test_mailbox();
+
+  show_memory_usage();
+
+  return 1;
+}
+
+class Trans { public: unsigned id; };
+
+Mailbox<Trans>* mbox_ptr;
+Event* e1;
+
+void test_mailbox()
+{
+  e1 = 0;
+
+  gDB = new Database("./", "FirstVerifyRightDB");
+
+  gSimulator = new Simulator();
+
+  Module* mod_top = new Module("Module_TestMailbox");
+  gVcd            = new Vcd(); // keep Vcd handle handy in case dumping is turned on.
+
+  mbox_ptr = new Mailbox<Trans>;
+  //
+  new Process("TestProcess1", mod_top, process_fn1);
+  new Process("TestProcess2", mod_top, process_fn2);
+
+//gVcd->DumpStart(my_top, "dump.vcd");
+  gSimulator->SimulationTimeMax(400*1);
+  gSimulator->Start(mod_top);
+
+  delete mbox_ptr;
+  if (e1) delete e1;
+
+  delete mod_top;
+  delete gVcd;
+  delete gSimulator;
+  delete gDB;
+}
+
+Trans tr;
+
+void process_fn1(ProcessExecuteReason& rsn, Process* proc)
+{
+
+  if (rsn.ReasonGet() == eExecuteReason_Initial) {
+    e1 = new Event("EventTest");
+    e1->Set();
+
+    printf("Hello there!\n");
+
+    tr.id = 5;
+    mbox_ptr->SchedulePut(&tr, proc);
+  }
+
+  if (rsn.ReasonGet() == eExecuteReason_MailboxPut) {
+    printf("Done putting the transaction to mailbox\n");
+  }
+}
+
+void process_fn2(ProcessExecuteReason& rsn, Process* proc)
+{
+  if (rsn.ReasonGet() == eExecuteReason_Initial) {
+    if (e1) assert(e1->Notify(proc));
+
+    mbox_ptr->ScheduleGet(proc);
+
+    printf("Hows it going!\n");
+  }
+
+  if (rsn.ReasonGet() == eExecuteReason_Event) {
+    printf("Got Event!\n");
+  }
+
+  if (rsn.ReasonGet() == eExecuteReason_MailboxGet) {
+    printf("Getting the transaction from the mailbox\n");
+    Trans* tr = (Trans*)rsn.ReasonObjGet(eExecuteReasonObj_Mailbox);
+
+    printf("TransId=%d\n", tr->id);
+  }
+}
+
+#include "MemoryUsage.cc"
+
+// End
+@

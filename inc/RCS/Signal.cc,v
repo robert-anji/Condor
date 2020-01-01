@@ -1,0 +1,536 @@
+head	1.4;
+access;
+symbols;
+locks
+	robert:1.4; strict;
+comment	@// @;
+
+
+1.4
+date	2011.04.22.21.01.46;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.01.30.18.18.57;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2010.09.22.18.23.19;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.43.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@1. Added member: mPropagateSignal.
+2. Removed: mIsStrapUpdated (was not being used anywhere).
+3. Added IsReceivingSignal() similar to IsDrivingSignal().
+4. When propagating signal values check and disallow multiple drivers.
+5. Added PropagateSignalFrom(Signal*, ok), helps propagate value to sub-modules.
+@
+text
+@// $RCSfile: Signal.cc,v $
+// $Revision: 1.3 $
+
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "Signal.h"
+//
+#include "Interface.h"
+#include "Scheduler.h"
+
+extern Scheduler* gScheduler;
+extern int        gDbg;
+
+static bool       sDbg = 1;
+
+M_ExternConstructDestructCountInt;
+
+Signal::Signal(const char* name, short width, eSignalType type, const char* group_name, Attribute *attr, Interface *intf, Bit* init_val) :
+  mName                    (name),
+  mGroupName               (group_name),
+  mBit                     (width-1, 0),
+  mSignalType              (type),
+  mpAttribute              (attr),
+  mpInterface              (intf),
+  mLastModifiedAt          (0),
+  mIsModified              (FALSE), // used and reset in Interface.cc
+  mUpdateFailCount         (0),
+  mIsStrapUpdated          (FALSE),
+  mIsDrivenByClock         (FALSE),
+  mPropagateSignal         (FALSE),
+  mMultipleUpdatesCount    (0)
+{
+  mpVcdIdentifier[0] = '\0';
+
+  assert(width > 0);
+
+  if (init_val) {
+    mBit = *init_val;
+
+    if (mSignalType == eSignalType_Strap) mIsStrapUpdated = TRUE;
+  }
+
+  M_UpdConstructCount(eType_Signal);
+}
+
+Signal::~Signal()
+{
+  // Only delete the links, the link elements will be
+  // deleted in the Process class which keeps the same list.
+  // The mSensitiveEdgeList destructor will delete all the links.
+
+  M_UpdDestructCount(eType_Signal);
+}
+
+bool Signal::Connect(Signal* signal)
+{
+  bool result = FALSE;
+
+  if (mBit.BitWidth() == signal->mBit.BitWidth()) {
+    result  = mConnectedSignalsList.Add(signal);
+    result &= signal->mConnectedSignalsList.Add(this);
+    if (sDbg) printf("Connecting %s with %s", Name(), signal->Name()), M_FL;
+
+    // For now, input signal should have only one driving signal.
+    // Later we may allow signal types of weak0, strong1 etc. to resolve
+    // the final driven value from multiple signal sources.
+    if (mSignalType == eSignalType_Input)
+      assert (mConnectedSignalsList.Size() == 1);
+    if (signal->mSignalType == eSignalType_Input)
+      assert (signal->mConnectedSignalsList.Size() == 1);
+  }
+  else assert(0);
+
+  return result;
+}
+
+bool Signal::NameIs(const char* name) const
+{
+  return mName == name;
+}
+
+bool Signal::BelongsToGroup(const char* name) const
+{
+  return mGroupName.Find(name);
+}
+
+bool Signal::IsDrivingSignal()
+{
+  if (mSignalType == eSignalType_Strap 
+  ||  mSignalType == eSignalType_Output 
+  ||  mSignalType == eSignalType_InOut)
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool Signal::IsReceivingSignal()
+{
+  if (mSignalType == eSignalType_Input 
+  ||  mSignalType == eSignalType_InOut)
+  {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+void Signal::IsDrivenByClock(bool is_driven_by_clock)
+{
+  mIsDrivenByClock = is_driven_by_clock;
+}
+
+bool Signal::Update(Bit& bit)
+{
+  // Note: Any modifications here need to be reflected in Update(unsigned u).
+  // Can only assign to Outputs or In-Outs or Strap (if not updated already).
+
+  if (mSignalType == eSignalType_Output
+  ||  mSignalType == eSignalType_InOut)
+  {
+    if (mBit != bit) {
+      mBit               = bit;
+      mLastModifiedAt    = gScheduler->SimulationTimeGet();
+      mIsModified        = TRUE;
+
+    }
+    return TRUE;
+  }
+  else if (mSignalType == eSignalType_Strap)
+  {
+    if (! mIsStrapUpdated) {
+      mBit            = bit;
+      mLastModifiedAt = gScheduler->SimulationTimeGet();
+      mIsModified     = TRUE;
+      mIsStrapUpdated = TRUE;
+
+      mpInterface->SetInputsUpdated();
+
+      return TRUE;
+    }
+    else {
+      assert(0); // only one update allowed for strap signals
+    }
+  }
+
+  mUpdateFailCount++;
+
+  return FALSE;
+}
+
+bool Signal::Update(unsigned u)
+{
+  // Note: Any modifications here need to be reflected in Update(Bit& b).
+  // Can only assign to Outputs or In-Outs or Strap (if not updated already).
+
+  if (mSignalType == eSignalType_Output
+  ||  mSignalType == eSignalType_InOut)
+  {
+    if (mBit != u) {
+      mBit               = u;
+      mLastModifiedAt    = gScheduler->SimulationTimeGet();
+      mIsModified        = TRUE;
+
+      mpInterface->SetInputsUpdated();
+    }
+
+    return TRUE;
+  }
+  else if (mSignalType == eSignalType_Strap)
+  {
+    if (! mIsStrapUpdated) {
+      mBit            = u;
+      mLastModifiedAt = gScheduler->SimulationTimeGet();
+      mIsModified     = TRUE;
+      mIsStrapUpdated = TRUE;
+
+      mpInterface->SetInputsUpdated();
+
+      return TRUE;
+    }
+    else {
+      assert(0); // only one update allowed for strap signals
+    }
+  }
+
+  mUpdateFailCount++;
+
+  return FALSE;
+}
+
+// This is called only for propagating connected signals and
+// should only be called if the driving value has changed.
+bool Signal::Update(Signal& signal)
+{
+  mBit        = signal.mBit;
+  mIsModified = TRUE;
+
+  if (mLastModifiedAt < signal.mLastModifiedAt) {
+    mLastModifiedAt = signal.mLastModifiedAt;
+  }
+  else {
+    // Not allowed: multiple drivers or both signals driving at the same time.
+    assert(0);
+  }
+  
+  return TRUE;
+}
+
+// When an input signal is updated check if any processes are sensitive to the
+// change (except for clock signals, they are anyways always scheduled by the
+// Scheduler.
+bool Signal::ScheduleAnySensitiveProcesses()
+{
+  if (mSensitiveEdgeList.Size()) {
+    for (M_ListIterateAll(mSensitiveEdgeList)) {
+      SensitiveEdgeInfo* info = mSensitiveEdgeList.Get();
+      assert(info);
+
+      if (mBit.IsAtSignalEdge(info->mEdge)) {
+        // Can we use mpInterface->mpOwningProcess instead of info->mpProcess?
+        gScheduler->ScheduleSensitiveProcess(info->mpProcess);
+
+        // Should not have more than one entry per edge so we can call return.
+        // (Also, cannot schedule the process twice for the same timestamp).
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
+}
+
+void Signal::MarkAsInputIfReversed()
+{
+  // Since we allow Interfaces to be created with signal directions reversed
+  // > new Interface(name, intf_desc, eIntfModifier_SignalDirInvert);
+  // an input that is meant to be a clock input will become an output. These
+  // are the only signals we actually dont want to invert. The 'reversing'
+  // logic does not know which inputs will be connected to a clock and we dont
+  // want to enforce a particular signal naming scheme (like Clk, clk, clock
+  // etc.) or create a new signal type (like eSignalType_Clock). Therefore we
+  // simply fix the signal direction once it is connected to a clock (but only
+  // if it was reversed).
+
+  if (mSignalType == eSignalType_Output
+  &&  mpInterface->InterfaceModifierGet() == eIntfModifier_SignalDirInvert)
+  {
+    mSignalType = eSignalType_Input;
+  }
+}
+
+void Signal::PropagateSignalFrom(Signal* signal, bool& all_ok)
+{
+  Signal* signal_input;
+
+  for (MacroListIterateAll(mConnectedSignalsList)) {
+    signal_input = signal->mConnectedSignalsList.Get();
+    assert(signal_input);
+
+  //if (gDbg) printf("Propagate %s to %s\n", signal->Name(), signal_input->Name());
+
+    if (signal_input == signal) continue; // dont propagate back where we came from
+
+    if (signal_input->Update(*signal)) {
+      signal_input->ScheduleAnySensitiveProcesses();
+
+      if (signal_input->mPropagateSignal)
+        signal_input->PropagateSignalFrom(this, all_ok);
+    }
+    else
+      all_ok = FALSE;
+  }
+}
+
+// End
+@
+
+
+1.3
+log
+@Completed ScheduleAnySensitiveProcecesses().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+a30 1
+  mIsNonStrapUpdated       (FALSE),
+d32 1
+d97 13
+a109 2
+  else
+    return FALSE;
+a128 1
+      mIsNonStrapUpdated = TRUE;
+a166 1
+      mIsNonStrapUpdated = TRUE;
+d195 2
+d199 2
+a200 1
+  // Check that assignment is from Output/InOut to Input/InOut.
+d202 6
+a207 18
+  if (signal.mSignalType == eSignalType_Output
+  ||  signal.mSignalType == eSignalType_InOut)
+  {
+    if (mSignalType == eSignalType_Input
+    ||  mSignalType == eSignalType_InOut)
+    {
+      if ( mBit != signal.mBit) {
+        mBit               = signal.mBit;
+        mLastModifiedAt    = gScheduler->SimulationTimeGet();
+        mIsModified        = TRUE;
+        mIsNonStrapUpdated = TRUE;
+        
+        return TRUE;
+      }
+    }
+    else {
+      assert(0); // only input/inout signals can be driven by an external signal
+    }
+d209 2
+a210 4
+
+  mUpdateFailCount++;
+
+  return FALSE;
+d256 23
+@
+
+
+1.2
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  When connecting signals add the connection to both signals.
+3.  Renamed GroupNameIs() to BelongsToGroup().
+4.  Implement IsDrivenByClock() and IsDrivingSignal() functions.
+5.  Replaced mLastUpdatedAt with mLastModifiedAt.
+6.  Replaced mIsUpdated     with mIsModified.
+7.  Added mIsNonStrapUpdated.
+8.  Inform interface when signal value is updated using SetInputsUpdated().
+9.  Implement ScheduleAnySensitiveProcesses() function.
+10. Implement MarkAsInputIfReversed(), makes sure a clock input is not reversed.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d28 1
+a28 1
+  mIsModified              (FALSE),
+d218 1
+a218 1
+short Signal::ScheduleAnySensitiveProcesses()
+d220 1
+a220 5
+  short count = 0;
+
+  if (mIsModified && mIsNonStrapUpdated && !mIsDrivenByClock && mSensitiveEdgeList.Size()) {
+    mIsModified = FALSE;
+
+a225 2
+      //mpInterface->ScheduleSensitiveInterface();
+      //{ if (!mOwningProcessSchedule) { mOwningProcessSchedule=TRUE; gScheduler->Schedule(this); }}
+d229 3
+a231 1
+        count++;
+d236 1
+a236 1
+  return count;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d8 2
+a10 1
+#include "Signal.h"
+d16 4
+d27 2
+a28 1
+  mLastUpdatedAt           (0),
+d30 3
+a32 1
+  mIsUpdated               (FALSE),
+d35 1
+a35 1
+  strcpy(mpVcdIdentifier, "");
+d42 1
+a42 1
+    if (mSignalType == eSignalType_Strap) mIsUpdated = TRUE;
+d44 2
+d50 5
+d57 1
+a57 1
+bool Signal::ConnectTo(Signal* signal)
+d59 6
+a64 2
+  if (mBit.BitWidth() == signal->mBit.BitWidth())
+    return mSignalConnectsToList.Add(signal);
+d66 11
+a76 1
+  return FALSE;
+d84 1
+a84 1
+bool Signal::GroupNameIs(const char* name) const
+d86 18
+a103 1
+  return mGroupName == name;
+d114 5
+a118 9
+    if (AllowUpdate()) {
+      mBit           = bit;
+
+      mLastUpdatedAt = gScheduler->SimulationTimeGet();
+      mIsUpdated     = TRUE;
+
+    //if (gDbg) printf("Signal %s = ", (const char*)mName);
+    //if (gDbg) mBit.Print();
+    //if (gDbg) printf("\n");
+a119 1
+      return TRUE;
+d121 1
+d125 5
+a129 2
+    if (!mIsUpdated && AllowUpdate()) {
+      mBit           = bit;
+d131 1
+a131 2
+      mLastUpdatedAt = gScheduler->SimulationTimeGet();
+      mIsUpdated     = TRUE;
+d135 3
+d153 5
+a157 2
+    if (AllowUpdate()) {
+      mBit           = u;
+d159 2
+a160 2
+      mLastUpdatedAt = gScheduler->SimulationTimeGet();
+      mIsUpdated     = TRUE;
+d162 1
+a162 5
+      return TRUE;
+    }
+    else {
+      AllowUpdate();
+    }
+d166 5
+a170 2
+    if (!mIsUpdated && AllowUpdate()) {
+      mBit           = u;
+d172 1
+a172 2
+      mLastUpdatedAt = gScheduler->SimulationTimeGet();
+      mIsUpdated     = TRUE;
+d176 3
+a188 1
+  // TBD: What about eSignalType_Clock?
+d196 6
+a201 6
+      if (AllowUpdate()) {
+        mBit           = signal.mBit;
+
+        mLastUpdatedAt = gScheduler->SimulationTimeGet();
+        mIsUpdated     = TRUE;
+
+d205 3
+d215 29
+a243 1
+bool Signal::AllowUpdate()
+d245 9
+a253 1
+  SimulationTime current_sim_time = gScheduler->SimulationTimeGet();
+d255 4
+a258 6
+  if (mMultipleUpdatesCount >= cMultipleUpdatesCountMax)
+    return FALSE;
+  else if (mLastUpdatedAt <  current_sim_time)
+    return TRUE;
+  else if (mLastUpdatedAt == current_sim_time) {
+    mMultipleUpdatesCount++;
+a259 4
+  else
+    return FALSE;
+
+  return TRUE;
+@

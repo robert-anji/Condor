@@ -1,0 +1,3913 @@
+head	1.6;
+access
+	Roberto;
+symbols
+	C1_80:1.3
+	C1_70:1.2
+	C1_00:1.1;
+locks
+	robert:1.6; strict;
+comment	@// @;
+
+
+1.6
+date	2011.12.04.01.56.20;	author robert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.08.16.18.01.45;	author robert;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.22.17.55.18;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2007.07.14.14.57.59;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.06.18.01.54.24;	author Roberto;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.01.21.02.03.21;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@1. Added placeholder for Hash().
+2. Moved VallueTypeNV[] here from Enum.cc .
+@
+text
+@// $RCSfile: Value.cc,v $
+// $Revision: 1.5 $
+
+#include <assert.h>
+#include <limits.h>
+#include <string.h>
+
+#include "Value.h"
+//
+#include "Bit.h"
+#include "BucketList.h"
+#include "Condition.h"
+#include "Global.h"
+
+M_ExternConstructDestructCountInt;
+
+NameVal ValueTypeNV[] =
+{
+  eValueUnknown,            "Type:???",
+  eValueBit,                "Type:Bit",
+  eValueChar,               "Type:Char",
+  eValueCharPtr,            "Type:CharPtr",
+  eValueConstCharConstPtr,  "Type:ConstCharPtr",
+  eValueString,             "Type:String",
+  eValueUnsigned,           "Type:Unsigned",
+  eEnumInvalid,             ""
+};
+
+Value::Value() :
+  mNewCalled           (FALSE),
+  mType                (eValueUnknown),
+  mpValConstCharConst  (0)
+{
+  // This constructor is mainly needed for Value arrays.
+
+  // No values initialized, they remain unknown
+  // (except that compiler will initialize to some default value).
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(eValueType type) :
+  mType                  (type),
+  mNewCalled             (FALSE),
+  mpValConstCharConst    (0)
+{
+  // type is known but value is not, initialize to a reasonable value.
+  switch (type) {
+    case eValueUnknown:                                       break;
+    case eValueBit:               mpValBit            = 0;    break;
+    case eValueChar:              mValChar            = '\0'; break;
+    case eValueCharPtr:           mpValChar           = 0;    break;
+    case eValueConstCharConstPtr:                             break;
+    case eValueVoidPtr:           mpValVoid           = 0;    break;
+    case eValueString:            mpValString         = 0;    break;
+    case eValueUnsigned:          mValUnsigned        = 0;    break;
+    case eValueInt:               mValInt             = 0;    break;
+    default:                      assert(0);
+  }
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(short v) :
+  mType       (eValueInt),
+  mNewCalled  (FALSE)
+{
+  mValInt = v;
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(unsigned short v) :
+  mType        (eValueUnsigned),
+  mValUnsigned (v),
+  mNewCalled   (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(int v) :
+  mType        (eValueInt),
+  mValInt      (v),
+  mNewCalled   (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(unsigned int v) :
+  mType         (eValueUnsigned),
+  mValUnsigned  (v),
+  mNewCalled    (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(char v) :
+  mType       (eValueChar),
+  mValChar    (v),
+  mNewCalled  (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const char *v) :
+  mType       (eValueCharPtr),
+  mpValChar   (0),
+  mNewCalled  (FALSE)
+{
+  mpValChar = new char [strlen(v)+1]; M_UpdConstructCountN(eType_Char, strlen(v)+1);
+
+  if (mpValChar) {
+    mNewCalled = TRUE;
+
+    strcpy(mpValChar, v);
+  }
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const char* & v) :
+  mType                 (eValueConstCharConstPtr),
+  mpValConstCharConst   (v),
+  mNewCalled            (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const String* v) :
+  mType         (eValueString),
+  mpValString   (0),
+  mNewCalled    (FALSE)
+{
+  if (v != 0) {
+    mpValString = new String(*v);
+
+    if (mpValString) mNewCalled = TRUE;
+  }
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const String& v) :
+  mType         (eValueString),
+  mpValString   (0),
+  mNewCalled    (FALSE)
+{
+  mpValString = new String(v);
+
+  if (mpValString) {
+    mNewCalled = TRUE;
+  }
+
+  M_UpdConstructCount(eType_Value);
+}
+
+// CONT: May need to store msb, lsb of Bit in Value so they dont get cleared
+//       after a Value comparison (needed iff msb, lsb is set differently).
+Value::Value(const Bit* b) :
+  mType       (eValueBit),
+  mpValBit    (0),
+  mNewCalled  (FALSE)
+{
+  if (b) {
+    mpValBit = new Bit(*b);
+
+    if (mpValBit) mNewCalled = TRUE;
+  }
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const Bit& b) :
+  mType       (eValueBit),
+  mpValBit    (0),
+  mNewCalled  (FALSE)
+{
+  // TBD: May be always better to assign mType after allocation is successful.
+
+  mpValBit = new Bit(b);
+  M_Constructed(Bit);
+
+  if (mpValBit != 0) mNewCalled = TRUE;
+
+  assert (mpValBit);
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(void* v) :
+  mType       (eValueVoidPtr),
+  mpValVoid   (v),
+  mNewCalled  (FALSE)
+{
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::Value(const Value& v) :
+  mType       (v.mType),
+  mNewCalled  (FALSE)
+{
+  *this = v;
+
+  M_UpdConstructCount(eType_Value);
+}
+
+Value::~Value()
+{
+  ValueFree();
+
+  M_UpdDestructCount(eType_Value);
+}
+
+unsigned Value::Hash()
+{
+  unsigned hash = 0;
+
+  return hash;
+}
+
+Value& Value::operator++()
+{
+  if      (mType == eValueUnsigned)  mValUnsigned++;
+  else if (mType == eValueInt)       mValInt++;
+  else if (mType == eValueBit)      *mpValBit++;
+  else                               assert(0);
+
+  return *this;
+}
+
+Value& Value::operator++(int)
+{
+  if      (mType == eValueUnsigned)  mValUnsigned++;
+  else if (mType == eValueInt)       mValInt++;
+  else if (mType == eValueBit)      *mpValBit++;
+  else                               assert(0);
+
+  return *this;
+}
+
+Value& Value::operator--()
+{
+  if      (mType == eValueUnsigned)  mValUnsigned--;
+  else if (mType == eValueInt)       mValInt--;
+  else if (mType == eValueBit)      *mpValBit--;
+  else                               assert(0);
+
+  return *this;
+}
+
+Value& Value::operator--(int)
+{
+  if      (mType == eValueUnsigned)  mValUnsigned--;
+  else if (mType == eValueInt)       mValInt--;
+  else if (mType == eValueBit)      *mpValBit--;
+  else                               assert(0);
+
+  return *this;
+}
+
+// For strings this does concatenation.
+Value& Value::operator+(const Value& val)
+{
+  if (mType==eValueString && val.mType==eValueString)
+  {
+    *mpValString << *val.mpValString;
+    return *this;
+  }
+
+  assert(   (mType==eValueUnsigned && val.mType==eValueUnsigned)
+         || (mType==eValueInt      && val.mType==eValueInt)
+         || (mType==eValueBit      && val.mType==eValueBit));
+
+  if (mType == eValueBit) {
+    *mpValBit = *mpValBit + *(val.mpValBit);
+    return *this;
+  }
+
+  // TBD: add overflow check.
+  if      (mType == eValueUnsigned) mValUnsigned += val.mValUnsigned;
+  else if (mType == eValueInt)      mValInt      += val.mValInt;
+  else                              assert(0);
+
+  return *this;
+}
+
+Value& Value::operator+=(const Value& val)
+{
+  return (*this + val);
+}
+
+Value& Value::operator-(const Value& val)
+{
+  assert(mType==eValueUnsigned && val.mType==eValueUnsigned);
+
+  assert (   (mType==eValueUnsigned && val.mType==eValueUnsigned)
+          || (mType==eValueInt      && val.mType==eValueInt)
+          || (mType==eValueBit      && val.mType==eValueBit));
+
+  if (mType == eValueBit) {
+    *mpValBit = *mpValBit - *(val.mpValBit);
+    return *this;
+  }
+
+  // TBD: add underflow check.
+  if      (mType == eValueUnsigned) mValUnsigned -= val.mValUnsigned;
+  else if (mType == eValueInt)      mValInt      -= val.mValInt;
+  else                              assert(0);
+
+  return *this;
+}
+
+Value& Value::operator-=(const Value& val)
+{
+  return (*this - val);
+}
+
+Value& Value::operator*(const Value& val)
+{
+  assert(   (mType==eValueUnsigned && val.mType==eValueUnsigned)
+         || (mType==eValueInt      && val.mType==eValueInt));
+  
+  if      (mType==eValueUnsigned) mValUnsigned = mValUnsigned*(val.mValUnsigned);
+  else if (mType==eValueUnsigned) mValInt      = mValInt     *(val.mValInt);
+  else                            assert(0);
+
+  return *this;
+}
+
+Value& Value::operator/(const Value& val)
+{
+  assert(   (mType==eValueUnsigned && val.mType==eValueUnsigned)
+         || (mType==eValueInt      && val.mType==eValueInt));
+
+  if      (mType==eValueUnsigned) mValUnsigned = mValUnsigned/(val.mValUnsigned);
+  else if (mType==eValueInt)      mValInt      = mValInt/(val.mValInt);
+
+  return *this;
+}
+
+Value& Value::operator+(unsigned u)
+{
+  assert (mType==eValueUnsigned || mType==eValueBit || mType==eValueInt);
+
+  if (mType == eValueBit) {
+    *mpValBit = *mpValBit + u;
+    return *this;
+  }
+
+  // TBD: check for overflow.
+  if      (mType==eValueUnsigned) mValUnsigned += u;
+  else if (mType==eValueInt)      mValInt      += u;
+
+  return *this;
+}
+
+Value& Value::operator+=(unsigned u)
+{
+  return (*this + u);
+}
+
+Value& Value::operator-(unsigned u)
+{
+  assert(mType==eValueUnsigned || mType==eValueBit || mType==eValueInt);
+
+  if (mType == eValueBit) {
+    *mpValBit = *mpValBit - u;
+    return *this;
+  }
+
+  // TBD: check for underflow.
+  if      (mType==eValueUnsigned) mValUnsigned -= u;
+  else if (mType==eValueInt)      mValInt      -= u;
+
+  return *this;
+}
+
+Value& Value::operator-=(unsigned u)
+{
+  return (*this - u);
+}
+
+Value& Value::operator*(unsigned u)
+{
+  assert(mType==eValueUnsigned || mType==eValueInt);
+  
+  // TBD: check for overflow.
+  if      (mType==eValueUnsigned) mValUnsigned = mValUnsigned*u;
+  else if (mType==eValueInt)      mValInt      = mValInt*u;
+  else    assert(0);
+
+  return *this;
+}
+
+Value& Value::operator/(unsigned u)
+{
+  assert(mType==eValueUnsigned || mType==eValueInt);
+
+  if      (mType==eValueUnsigned) mValUnsigned = mValUnsigned/u;
+  else if (mType==eValueInt)      mValInt      = mValInt/u;
+  else    assert(0);
+
+  return *this;
+}
+
+Value& Value::operator=(const Value& v)
+{
+  // Before overwriting, free existing value if it was allocated,
+  // and check if we can optimize.
+  // We can optimize if the new object is of the same mType (and was
+  // also allocated) in which case we leave it to the class assignment
+  // operator to determine how to handle the assignment as there are
+  // cases for optimization where we can save an explicit 'free' and
+  // 'new' sequence. For example when assigning Bits of equal bit size.
+
+  bool optimize_possible = FALSE;
+
+  if (mNewCalled) {
+    if (v.mNewCalled) {
+      if ((mType==eValueString && v.mType == eValueString)
+      ||  (mType==eValueBit    && v.mType == eValueBit))
+      {
+        optimize_possible = TRUE;
+      }
+    }
+
+    if (!optimize_possible) ValueFree();
+  }
+  // else: no need to free, nothing allocated.
+
+  mType      = v.mType;
+//mNewCalled = v.mNewCalled; // not sure this is good 9/18/09
+
+  switch (v.mType) {
+    case eValueUnsigned:
+      mValUnsigned = v.mValUnsigned;
+      break;
+    case eValueInt:
+      mValInt = v.mValInt;
+      break;
+    case eValueCharPtr:
+      if (v.mpValChar == 0) {
+        mpValChar = 0;
+      }
+      else {
+        mpValChar = new char [strlen(v.mpValChar)+1]; M_UpdConstructCountN(eType_Char, strlen(v.mpValChar)+1);
+        if (mpValChar) {
+          mNewCalled = TRUE;
+
+          strcpy(mpValChar, v.mpValChar);
+        }
+      }
+      break;
+    case eValueConstCharConstPtr:
+      mpValConstCharConst = v.mpValConstCharConst;
+      break;
+    case eValueChar:
+      mValChar = v.mValChar;
+      break;
+    case eValueString:
+      if (optimize_possible) {
+        *mpValString = *v.mpValString;
+      }
+      else {
+        // If v allocated the string then follow same policy here.
+        if (v.mNewCalled) {
+          mpValString = new String(*v.mpValString);
+
+          mNewCalled = TRUE;
+        }
+        else
+          mpValString = v.mpValString;
+      }
+      break;
+    case eValueBit:
+      if (optimize_possible) {
+        *mpValBit = *v.mpValBit;
+      }
+      else {
+        // If v allocated the bit then follow same policy here.
+        if (v.mNewCalled) {
+          mpValBit = new Bit(*v.mpValBit);
+          M_Constructed(Bit);
+
+          mNewCalled = TRUE;
+        }
+        else
+          mpValBit = v.mpValBit;
+      }
+      break;
+    case eValueVoidPtr:
+      mpValVoid = v.mpValVoid;
+      break;
+    default:
+      assert(0);
+      break;
+  }
+
+  return *this;
+}
+
+Value& Value::operator=(short v)
+{
+  Value val(v);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(unsigned short v)
+{
+  Value val(v);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(int v)
+{
+  if (mType == eValueInt
+  ||  mType == eValueUnknown)
+  {
+    mType = eValueInt;
+
+    mValInt = v;
+
+    return *this;
+  }
+
+  Value val(v); M_Constructed(Value);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(unsigned int v)
+{
+  // FIX1:
+  if (mType == eValueUnsigned
+  ||  mType == eValueUnknown)
+  {
+    mType = eValueUnsigned;
+
+    mValUnsigned = v;
+
+    return *this;
+  }
+
+  Value val(v); M_Constructed(Value);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(char v)
+{
+  Value val(v); M_Constructed(Value);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(const char *v)
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(Bit& v)
+{
+  if (mType==eValueBit
+  ||  mType==eValueUnknown)
+  {
+    if (mType == eValueUnknown
+    || (mType == eValueBit && mpValBit==0))
+    {
+      mpValBit = new Bit(v.BitWidth()-1, 0);
+      M_Constructed(Bit);
+
+      if (mpValBit) mNewCalled = TRUE;
+    }
+
+    mType = eValueBit;
+
+    assert(mpValBit);
+
+    *mpValBit = v;
+
+    return *this;
+  }
+
+  Value val(v); M_Constructed(Value);
+  
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+Value& Value::operator=(void *v)
+{
+  if (mType == eValueUnknown
+  ||  mType == eValueVoidPtr)
+  {
+    mType = eValueVoidPtr;
+
+    mpValVoid = v;
+
+    return *this;
+  }
+
+  Value val(v); M_Constructed(Value);
+
+  *this = val; // operator= will take care of delete if needed
+
+  return *this;
+}
+
+bool Value::operator==(const Value& v) const
+{
+  // For a successful compare the two types need to be
+  // compatible, currently the following are compatible:
+  // - Bit/unsigned/int
+  // - Char*/ConstChar*/String
+  // Also, for now, we assume Bits hold positive numbers only.
+
+  switch (mType) {
+    case eValueChar:
+      switch (v.mType) {
+        case eValueChar:
+          if (mValChar == v.mValChar) return TRUE;
+          else                        return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueCharPtr:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (!strcmp(mpValChar, v.mpValChar)) return TRUE;
+          else                                 return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          if (!strcmp(mpValChar, v.mpValConstCharConst)) return TRUE;
+          else                                           return FALSE;
+          break;
+        case eValueString:
+          if (*v.mpValString == mpValChar) return TRUE;
+          else                             return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueConstCharConstPtr:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (!strcmp(mpValConstCharConst, v.mpValChar)) return TRUE;
+          else                                           return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          // If the const pointers pointing to const
+          // string are equal, then the string must also.
+          if (mpValConstCharConst == v.mpValConstCharConst) return TRUE;
+          else                                              return FALSE;
+          break;
+        case eValueString:
+          if (*v.mpValString == mpValConstCharConst) return TRUE;
+          else                                       return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueString:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (*mpValString == mpValChar) return TRUE;
+          else                           return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          if (*mpValString == mpValConstCharConst) return TRUE;
+          else                                     return FALSE;
+          break;
+        case eValueString:
+          if (*mpValString == *v.mpValString) return TRUE;
+          else                                return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueBit:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if ((unsigned)*mpValBit == v.mValUnsigned) return TRUE;
+          else                                       return FALSE;
+          break;
+        case eValueInt:
+          if (v.mValInt < 0) return FALSE;
+          else {
+            if ((unsigned)*mpValBit == v.mValInt) return TRUE;
+            else                                  return FALSE;
+          }
+          break;
+        case eValueBit:
+          if (*mpValBit == *v.mpValBit) return TRUE;
+          else                          return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueUnsigned:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if (mValUnsigned == v.mValUnsigned) return TRUE;
+          else                                return FALSE;
+          break;
+        case eValueInt:
+          if (v.mValInt < 0) return FALSE;
+          else {
+            if (mValUnsigned == v.mValInt) return TRUE;
+            else                           return FALSE;
+          }
+          break;
+        case eValueBit:
+          if (mValUnsigned == (unsigned)*mpValBit) return TRUE;
+          else                                     return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueInt:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if (mValInt < 0) return FALSE;
+          else {
+            if (mValInt == v.mValUnsigned) return TRUE;
+            else                           return FALSE;
+          }
+          break;
+        case eValueInt:
+          if (mValInt == v.mValInt) return TRUE;
+          else                      return FALSE;
+          break;
+        case eValueBit:
+          if (mValInt < 0) return FALSE;
+          else {
+            if ((unsigned)*v.mpValBit == mValInt) return TRUE;
+            else                                  return FALSE;
+          }
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueVoidPtr:
+      if (mpValVoid == v.mpValVoid) return TRUE;
+      else                          return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator!=(const Value& v) const
+{
+  if (*this == v) return FALSE;
+  else            return TRUE;
+}
+
+bool Value::operator>(const Value& v) const
+{
+  // For a successful compare the two types need to be
+  // compatible, currently the following are compatible:
+  // - Bit/unsigned/int
+  // - Char*/ConstChar*/String
+  // Also, for now, we assume Bits hold positive numbers only.
+
+  switch (mType) {
+    case eValueChar:
+      switch (v.mType) {
+        case eValueChar:
+          if (mValChar > v.mValChar) return TRUE;
+          else                       return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueCharPtr:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (strcmp(mpValChar, v.mpValChar) > 0) return TRUE;
+          else                                    return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          if (strcmp(mpValChar, v.mpValConstCharConst) > 0) return TRUE;
+          else                                              return FALSE;
+          break;
+        case eValueString:
+          if (strcmp(mpValChar, (const char*)*v.mpValString) > 0) return TRUE;
+          else                                              return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueConstCharConstPtr:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (strcmp(mpValConstCharConst, v.mpValChar) > 0) return TRUE;
+          else                                              return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          // If the const pointers pointing to const
+          // string are equal, then the string must also.
+          if (strcmp(mpValConstCharConst, v.mpValConstCharConst) > 0) return TRUE;
+          else                                                        return FALSE;
+          break;
+        case eValueString:
+          if (strcmp((const char*)*v.mpValString, mpValConstCharConst) > 0) return TRUE;
+          else                                                        return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueString:
+      switch (v.mType) {
+        case eValueCharPtr:
+          if (strcmp((const char*)*mpValString, mpValChar) > 0) return TRUE;
+          else                                            return FALSE;
+          break;
+        case eValueConstCharConstPtr:
+          if (strcmp((const char*)*mpValString, mpValConstCharConst) > 0) return TRUE;
+          else                                                     return FALSE;
+          break;
+        case eValueString:
+          if (strcmp((const char*)*mpValString, (const char*)*v.mpValString) > 0) return TRUE;
+          else                                                        return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueBit:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if ((unsigned)*mpValBit > v.mValUnsigned) return TRUE;
+          else                                      return FALSE;
+          break;
+        case eValueInt:
+          if (v.mValInt < 0) return TRUE;
+          else {
+            if ((unsigned)*mpValBit > v.mValInt) return TRUE;
+            else                                 return FALSE;
+          }
+          break;
+        case eValueBit:
+          if (*mpValBit > *v.mpValBit) return TRUE;
+          else                         return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueUnsigned:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if (mValUnsigned > v.mValUnsigned) return TRUE;
+          else                               return FALSE;
+          break;
+        case eValueInt:
+          if (v.mValInt < 0) return TRUE;
+          else {
+            if (mValUnsigned > v.mValInt) return TRUE;
+            else                          return FALSE;
+          }
+          break;
+        case eValueBit:
+          if (mValUnsigned > (unsigned)*mpValBit) return TRUE;
+          else                                    return FALSE;
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueInt:
+      switch (v.mType) {
+        case eValueUnsigned:
+          if (mValInt < 0) return FALSE;
+          else {
+            if (mValInt > v.mValUnsigned) return TRUE;
+            else                          return FALSE;
+          }
+          break;
+        case eValueInt:
+          if (mValInt > v.mValInt) return TRUE;
+          else                     return FALSE;
+          break;
+        case eValueBit:
+          if (mValInt < 0) return FALSE;
+          else {
+            if ((unsigned)*v.mpValBit < mValInt) return TRUE;
+            else                                 return FALSE;
+          }
+          break;
+        default: assert(0);
+      }
+      break;
+    case eValueVoidPtr:
+      if (mpValVoid == v.mpValVoid) return TRUE;
+      else                          return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator<(const Value& v) const
+{
+  // Simply make use of operator '>' and '=='.
+  // Need to be careful for Bit comparison, cannot split the < into
+  // two separate comparisons because Bit will reset msb, lsb,
+  // this applies whether Bit type is lhs or rhs.
+
+  if (mType == eValueBit) {
+    switch (v.mType) {
+      case eValueBit:
+        if (*mpValBit < *v.mpValBit) return TRUE;
+        break;
+      case eValueUnsigned:
+        if ((unsigned)*mpValBit < v.mValUnsigned) return TRUE;
+        break;
+      case eValueInt:
+        if      ( v.mValInt < 0)                  return FALSE;
+        else if ((unsigned)*mpValBit < v.mValInt) return TRUE;
+        break;
+    }
+  }
+  else if (v.mType == eValueBit) {
+    switch (mType) {
+      case eValueUnsigned:
+        if (mValUnsigned < (unsigned)*v.mpValBit) return TRUE;
+        break;
+      case eValueInt:
+        if      (mValInt < 0)                     return TRUE;
+        else if (mValInt < (unsigned)*v.mpValBit) return TRUE;
+        break;
+    }
+  }
+  else {
+    return (! ((*this > v) || (*this == v)));
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator<=(const Value& v) const
+{
+  // Simply invoke > operator.
+  // Need to be careful for Bit comparison, cannot split the <= into
+  // two separate comparisons because Bit will reset msb, lsb,
+  // this applies whether Bit type is lhs or rhs.
+
+  if (mType == eValueBit) {
+    switch (v.mType) {
+      case eValueBit:
+        if (*mpValBit <= *v.mpValBit) return TRUE;
+        break;
+      case eValueUnsigned:
+        if ((unsigned)*mpValBit <= v.mValUnsigned) return TRUE;
+        break;
+      case eValueInt:
+        if      ( v.mValInt < 0)                   return FALSE;
+        else if ((unsigned)*mpValBit <= v.mValInt) return TRUE;
+        break;
+    }
+  }
+  else if (v.mType == eValueBit) {
+    switch (mType) {
+      case eValueUnsigned:
+        if (mValUnsigned <= (unsigned)*v.mpValBit) return TRUE;
+        break;
+      case eValueInt:
+        if      (mValInt < 0)                      return TRUE;
+        else if (mValInt <= (unsigned)*v.mpValBit) return TRUE;
+        break;
+    }
+  }
+  else {
+    return !(*this > v);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator>=(const Value& v) const
+{
+  // Need to be careful for Bit comparison, cannot split the <= into
+  // two separate comparisons because Bit will reset msb, lsb,
+  // this applies whether Bit type is lhs or rhs.
+
+  if (mType == eValueBit) {
+    switch (v.mType) {
+      case eValueBit:
+        if (*mpValBit >= *v.mpValBit) return TRUE;
+      break;
+      case eValueUnsigned:
+        if ((unsigned)*mpValBit >= v.mValUnsigned) return TRUE;
+      case eValueInt:
+        if (v.mValInt < 0)                         return TRUE;
+        else if ((unsigned)*mpValBit >= v.mValInt) return TRUE;
+    }
+  }
+  else if (v.mType == eValueBit) {
+    switch (mType) {
+      case eValueUnsigned:
+        if (mValUnsigned >= (unsigned)*v.mpValBit) return TRUE;
+        break;
+      case eValueInt:
+        if      (mValInt < 0)                      return FALSE;
+        else if (mValInt >= (unsigned)*v.mpValBit) return TRUE;
+        break;
+    }
+  }
+  else {
+    return (*this>v || *this==v);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator==(int v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit == v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned == v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt == v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator!=(int v) const
+{
+  return !(*this == v);
+}
+
+bool Value::operator>(int v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return TRUE;
+      else {
+        if ((unsigned)*mpValBit > v) return TRUE;
+        else                         return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return TRUE;
+      else {
+        if (mValUnsigned > v) return TRUE;
+        else                  return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt > v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<(int v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit < v) return TRUE;
+        else                         return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned < v) return TRUE;
+        else                  return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt < v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<=(int v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit <= v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned <= v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt <= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator>=(int v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return TRUE;
+      else {
+        if ((unsigned)*mpValBit >= v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return TRUE;
+      else {
+        if (mValUnsigned >= v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt >= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator==(short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit == v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned == v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt == v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator!=(short v) const
+{
+  return !(*this == v);
+}
+
+bool Value::operator>(short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return TRUE;
+      else {
+        if ((unsigned)*mpValBit > v) return TRUE;
+        else                         return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return TRUE;
+      else {
+        if (mValUnsigned > v) return TRUE;
+        else                  return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt > v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<(short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit < v) return TRUE;
+        else                         return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned < v) return TRUE;
+        else                  return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt < v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<=(short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return FALSE;
+      else {
+        if ((unsigned)*mpValBit <= v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return FALSE;
+      else {
+        if (mValUnsigned <= v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt <= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator>=(short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if (v < 0) return TRUE;
+      else {
+        if ((unsigned)*mpValBit >= v) return TRUE;
+        else                          return FALSE;
+      }
+      break;
+    case eValueUnsigned:
+      if (v < 0) return TRUE;
+      else {
+        if (mValUnsigned >= v) return TRUE;
+        else                   return FALSE;
+      }
+      break;
+    case eValueInt:
+      if (mValInt >= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator==(unsigned short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit == v) return TRUE;
+      else                          return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned == v) return TRUE;
+      else                   return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt < 0)  return FALSE;
+      if (mValInt == v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator!=(unsigned short v) const
+{
+  return !(*this == v);
+}
+
+bool Value::operator>(unsigned short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit > v) return TRUE;
+      else                         return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned > v) return TRUE;
+      else                  return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      if (mValInt > v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<(unsigned short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit < v) return TRUE;
+      else                         return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned < v) return TRUE;
+      else                  return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      if (mValInt < v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<=(unsigned short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit <= v) return TRUE;
+      else                          return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned <= v) return TRUE;
+      else                   return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt <  0) return TRUE;
+      if (mValInt <= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator>=(unsigned short v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit >= v) return TRUE;
+      else                          return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned >= v) return TRUE;
+      else                   return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt <  0) return FALSE;
+      if (mValInt >= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator==(unsigned v) const
+{
+  switch (mType) {
+  case eValueBit:
+    if ((unsigned)*mpValBit == v) return TRUE;
+    else                          return FALSE;
+  case eValueUnsigned:
+    if (mValUnsigned == v) return TRUE;
+    else                   return FALSE;
+  case eValueInt:
+    if (mValInt < 0) return FALSE;
+    else {
+      if (mValInt == v) return TRUE;
+      else              return FALSE;
+    }
+  default: assert(0);
+  }
+
+  return FALSE;
+}
+
+bool Value::operator!=(unsigned v) const
+{
+  return !(*this == v);
+}
+
+bool Value::operator>(unsigned v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit > v) return TRUE;
+      else                         return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned > v) return TRUE;
+      else                  return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      if (mValInt > v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<(unsigned v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit < v) return TRUE;
+      else                         return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned < v) return TRUE;
+      else                  return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      if (mValInt < v) return TRUE;
+      else             return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator<=(unsigned v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit <= v) return TRUE;
+      else                          return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned <= v) return TRUE;
+      else                   return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt <  0) return TRUE;
+      if (mValInt <= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator>=(unsigned v) const
+{
+  switch (mType) {
+    case eValueBit:
+      if ((unsigned)*mpValBit >= v) return TRUE;
+      else                          return FALSE;
+      break;
+    case eValueUnsigned:
+      if (mValUnsigned >= v) return TRUE;
+      else                   return FALSE;
+      break;
+    case eValueInt:
+      if (mValInt <  0) return FALSE;
+      if (mValInt >= v) return TRUE;
+      else              return FALSE;
+      break;
+    default:
+      assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator==(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this == val);
+}
+
+bool Value::operator!=(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this != val);
+}
+
+bool Value::operator>(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this > val);
+}
+
+bool Value::operator<(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this < val);
+}
+
+bool Value::operator<=(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this <= val);
+}
+
+bool Value::operator>=(char* v) const
+{
+  Value val(v); M_Constructed(Value);
+
+  return (*this >= val);
+}
+
+bool Value::operator==(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this == val);
+}
+
+bool Value::operator!=(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this != val);
+}
+
+bool Value::operator>(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this > val);
+}
+
+bool Value::operator<(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this < val);
+}
+
+bool Value::operator<=(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this <= val);
+}
+
+bool Value::operator>=(const char* v) const
+{
+  Value val((const char*)v); M_Constructed(Value);
+
+  return (*this >= val);
+}
+
+// TBD: Add the above comparisons for 'const char* const' also.
+
+bool Value::operator==(Bit& b) const
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueBit:
+      if (*mpValBit == b) return TRUE;
+      else                return FALSE;
+    case eValueUnsigned:
+      if (mValUnsigned == (unsigned int)b) return TRUE;
+      else                                 return FALSE;
+    case eValueInt:
+      if (mValInt < 0) return FALSE;
+      else {
+        if (mValInt == (unsigned int)b) return TRUE;
+        else                            return FALSE;
+      }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator!=(Bit& b) const
+{
+  if (*this == b) return FALSE;
+  else            return TRUE;
+}
+
+bool Value::operator>(Bit& b) const
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueBit:
+      if (*mpValBit > b) return TRUE;
+      else               return FALSE;
+    case eValueUnsigned:
+      if (mValUnsigned > (unsigned int)b) return TRUE;
+      else                                return FALSE;
+    case eValueInt:
+      if (mValInt < 0) return FALSE;
+      else {
+        if (mValInt > (unsigned int)b) return TRUE;
+        else                           return FALSE;
+      }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator<(Bit& b) const
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueBit:
+      if (*mpValBit < b) return TRUE;
+      else               return FALSE;
+    case eValueUnsigned:
+      if (mValUnsigned < (unsigned int)b) return TRUE;
+      else                                return FALSE;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      else {
+        if (mValInt < (unsigned int)b) return TRUE;
+        else                           return FALSE;
+      }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator>=(Bit& b) const
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueBit:
+      if (*mpValBit >= b) return TRUE;
+      else                  return FALSE;
+    case eValueUnsigned:
+      if (mValUnsigned >= (unsigned int)b) return TRUE;
+      else                                 return FALSE;
+    case eValueInt:
+      if (mValInt < 0) return FALSE;
+      else {
+        if (mValInt >= (unsigned int)b) return TRUE;
+        else                            return FALSE;
+      }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator<=(Bit& b) const
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueBit:
+      if (*mpValBit <= b) return TRUE;
+      else                  return FALSE;
+    case eValueUnsigned:
+      if (mValUnsigned <= (unsigned int)b) return TRUE;
+      else                                 return FALSE;
+    case eValueInt:
+      if (mValInt < 0) return TRUE;
+      else {
+        if (mValInt <= (unsigned int)b) return TRUE;
+        else                            return FALSE;
+      }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator==(void *v) const
+{
+  switch (mType) {
+  case eValueCharPtr:
+    return mpValChar == v;
+    break;
+  case eValueConstCharConstPtr:
+    return mpValConstCharConst == v;
+    break;
+  case eValueVoidPtr:
+    return mpValVoid == v;
+    break;
+  default:
+    assert(0);
+  }
+
+  assert(0);
+}
+
+bool Value::operator!=(void *v) const
+{
+  return !(this == v);
+}
+
+bool Value::operator==(bool v) const
+{
+  switch (mType) {
+    case eValueUnsigned:
+      return  mValUnsigned == v;
+    case eValueInt:
+      return  mValInt == v;
+    case eValueBit: {
+      Bit b;
+      M_Constructed(Bit);
+      b = v;
+
+      return (*mpValBit == b);
+    }
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+bool Value::operator!=(bool v) const
+{
+  if (*this == v) return FALSE;
+  else            return TRUE;
+}
+
+bool Value::operator!() const
+{
+  switch (mType) {
+    case eValueUnknown:
+      assert(0);
+      return FALSE;
+    case eValueBit: {
+      Bit b(*mpValBit);
+      M_Constructed(Bit);
+      b = 0;
+      return *mpValBit==b;
+    }
+    case eValueChar:
+      return mValChar == '\0';
+    case eValueCharPtr:
+      return mpValChar == 0;
+    case eValueConstCharConstPtr:
+      return mpValConstCharConst == 0;
+    case eValueVoidPtr:
+      return mpValVoid == 0;
+    case eValueString:
+      return *mpValString == "";
+    case eValueUnsigned:
+      return mValUnsigned == 0;
+    case eValueInt:
+      return mValInt == 0;
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Condition& Value::operator==(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c == attr;
+}
+
+Condition& Value::operator!=(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c != attr;
+}
+
+Condition& Value::operator>(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c > attr;
+}
+
+Condition& Value::operator<(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c < attr;
+}
+
+Condition& Value::operator<=(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c <= attr;
+}
+
+Condition& Value::operator>=(const Attribute& attr) const
+{
+  Condition* c = new Condition(*this, TRUE);
+  assert(c);
+
+  return *c >= attr;
+}
+
+void Value::ValueCopyGet(Bit& bit)
+{
+  assert (mType == eValueBit);
+
+  bit = *mpValBit;
+}
+
+eCompare Value::Compare(Value& val)
+{
+  if (*this < val) return eCompareLess;
+  if (*this > val) return eCompareGreater;
+
+  return eCompareEqual;
+}
+
+Value::operator short()
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueUnsigned:
+      if (mValUnsigned > SHRT_MAX) assert(0);
+      else                         return (mValUnsigned&SHRT_MAX);
+    case eValueInt:
+      if      (mValInt > SHRT_MAX) assert(0);
+      else if (mValInt < SHRT_MIN) assert(0);
+      else                         return (mValInt&SHRT_MAX);
+    case eValueBit:
+      return (short)(*mpValBit);
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator unsigned short()
+{
+  unsigned short s;
+
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueUnsigned:
+      if (mValUnsigned > USHRT_MAX) assert(0);
+      else                          return s = mValUnsigned&USHRT_MAX;
+    case eValueInt:
+      if      (mValInt > USHRT_MAX) assert(0);
+      else if (mValInt < 0)         assert(0);
+      else                          return s = mValInt&USHRT_MAX;
+    case eValueBit:
+      return (unsigned short)(*mpValBit);
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator int()
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueUnsigned:
+      if (mValUnsigned > INT_MAX) assert(0);
+      else                        return (mValUnsigned&INT_MAX);
+    case eValueInt:
+      return mValInt;
+    case eValueBit:
+      return (int)(*mpValBit);
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator unsigned int()
+{
+  assert(mType==eValueBit || mType==eValueUnsigned || mType==eValueInt);
+
+  switch (mType) {
+    case eValueUnsigned:
+      return mValUnsigned&UINT_MAX;
+    case eValueInt:
+      if (mValInt < 0) assert(0);
+      else             return mValInt&UINT_MAX;
+    case eValueBit:
+      return (unsigned int)(*mpValBit);
+    default:
+      assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator char()
+{
+  char c;
+
+  assert(   mType==eValueConstCharConstPtr || mType==eValueChar
+         || mType==eValueCharPtr           || mType==eValueString);
+
+  switch (mType) {
+    case eValueChar:
+      return c = mValChar;
+    case eValueCharPtr:
+      if (mpValChar!=0) return c = mpValChar[0];
+      else              return c = '\0';
+    case eValueConstCharConstPtr:
+      if (mpValConstCharConst!=0) return c = mpValConstCharConst[0];
+      else                        return c = '\0';
+    case eValueString:
+      return c=mpValString->Getc(0);
+    default:
+      assert(0);
+      return c='\0';
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator const char*()
+{
+  assert(   mType == eValueCharPtr
+         || mType == eValueConstCharConstPtr
+         || mType == eValueString);
+
+  switch (mType) {
+    case eValueConstCharConstPtr:
+      return (const char*)mpValConstCharConst;
+    case eValueString:
+      // This is not clean but a compromise solution.
+      // Problem is when the String is deleted the pointer
+      // returned here becomes invalid.
+      return (const char*)mpValString;
+    case eValueCharPtr:
+      return (const char*)mpValChar;
+    default: assert(0);
+  }
+
+  assert(0); // should not reach here
+}
+
+Value::operator char*()
+{
+  assert(mType==eValueCharPtr);
+
+  if (mType == eValueCharPtr) return mpValChar;
+
+  return (char*)"";
+}
+
+Value::operator Bit()
+{
+  assert(mType==eValueBit);
+
+  return *mpValBit;
+}
+
+void Value::SetMsbLsb(short msb, short lsb) const
+{
+  assert(mType == eValueBit);
+
+  (*mpValBit).SetMsbLsb(msb, lsb);
+}
+
+char* Value::Save(char buf[MAX_RECORD_LINE_LENGTH+1]) const
+{
+  switch (mType) {
+    case eValueChar:
+      buf[0] = mValChar; buf[1] = '\0';
+      break;
+    case eValueCharPtr:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%s", mpValChar);
+      break;
+    case eValueConstCharConstPtr:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%s", mpValConstCharConst);
+      break;
+    case eValueString:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%s", (const char*)(*mpValString));
+      break;
+    case eValueBit: {
+      char bit_buf [MAX_RECORD_LINE_LENGTH+1];
+
+      mpValBit->Save(bit_buf);
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%s", bit_buf);
+      break;
+    }
+    case eValueUnsigned:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%u", mValUnsigned);
+      break;
+    case eValueInt:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%u", mValInt);
+      break;
+    case eValueVoidPtr:
+      snprintf(buf, MAX_RECORD_LINE_LENGTH, "%x", (unsigned)mpValVoid); // fix for 64 bit
+      break;
+    default:
+      strcpy(buf, "???");
+  }
+
+  return buf;
+}
+
+bool Value::Initialize(const char* buf, short bit_width)
+{
+  int        ret;
+  char       str [MAX_RECORD_LINE_LENGTH+1];
+  bool       status;
+  unsigned   u;
+  int        ii;
+
+  if (buf[0] == '\0') return status = FALSE;
+
+  status = TRUE;
+
+  switch (mType) {
+    eValueUnknown:
+      status = FALSE;
+      break;
+    eValueBit:
+      if (mNewCalled) { delete mpValBit; mpValBit=0; }
+
+      if (bit_width) {
+        mpValBit = new Bit(bit_width-1, 0);
+        M_Constructed(Bit);
+
+        if (mpValBit) {
+          const char* format = "";
+          if (!mpValBit->Initialize(buf, format)) status = FALSE;
+        }
+      }
+      else {
+        status = FALSE;
+      }
+      break;
+    eValueChar:
+      mValChar = buf[0];
+      break;
+    eValueCharPtr:
+      if (mNewCalled) { M_UpdDestructCountN(eType_Char, strlen(mpValChar)+1); delete [] mpValChar; mpValChar=0; }
+
+      mpValChar = new char [strlen(buf)+1]; M_UpdConstructCountN(eType_Char, strlen(buf)+1);
+      if (mpValChar) {
+        strcpy(mpValChar, buf);
+        mNewCalled = TRUE;
+      }
+      break;
+    eValueConstCharConstPtr:
+      status = FALSE; // cannot be initialized from a buffer
+      break;
+    eValueVoidPtr:
+      status = FALSE; // no sense storing pointers to/from buf/file
+      break;
+    eValueString:
+      if (mNewCalled) { delete mpValString; mpValString=0; }
+
+      mpValString = new String(buf);
+      if (mpValString) mNewCalled = TRUE;
+      break;
+    eValueUnsigned:
+      ret = sscanf(buf, "%u", &u);
+
+      if (ret) mValUnsigned = u;
+      else     status       = FALSE;
+
+      break;
+    eValueInt:
+      ret = sscanf(buf, "%d", &ii);
+
+      if (ret) mValInt = ii;
+      else     status  = FALSE;
+
+      break;
+    default:
+      status = FALSE;
+  }
+
+  return status;
+}
+
+void Value::ValueFree()
+{
+  switch (mType) {
+    case eValueChar:
+    case eValueUnsigned:
+    case eValueInt:
+    case eValueUnknown:
+      // nothing to free for built-in types.
+      break;
+    case eValueCharPtr:
+      if (mNewCalled) {
+        if (mType == eValueCharPtr) { M_UpdDestructCountN(eType_Char, strlen(mpValChar)+1); delete [] mpValChar; mpValChar=0; }
+
+        mNewCalled = FALSE;
+      }
+      break;
+    case eValueConstCharConstPtr:
+      break;
+    case eValueString:
+      if (mNewCalled) {
+        delete mpValString;
+
+        mNewCalled = FALSE;
+      }
+      break;
+    case eValueBit:
+      if (mNewCalled) {
+        delete mpValBit;
+
+        mNewCalled = FALSE;
+      }
+      break;
+    case eValueVoidPtr:
+      break; // we dont delete void pointers, defer to creator/allocator
+    default:
+      assert(0);
+  }
+}
+
+void Value::ValueTypeSet(eValueType type)
+{
+  if (mType == eValueUnknown) mType = type;
+}
+
+void Value::SetToMax()
+{
+  switch (mType) {
+    case eValueUnsigned:
+      mValUnsigned = UINT_MAX;
+      break;
+    case eValueInt:
+      mValInt = INT_MAX;
+      break;
+    case eValueBit:
+      mpValBit->BitSetAll();
+      break;
+    case eValueCharPtr:
+    case eValueConstCharConstPtr:
+    case eValueChar:
+    case eValueString:
+    case eValueVoidPtr:
+      break; // do nothing, maybe add warning in future
+    default:
+      assert(0);
+  }
+}
+
+void Value::SetToMin()
+{
+  switch (mType) {
+    case eValueUnsigned:
+      mValUnsigned = 0;
+      break;
+    case eValueInt:
+      mValInt = 0;
+      break;
+    case eValueBit:
+      mpValBit->BitClearAll();
+      break;
+    case eValueCharPtr:
+    case eValueConstCharConstPtr:
+    case eValueChar:
+    case eValueString:
+    case eValueVoidPtr:
+      break; // do nothing, maybe add warning in future
+    default:
+      assert(0);
+  }
+}
+
+void Value::Print(FILE* fp)
+{
+  char buf [MAX_RECORD_LINE_LENGTH+1];
+
+  if (fp == 0) fp = stdout;
+
+  fprintf(fp, "%s", Save(buf));
+}
+
+Value::operator Value*() const
+{
+  assert(0);
+}
+
+// End
+@
+
+
+1.5
+log
+@1. Allow comparison with Attributes to return Condition objects that can
+   be added to Queries.
+2. Removed Match(query), all matching API has moved to Query.
+3. Made SetMsbLsb() and ValueGet() const functions.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d17 12
+d214 7
+@
+
+
+1.4
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  Improved comparison operators with Value.
+3.  Made comparison operators const.
+4.  Reduced need for temporary creation of Value objects.
+5.  Added support for eValueType eValueInt (ie int) for all operations.
+6.  Added support for eValueVoidPtr.
+7.  Initialize values when only type is specified in constructor.
+8.  Changed eBoolean to type bool.
+9.  Removed mSign, replaced by eValueType of eValueInt.
+10. Copy the string or char* in more cases in constructors and assignments.
+11. Set mNewCalled only when new operator was successful.
+12. Made several functions and constructor args 'const'.
+13. Fixed prefix to use mp for remaining members.
+14. Added operator! .
+15. Added comparison with void* and bool.
+16. Added cast to Bit operator.
+17. Replaced operator>>(FILE*) with Save().
+18. Implemented Initialize(const char* line, bit_width).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+a13 1
+#include "Query.h"
+d145 2
+a201 34
+bool Value::Match(Query *q)
+{
+  if (q == 0) return TRUE;
+
+  BucketList<Condition> & cbl = q->mConditionBktList;
+
+  if (!cbl.BktSetPosition(ePositionFirst)) {
+    // If query is empty then there are no conditions
+    // and the record is defined to  always match.
+    return TRUE;
+  }
+
+  // We have a match IF the conditions within ANY bucket are ALL true
+  for (cbl.BktSetPosition(ePositionFirst); !cbl.BktDone(); cbl.BktSetPosition(ePositionNext))
+  {
+    // Process the 'and' condition, break as soon as there is no match.
+    for (cbl.SetLinkPosition(ePositionFirst); !cbl.LinkDone(); cbl.SetLinkPosition(ePositionNext))
+    {
+      Condition* c = cbl.Get();
+
+      if (mType==eValueBit && c->BitWidthSet())
+        SetMsbLsb(c->GetMsb(), c->GetLsb());
+
+      if (c->Evaluate(*this)) continue;
+      else                    break;
+    }
+
+    if (cbl.LinkDone())                    return TRUE;
+    if (cbl.BktSetPosition(ePositionNext)) continue;
+  }
+
+  return FALSE;
+}
+
+d1841 48
+d2050 1
+a2050 1
+void Value::SetMsbLsb(short msb, short lsb)
+a2261 1
+
+@
+
+
+1.3
+log
+@1. Added constructor Value(eValueType type).
+2. Added function: eBoolean Match(Query *q) to compare a single value with
+   a query.
+3. Added arithmetic overload operators for argument: unsigned.
+4. Added two utilities: SetToMax() and SetToMin().
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+d9 1
+d13 1
+d16 2
+a17 1
+// TBD: Remove this constructor?
+d19 3
+a21 3
+  mNewCalled  (FALSE),
+  mType       (eValueUnknown),
+  sign        (ePlus)
+d23 6
+a28 1
+  // No values initialized, ie unknown.
+d32 19
+a50 5
+  mNewCalled  (FALSE),
+  mType       (type),
+  sign        (ePlus)
+{
+  // No values initialized, ie unknown.
+d54 6
+a59 11
+  mNewCalled  (FALSE),
+  mType       (eValueUnsigned),
+  sign        (ePlus)
+{
+  if (v >= 0)
+    valUnsigned = (unsigned)v;
+  else
+  {
+    sign        = eMinus;
+    valUnsigned = (unsigned)-v;
+  }
+d63 3
+a65 3
+  mNewCalled  (FALSE),
+  mType       (eValueUnsigned),
+  sign        (ePlus)
+d67 1
+a67 1
+  valUnsigned = (unsigned)v;
+d71 5
+a75 12
+  mNewCalled  (FALSE),
+  mType       (eValueUnsigned),
+  sign        (ePlus),
+  valUnsigned (0)
+{
+  if (v >= 0)
+    valUnsigned = (unsigned)v;
+  else
+  {
+    sign = eMinus;
+    valUnsigned = (unsigned)-v;
+  }
+d79 3
+a81 4
+  mNewCalled  (FALSE),
+  mType       (eValueUnsigned),
+  sign        (ePlus),
+  valUnsigned (v)
+d83 1
+a86 1
+  mNewCalled  (FALSE),
+d88 2
+a89 2
+  sign        (ePlus),
+  valChar     (v)
+d91 1
+d94 1
+a94 2
+Value::Value(char *v) :
+  mNewCalled  (FALSE),
+d96 2
+a97 2
+  sign        (ePlus),
+  valPtrChar  (v)
+d99 9
+d110 4
+a113 5
+Value::Value(const char *v) :
+  mNewCalled  (FALSE),
+  mType       (eValueConstCharPtr),
+  sign        (ePlus),
+  valPtrChar  ((char*)v)
+d115 1
+a115 1
+  valPtrConstChar = v;
+d118 4
+a121 5
+Value::Value(String* v) :
+  mNewCalled  (FALSE),
+  mType       (eValueString),
+  sign        (ePlus),
+  valPtrStr   (v)
+d123 7
+d132 4
+a135 5
+Value::Value(String& v) :
+  mNewCalled  (TRUE),
+  mType       (eValueString),
+  sign        (ePlus),
+  valPtrStr   (0)
+d137 5
+a141 1
+  valPtrStr = new String(v);
+d143 1
+a143 1
+  assert (valPtrStr);
+d146 1
+a146 2
+Value::Value(Bit* b) :
+  mNewCalled  (FALSE),
+d148 2
+a149 2
+  sign        (ePlus),
+  valPtrBit   (b)
+d151 7
+d160 1
+a160 2
+Value::Value(Bit& b) :
+  mNewCalled  (TRUE),
+d162 2
+a163 2
+  sign        (ePlus),
+  valPtrBit   (0)
+d165 4
+a168 1
+  valPtrBit = new Bit(b);
+d170 5
+a174 1
+  assert (valPtrBit);
+d177 4
+a180 1
+Value::~Value()
+d182 1
+a182 1
+  ValueFree();
+d185 3
+a187 1
+Value::Value(Value& v)
+d190 9
+d201 1
+a201 1
+eBoolean Value::Match(Query *q)
+d221 1
+a221 1
+      if (Type()==eValueBit && c->BitWidthSet())
+d237 4
+a240 6
+  assert(mType == eValueUnsigned);
+
+  // TBD: Add support for Bit
+
+  if (mType == eValueUnsigned)
+    valUnsigned++;
+d247 4
+a250 6
+  assert(mType == eValueUnsigned);
+
+  // TBD: Add support for Bit
+
+  if (mType == eValueUnsigned)
+    valUnsigned++;
+d257 4
+a260 1
+  assert(mType == eValueUnsigned);
+d262 2
+a263 1
+  // TBD: Add support for Bit
+d265 6
+a270 2
+  if (mType == eValueUnsigned)
+    valUnsigned--;
+d276 1
+a276 1
+Value& Value::operator+(Value& val)
+d280 1
+a280 1
+    *valPtrStr << *val.valPtrStr;
+d284 3
+a286 2
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned && val.mType==eValueUnsigned);
+d288 2
+a289 1
+  if (mType!=eValueUnsigned || val.mType!=eValueUnsigned)
+d291 1
+d293 4
+a296 27
+  eSign s1 = sign;
+  eSign s2 = val.sign;
+
+  if (s1==ePlus && s2==ePlus)
+    valUnsigned += val.valUnsigned;
+  else if (s1==eMinus && s2==eMinus)
+    valUnsigned += val.valUnsigned;
+  else if (s1==ePlus && s2==eMinus)
+  {
+    if (valUnsigned >= val.valUnsigned)
+      valUnsigned -= val.valUnsigned;
+    else
+    {
+      valUnsigned = val.valUnsigned - valUnsigned;
+      sign = eMinus;
+    }
+  }
+  else if (s1==eMinus && s2==ePlus)
+  {
+    if (valUnsigned >= val.valUnsigned)
+      valUnsigned -= val.valUnsigned;
+    else
+    {
+      valUnsigned = val.valUnsigned - valUnsigned;
+      sign = ePlus;
+    }
+  }
+d301 1
+a301 1
+Value& Value::operator+=(Value& val)
+d306 1
+a306 1
+Value& Value::operator-(Value& val)
+a307 1
+  // TBD: Add support for Bit
+d310 6
+a315 1
+  if (mType!=eValueUnsigned || val.mType!=eValueUnsigned)
+d317 1
+d319 4
+a322 27
+  eSign s1 = sign;
+  eSign s2 = val.sign;
+
+  if (s1==eMinus && s2==ePlus)
+    valUnsigned += val.valUnsigned;
+  else if (s1==ePlus && s2==eMinus)
+    valUnsigned += val.valUnsigned;
+  else if (s1==ePlus && s2==ePlus)
+  {
+    if (valUnsigned >= val.valUnsigned)
+      valUnsigned -= val.valUnsigned;
+    else
+    {
+      valUnsigned = val.valUnsigned - valUnsigned;
+      sign = eMinus;
+    }
+  }
+  else if (s1==eMinus && s2==eMinus)
+  {
+    if (valUnsigned >= val.valUnsigned)
+      valUnsigned -= val.valUnsigned;
+    else
+    {
+      valUnsigned = val.valUnsigned - valUnsigned;
+      sign = ePlus;
+    }
+  }
+d327 1
+a327 1
+Value& Value::operator-=(Value& val)
+d332 1
+a332 1
+Value& Value::operator*(Value& val)
+d334 2
+a335 5
+  eSign s1 = sign;
+  eSign s2 = val.sign;
+
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned && val.mType==eValueUnsigned);
+d337 3
+a339 7
+  if (mType==eValueUnsigned && val.mType==eValueUnsigned)
+    valUnsigned = valUnsigned*(val.valUnsigned);
+
+  if (s1 != s2)
+    sign = eMinus;
+  else
+    sign = ePlus;
+d344 1
+a344 1
+Value& Value::operator/(Value& val)
+d346 2
+a347 8
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned && val.mType==eValueUnsigned);
+
+  eSign s1 = sign;
+  eSign s2 = val.sign;
+
+  if (mType==eValueUnsigned && val.mType==eValueUnsigned)
+    valUnsigned = valUnsigned/(val.valUnsigned);
+d349 2
+a350 4
+  if (s1 != s2)
+    sign = eMinus;
+  else
+    sign = ePlus;
+d357 1
+a357 1
+  assert (mType==eValueUnsigned);
+d359 4
+a362 1
+  // TBD: Add support for Bit
+d364 3
+a366 11
+  if (sign == ePlus)
+    valUnsigned += u;
+  else {
+    if (valUnsigned >= u)
+      valUnsigned -= u;
+    else
+    {
+      valUnsigned = u - valUnsigned;
+      sign = ePlus;
+    }
+  }
+d378 1
+a378 2
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned);
+d380 3
+a382 10
+  if (sign==eMinus)
+    valUnsigned += u;
+  else {
+    if (valUnsigned >= u)
+      valUnsigned -= u;
+    else
+    {
+      valUnsigned = u - valUnsigned;
+      sign = eMinus;
+    }
+d385 4
+d399 1
+a399 2
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned);
+d401 4
+a404 1
+  valUnsigned = valUnsigned*u;
+d411 1
+a411 2
+  // TBD: Add support for Bit
+  assert(mType==eValueUnsigned);
+d413 3
+a415 1
+  valUnsigned = valUnsigned/u;
+d420 1
+a420 1
+Value& Value::operator=(Value& v)
+d430 1
+a430 1
+  eBoolean can_optimize = FALSE;
+d437 1
+a437 1
+        can_optimize = TRUE;
+d441 1
+a441 1
+    if (!can_optimize) ValueFree();
+d445 3
+d449 62
+a510 35
+  case eValueUnsigned:
+    valUnsigned = v.valUnsigned;
+    break;
+  case eValueCharPtr:
+    valPtrChar = v.valPtrChar;
+    break;
+  case eValueConstCharPtr:
+    valPtrConstChar = v.valPtrConstChar;
+    break;
+  case eValueChar:
+    valChar = v.valChar;
+    break;
+  case eValueString:
+    if (can_optimize) {
+      *valPtrStr = *v.valPtrStr;
+    }
+    else {
+      // If v allocated the string then follow same policy here.
+      if (v.mNewCalled) valPtrStr = new String(*v.valPtrStr);
+      else              valPtrStr = v.valPtrStr;
+    }
+    break;
+  case eValueBit:
+    if (can_optimize) {
+      *valPtrBit = *v.valPtrBit;
+    }
+    else {
+      // If v allocated the bit then follow same policy here.
+      if (v.mNewCalled) valPtrBit = new Bit(*v.valPtrBit);
+      else              valPtrBit = v.valPtrBit;
+    }
+    break;
+  default:
+    assert(0);
+    break;
+a512 4
+  mType      = v.mType;
+  sign       = v.sign;
+  mNewCalled = v.mNewCalled;
+
+d536 11
+a546 1
+  Value val(v);
+d555 12
+a566 1
+  Value val(v);
+d575 1
+a575 1
+  Value val(v);
+d582 1
+a582 1
+Value& Value::operator=(char *v)
+d584 1
+a584 1
+  Value val(v);
+d591 1
+a591 1
+Value& Value::operator=(const char *v)
+d593 20
+a612 1
+  Value val(v);
+d614 2
+d621 1
+a621 1
+Value& Value::operator=(Bit& v)
+d623 12
+a634 2
+  Value val(v);
+  
+d640 1
+a640 1
+eBoolean Value::operator==(Value& v)
+d642 5
+a646 5
+  // For now: return false straightaway if 'mType' mismatches.
+  // Future: Allow comparisons between:
+  // * Bit/unsigned
+  // * Char*/ConstChar*/String
+  if (mType != v.mType) return FALSE;
+d648 132
+a779 26
+  switch (mType)
+  {
+  case eValueChar:
+    if (valChar == v.valChar) return TRUE;
+    else                      return FALSE;
+    break;
+  case eValueCharPtr:
+    if (!strcmp(valPtrChar, v.valPtrChar)) return TRUE;
+    else                                   return FALSE;
+    break;
+  case eValueConstCharPtr:
+    if (!strcmp(valPtrConstChar, v.valPtrConstChar)) return TRUE;
+    else                                             return FALSE;
+    break;
+  case eValueString:
+    if (valPtrStr == v.valPtrStr) return TRUE;
+    else                          return FALSE;
+    break;
+  case eValueBit:
+    if (*valPtrBit == *v.valPtrBit) return TRUE;
+    else                            return FALSE;
+  case eValueUnsigned:
+    if (sign==v.sign && valUnsigned==v.valUnsigned) return TRUE;
+    else                                            return FALSE;
+  default:
+    assert(0);
+d782 1
+a782 1
+  return FALSE;
+d785 1
+a785 1
+eBoolean Value::operator!=(Value& v)
+d791 146
+a936 1
+eBoolean Value::operator>(Value& v)
+d938 4
+a941 5
+  // Should not allow comparison if type's dont match.
+  assert(mType == v.mType);
+  // Future: Allow comparisons between:
+  // * Bit/unsigned
+  // * Char*/ConstChar*/String
+d943 23
+a965 20
+  switch (mType)
+  {
+  case eValueChar:
+    if (valChar > v.valChar) return TRUE;
+  case eValueConstCharPtr:
+    if (strcmp(valPtrConstChar, v.valPtrConstChar) > 0) return TRUE;
+  case eValueCharPtr:
+    if (strcmp(valPtrChar, v.valPtrChar) > 0) return TRUE;
+  case eValueString:
+    if (strcmp((char*)valPtrStr, (char*)v.valPtrStr) > 0)
+      return TRUE;
+  case eValueBit:
+      if (*valPtrBit > *v.valPtrBit) return TRUE;
+      else                           return FALSE;
+  case eValueUnsigned:
+    if (sign == v.sign)
+    {
+      if (valUnsigned > v.valUnsigned)
+        if (sign==ePlus) return TRUE;
+        else return FALSE;
+d967 3
+a969 6
+    else if (sign < v.sign)
+      return TRUE;
+    else if (sign > v.sign)
+      return FALSE;
+  default:
+    assert(0);
+d972 1
+a972 1
+  return FALSE;
+d975 1
+a975 1
+eBoolean Value::operator<(Value& v)
+d977 4
+a980 5
+  // Should not allow comparison if type's dont match.
+  assert(mType == v.mType);
+  // Future: Allow comparisons between:
+  // * Bit/unsigned
+  // * Char*/ConstChar*/String
+d982 23
+a1004 23
+  switch (mType)
+  {
+  case eValueChar:
+    if (valChar < v.valChar) return TRUE;
+    break;
+  case eValueConstCharPtr:
+    if (strcmp(valPtrConstChar, v.valPtrConstChar) < 0) return TRUE;
+    break;
+  case eValueCharPtr:
+    if (strcmp(valPtrChar, v.valPtrChar) < 0) return TRUE;
+    break;
+  case eValueString:
+    if (strcmp((char*)valPtrStr, (char*)v.valPtrStr) < 0) return TRUE;
+    break;
+  case eValueBit:
+    if (*valPtrBit < *v.valPtrBit) return TRUE;
+    break;
+  case eValueUnsigned:
+    if (sign == v.sign)
+    {
+      if (valUnsigned < v.valUnsigned)
+        if (sign==ePlus) return TRUE;
+        else return FALSE;
+d1006 3
+a1008 6
+    else if (sign < v.sign)
+      return TRUE;
+    else if (sign > v.sign)
+      return FALSE;
+  default:
+    assert(0);
+d1011 1
+a1011 1
+  return FALSE;
+d1014 1
+a1014 1
+eBoolean Value::operator<=(Value& v)
+d1016 3
+a1018 5
+  // Should not allow comparison if type's dont match.
+  assert(mType == v.mType);
+  // Future: Allow comparisons between:
+  // * Bit/unsigned
+  // * Char*/ConstChar*/String
+a1019 2
+  // Need to be careful for Bit comparison, cannot split the <= into
+  // two separate comparisons because Bit will reset msb, lsb.
+d1021 21
+a1041 1
+    if (*valPtrBit <= *v.valPtrBit) return TRUE;
+d1044 1
+a1044 1
+    if (*this<v || *this==v) return TRUE;
+d1047 1
+a1047 1
+  return FALSE;
+d1050 1
+a1050 1
+eBoolean Value::operator>=(Value& v)
+d1052 21
+a1072 13
+  // Should not allow comparison if type's dont match.
+  assert(mType == v.mType);
+  // Future: Allow comparisons between:
+  // * Bit/unsigned
+  // * Char*/ConstChar*/String
+
+  // Need to be careful for Bit comparison, cannot split the <= into
+  // two separate comparisons because Bit will reset msb, lsb.
+  if (mType == eValueBit) {
+    if (*valPtrBit>=*v.valPtrBit) return TRUE;
+  }
+  else {
+    if (*this>v || *this==v) return TRUE;
+d1075 1
+a1075 1
+  return FALSE;
+d1078 1
+a1078 1
+eBoolean Value::operator==(int v)
+d1080 1
+a1080 2
+  Value val(v);
+  return (*this == val);
+d1083 1
+a1083 1
+eBoolean Value::operator!=(int v)
+d1085 24
+a1108 2
+  Value val(v);
+  return (*this != val);
+d1111 1
+a1111 1
+eBoolean Value::operator>(int v)
+d1113 24
+a1136 2
+  Value val(v);
+  return (*this > val);
+d1139 1
+a1139 1
+eBoolean Value::operator<(int v)
+d1141 24
+a1164 2
+  Value val(v);
+  return (*this < val);
+d1167 1
+a1167 1
+eBoolean Value::operator<=(int v)
+d1169 24
+a1192 2
+  Value val(v);
+  return (*this <= val);
+d1195 1
+a1195 1
+eBoolean Value::operator>=(int v)
+d1197 24
+a1220 2
+  Value val(v);
+  return (*this >= val);
+d1223 1
+a1223 1
+eBoolean Value::operator==(short v)
+d1225 1
+a1225 2
+  Value val(v);
+  return (*this == val);
+d1228 1
+a1228 1
+eBoolean Value::operator!=(short v)
+d1230 24
+a1253 2
+  Value val(v);
+  return (*this != val);
+d1256 1
+a1256 1
+eBoolean Value::operator>(short v)
+d1258 24
+a1281 2
+  Value val(v);
+  return (*this > val);
+d1284 1
+a1284 1
+eBoolean Value::operator<(short v)
+d1286 24
+a1309 2
+  Value val(v);
+  return (*this < val);
+d1312 1
+a1312 1
+eBoolean Value::operator<=(short v)
+d1314 24
+a1337 2
+  Value val(v);
+  return (*this <= val);
+d1340 1
+a1340 1
+eBoolean Value::operator>=(short v)
+d1342 19
+a1360 2
+  Value val(v);
+  return (*this >= val);
+d1363 1
+a1363 1
+eBoolean Value::operator==(unsigned short v)
+d1365 1
+a1365 2
+  Value val(v);
+  return (*this == val);
+d1368 1
+a1368 1
+eBoolean Value::operator!=(unsigned short v)
+d1370 19
+a1388 2
+  Value val(v);
+  return (*this != val);
+d1391 1
+a1391 1
+eBoolean Value::operator>(unsigned short v)
+d1393 19
+a1411 2
+  Value val(v);
+  return (*this > val);
+d1414 1
+a1414 1
+eBoolean Value::operator<(unsigned short v)
+d1416 19
+a1434 2
+  Value val(v);
+  return (*this < val);
+d1437 1
+a1437 1
+eBoolean Value::operator<=(unsigned short v)
+d1439 19
+a1457 2
+  Value val(v);
+  return (*this <= val);
+d1460 1
+a1460 1
+eBoolean Value::operator>=(unsigned short v)
+d1462 17
+a1478 2
+  Value val(v);
+  return (*this >= val);
+d1481 1
+a1481 1
+eBoolean Value::operator==(unsigned v)
+d1483 1
+a1483 2
+  Value val(v);
+  return (*this == val);
+d1486 1
+a1486 1
+eBoolean Value::operator!=(unsigned v)
+d1488 19
+a1506 2
+  Value val(v);
+  return (*this != val);
+d1509 1
+a1509 1
+eBoolean Value::operator>(unsigned v)
+d1511 19
+a1529 2
+  Value val(v);
+  return (*this > val);
+d1532 1
+a1532 1
+eBoolean Value::operator<(unsigned v)
+d1534 19
+a1552 2
+  Value val(v);
+  return (*this < val);
+d1555 1
+a1555 1
+eBoolean Value::operator<=(unsigned v)
+d1557 19
+a1575 2
+  Value val(v);
+  return (*this <= val);
+d1578 1
+a1578 1
+eBoolean Value::operator>=(unsigned v)
+d1580 1
+a1580 3
+  Value val(v);
+  return (*this >= val);
+}
+a1581 3
+eBoolean Value::operator==(char* v)
+{
+  Value val(v);
+d1585 1
+a1585 1
+eBoolean Value::operator!=(char* v)
+d1587 2
+a1588 1
+  Value val(v);
+d1592 1
+a1592 1
+eBoolean Value::operator>(char* v)
+d1594 2
+a1595 1
+  Value val(v);
+d1599 1
+a1599 1
+eBoolean Value::operator<(char* v)
+d1601 2
+a1602 1
+  Value val(v);
+d1606 1
+a1606 1
+eBoolean Value::operator<=(char* v)
+d1608 2
+a1609 1
+  Value val(v);
+d1613 1
+a1613 1
+eBoolean Value::operator>=(char* v)
+d1615 2
+a1616 1
+  Value val(v);
+d1620 1
+a1620 1
+eBoolean Value::operator==(const char* v)
+d1622 2
+a1623 1
+  Value val(v);
+d1627 1
+a1627 1
+eBoolean Value::operator!=(const char* v)
+d1629 2
+a1630 1
+  Value val(v);
+d1634 1
+a1634 1
+eBoolean Value::operator>(const char* v)
+d1636 2
+a1637 1
+  Value val(v);
+d1641 1
+a1641 1
+eBoolean Value::operator<(const char* v)
+d1643 2
+a1644 1
+  Value val(v);
+d1648 1
+a1648 1
+eBoolean Value::operator<=(const char* v)
+d1650 2
+a1651 1
+  Value val(v);
+d1655 1
+a1655 1
+eBoolean Value::operator>=(const char* v)
+d1657 2
+a1658 1
+  Value val(v);
+d1662 3
+a1664 1
+eBoolean Value::operator==(Bit& b)
+d1666 1
+a1666 1
+  assert(mType==eValueBit || mType==eValueUnsigned);
+d1669 14
+a1682 6
+  case eValueBit:
+    if (*valPtrBit == b) return TRUE;
+    else                 return FALSE;
+  case eValueUnsigned:
+    if (valUnsigned == (unsigned int)b) return TRUE;
+    else                                return FALSE;
+d1684 2
+d1688 1
+a1688 1
+eBoolean Value::operator!=(Bit& b)
+d1694 49
+a1742 1
+eBoolean Value::operator>(Bit& b)
+d1744 1
+a1744 1
+  assert(mType==eValueBit || mType==eValueUnsigned);
+d1747 14
+a1760 6
+  case eValueBit:
+    if (*valPtrBit > b) return TRUE;
+    else                return FALSE;
+  case eValueUnsigned:
+    if (valUnsigned > (unsigned int)b) return TRUE;
+    else                               return FALSE;
+d1762 2
+d1766 1
+a1766 1
+eBoolean Value::operator<(Bit& b)
+d1768 21
+a1788 1
+  assert(mType==eValueBit || mType==eValueUnsigned);
+d1790 2
+d1793 11
+a1803 6
+  case eValueBit:
+    if (*valPtrBit < b) return TRUE;
+    else                return FALSE;
+  case eValueUnsigned:
+    if (valUnsigned < (unsigned int)b) return TRUE;
+    else                               return FALSE;
+d1805 2
+d1809 1
+a1809 1
+eBoolean Value::operator>=(Bit& b)
+d1811 2
+a1812 1
+  assert(mType==eValueBit || mType==eValueUnsigned);
+d1814 2
+d1817 13
+a1829 6
+  case eValueBit:
+    if (*valPtrBit >= b) return TRUE;
+    else                 return FALSE;
+  case eValueUnsigned:
+    if (valUnsigned >= (unsigned int)b) return TRUE;
+    else                                return FALSE;
+d1831 2
+d1835 1
+a1835 1
+eBoolean Value::operator<=(Bit& b)
+d1837 3
+a1839 1
+  assert(mType==eValueBit || mType==eValueUnsigned);
+d1841 2
+d1844 25
+a1868 6
+  case eValueBit:
+    if (*valPtrBit <= b) return TRUE;
+    else                 return FALSE;
+  case eValueUnsigned:
+    if (valUnsigned <= (unsigned int)b) return TRUE;
+    else                                return FALSE;
+d1870 9
+d1891 1
+a1891 1
+  assert(mType==eValueUnsigned || mType==eValueBit);
+d1893 12
+a1904 8
+  switch (mType)
+  {
+  case eValueUnsigned:
+    // TBD: Change code not to allow truncation
+    if (sign == eMinus) return -(valUnsigned&SHRT_MAX);
+    else                return  (valUnsigned&SHRT_MAX);
+  case eValueBit:
+    return (short)(*valPtrBit);
+d1906 2
+d1914 1
+a1914 1
+  assert(mType==eValueUnsigned || mType==eValueBit);
+d1916 12
+a1927 7
+  switch (mType)
+  {
+  case eValueUnsigned:
+    // TBD: Change code not to allow truncation
+    return s = valUnsigned&USHRT_MAX;
+  case eValueBit:
+    return (unsigned short)(*valPtrBit);
+d1929 2
+d1935 1
+a1935 1
+  assert(mType==eValueUnsigned || mType==eValueBit);
+d1938 9
+a1946 6
+  case eValueUnsigned:
+    // TBD: Change code not to allow truncation
+    if (sign == eMinus) return -(valUnsigned&INT_MAX);
+    else                return  (valUnsigned&INT_MAX);
+  case eValueBit:
+    return (int)(*valPtrBit);
+d1948 2
+d1954 1
+a1954 1
+  assert(mType==eValueUnsigned || mType==eValueBit);
+d1957 9
+a1965 4
+  case eValueUnsigned:
+    return valUnsigned&UINT_MAX;
+  case eValueBit:
+    return (unsigned int)(*valPtrBit);
+d1967 2
+d1975 2
+a1976 2
+  assert(   mType==eValueConstCharPtr || mType==eValueChar
+         || mType==eValueCharPtr      || mType==eValueString);
+d1978 14
+a1991 15
+  switch (mType)
+  {
+  case eValueChar:
+    return c=valChar;
+  case eValueCharPtr:
+    if (valPtrChar!=0) return c=valPtrChar[0];
+    else               return c='\0';
+  case eValueConstCharPtr:
+    if (valPtrConstChar!=0) return c=valPtrConstChar[0];
+    else                    return c='\0';
+  case eValueString:
+    return c=valPtrStr->Getc(0);
+  default:
+    assert(0);
+    return c='\0';
+d1993 2
+d1999 3
+a2001 1
+  assert(mType == eValueConstCharPtr || mType==eValueString);
+d2004 10
+a2013 7
+  case eValueConstCharPtr:
+    return valPtrConstChar;
+  case eValueString:
+    // This is not clean but a compromise solution.
+    // Problem is when the String is deleted the pointer
+    // returned here becomes invalid.
+    return (const char*)valPtrStr;
+d2015 2
+d2023 1
+a2023 1
+  if (mType == eValueCharPtr) return valPtrChar;
+d2028 7
+d2039 39
+a2077 1
+  (*valPtrBit).SetMsbLsb(msb, lsb);
+d2080 1
+a2080 1
+eBoolean Value::operator>>(FILE* fp)
+d2082 56
+a2137 1
+  if (fp == 0) return FALSE;
+d2139 9
+a2147 17
+  switch (mType)
+  {
+  case eValueChar:
+    fprintf(fp, "%c", valChar);
+    break;
+  case eValueCharPtr:
+    fprintf(fp, "%s", valPtrChar);
+    break;
+  case eValueString:
+    fprintf(fp, "%s", (char*)valPtrStr);
+    break;
+  case eValueBit:
+    valPtrBit->Print(fp);
+    break;
+  case eValueUnsigned:
+    if (sign==eMinus)
+      fprintf(fp, "%c", '-');
+d2149 3
+a2151 4
+    fprintf(fp, "%u", valUnsigned);
+    break;
+  default:
+    assert(0);
+d2154 1
+a2154 1
+  return TRUE;
+d2159 34
+a2192 23
+  switch (mType)
+  {
+  case eValueChar:
+  case eValueCharPtr:
+  case eValueConstCharPtr:
+  case eValueUnsigned:
+  case eValueUnknown:
+    // nothing to free for built-in types.
+    break;
+  case eValueString:
+    if (mNewCalled) {
+      delete valPtrStr;
+      mNewCalled = FALSE;
+    }
+    break;
+  case eValueBit:
+    if (mNewCalled) {
+      delete valPtrBit;
+      mNewCalled = FALSE;
+    }
+    break;
+  default:
+    assert(0);
+d2196 5
+d2205 4
+a2208 1
+      valUnsigned = UINT_MAX;
+d2211 1
+a2211 1
+      valPtrBit->BitSetAll();
+d2214 1
+a2214 1
+    case eValueConstCharPtr:
+d2217 2
+a2218 1
+      assert(0); // probably warning is enough
+d2228 4
+a2231 1
+      valUnsigned = 0;
+d2234 1
+a2234 1
+      valPtrBit->BitClearAll();
+d2237 1
+a2237 1
+    case eValueConstCharPtr:
+d2240 2
+a2241 1
+      assert(0); // probably warning is enough
+d2248 10
+a2257 1
+void Value::Print()
+d2259 1
+a2259 2
+  *this >> stdout;
+  fprintf(stdout, "\n");
+@
+
+
+1.2
+log
+@1. Added initial Bit support, some more are TBD.
+2. Added prefix 'm' for class members.
+3. Made fixes to potential problems (forgot the details, difficult to
+   determine with rcsdiff).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d10 3
+d23 8
+d120 1
+a120 1
+Value::Value(Bit* v) :
+d124 1
+a124 1
+  valPtrBit   (v)
+d128 1
+a128 1
+Value::Value(Bit& v) :
+d134 1
+a134 1
+  valPtrBit = new Bit(v);
+d149 34
+d352 71
+d1205 39
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile:$
+// $Revision:$
+d9 1
+d13 2
+a14 2
+  newCalled   (FALSE),
+  type        (eValueUnknown),
+d21 2
+a22 2
+  newCalled   (FALSE),
+  type        (eValueUnsigned),
+d35 2
+a36 2
+  newCalled   (FALSE),
+  type        (eValueUnsigned),
+d43 2
+a44 2
+  newCalled   (FALSE),
+  type        (eValueUnsigned),
+d58 2
+a59 2
+  newCalled   (FALSE),
+  type        (eValueUnsigned),
+d66 2
+a67 2
+  newCalled   (FALSE),
+  type        (eValueChar),
+d74 2
+a75 2
+  newCalled   (FALSE),
+  type        (eValueCharPtr),
+d82 2
+a83 2
+  newCalled   (FALSE),
+  type        (eValueCharPtr),
+d87 1
+a87 1
+  valPtrChar = (char*)v;
+d91 2
+a92 2
+  newCalled   (FALSE),
+  type        (eValueString),
+d99 2
+a100 2
+  newCalled   (TRUE),
+  type        (eValueString),
+d110 2
+a111 2
+  newCalled   (FALSE),
+  type        (eValueBit),
+d118 2
+a119 2
+  newCalled   (TRUE),
+  type        (eValueBit),
+d121 1
+a121 1
+  valPtrBit   (v)
+d130 1
+a130 11
+  if (newCalled) {
+    switch (type)
+    {
+    case eValueString:
+      delete valPtrStr;
+      break;
+
+    default:
+      break;
+    }
+  }
+d138 1
+a138 1
+eBoolean Value::Set(eValueType typ, char* str)
+d140 1
+a140 21
+  if (str == 0) return FALSE;
+
+  char     c = '\0';
+  unsigned u = 0;
+
+  switch (typ)
+  {
+  case eValueChar:
+    *this = str[0];
+    break;
+  case eValueString:
+    *this = str;
+    break;
+  default:
+    if (str[0] == '-')
+    {
+      str++;
+      sign = eMinus;
+    }
+
+    int ret = sscanf(str, "%u", &u);
+d142 1
+a142 1
+    assert(ret);
+d144 1
+a144 11
+    if (ret) *this = u;
+  }
+
+  return TRUE;
+}
+
+Value& Value::operator++()
+{
+  assert(type == eValueUnsigned);
+
+  if (type == eValueUnsigned)
+d152 3
+a154 1
+  assert(type == eValueUnsigned);
+d156 1
+a156 1
+  if (type == eValueUnsigned)
+d164 1
+a164 1
+  assert(type == eValueUnsigned);
+d166 3
+a168 1
+  if (type == eValueUnsigned)
+d177 1
+a177 2
+  if ((type==eValueString || type==eValueChar)
+  &&  (val.type==eValueString || val.type==eValueChar))
+d183 2
+a184 1
+  assert(type==eValueUnsigned && val.type==eValueUnsigned);
+d186 1
+a186 1
+  if (type!=eValueUnsigned || val.type!=eValueUnsigned)
+d227 2
+a228 1
+  assert(type==eValueUnsigned && val.type==eValueUnsigned);
+d230 1
+a230 1
+  if (type!=eValueUnsigned || val.type!=eValueUnsigned)
+d274 2
+a275 1
+  assert(type==eValueUnsigned && val.type==eValueUnsigned);
+d277 1
+a277 1
+  if (type==eValueUnsigned && val.type==eValueUnsigned)
+d290 2
+a291 1
+  assert(type==eValueUnsigned && val.type==eValueUnsigned);
+d296 1
+a296 1
+  if (type==eValueUnsigned && val.type==eValueUnsigned)
+d309 18
+a326 2
+  if (type==eValueString && newCalled)
+    delete valPtrStr;
+d328 3
+a330 3
+  type      = v.type;
+  sign      = v.sign;
+  newCalled = v.newCalled;
+d332 1
+a332 1
+  switch (type) {
+d336 2
+a337 4
+  case eValueString:
+    // If v allocated the string then follow same policy here.
+    if (v.newCalled) valPtrStr = new String(*v.valPtrStr);
+    else             valPtrStr = v.valPtrStr;
+d339 2
+a340 10
+  case eValueCharPtr:
+    if (v.newCalled) {
+      valPtrChar = new char [strlen(v.valPtrChar)+1];
+
+      assert(valPtrChar);
+      if (valPtrChar) strcpy(valPtrChar, v.valPtrChar);
+    }
+    else
+      valPtrChar = v.valPtrChar;
+
+d345 20
+d366 1
+d370 4
+d440 9
+d451 5
+a455 2
+  // Return false straightaway if 'type' mismatches.
+  if (type != v.type) return FALSE;
+d457 1
+a457 1
+  switch (type)
+d467 4
+d475 4
+a478 1
+  default:
+d481 2
+a484 1
+  // Should not reach here but return false.
+d497 4
+a500 1
+  assert(type == v.type);
+d502 1
+a502 1
+  switch (type)
+d506 2
+d513 4
+a516 1
+  default:
+d527 2
+d537 4
+a540 1
+  assert(type == v.type);
+d542 1
+a542 1
+  switch (type)
+d545 5
+a549 2
+    if (valChar < v.valChar)
+      return TRUE;
+d552 1
+d554 6
+a559 3
+    if (strcmp((char*)valPtrStr, (char*)v.valPtrStr) < 0)
+      return TRUE;
+  default:
+d570 2
+d573 1
+d580 13
+a592 4
+  assert(type == v.type);
+
+  if (*this<v || *this==v)
+    return TRUE;
+d600 13
+a612 4
+  assert(type == v.type);
+
+  if (*this>v || *this==v)
+    return TRUE;
+d833 76
+d919 1
+a919 2
+  if (sign == eMinus)
+    return -(valUnsigned&SHRT_MAX);
+d921 9
+a929 1
+  return valUnsigned&SHRT_MAX;
+d934 12
+a945 1
+  return valUnsigned&USHRT_MAX;
+d950 1
+a950 2
+  if (sign == eMinus)
+    return -(valUnsigned&INT_MAX);
+d952 8
+a959 1
+  return valUnsigned&INT_MAX;
+d964 8
+a971 1
+  return valUnsigned&UINT_MAX;
+d976 6
+a981 1
+  switch (type)
+d984 1
+a984 1
+    return valChar;
+d986 5
+a990 2
+    if (valPtrChar!=0) return valPtrChar[0];
+    else               return '\0';
+d992 1
+a992 1
+    return valPtrStr->Getc(0);
+d994 2
+a995 1
+    return '\0';
+d1001 11
+a1011 1
+  return (char*)(*this);
+d1016 10
+a1025 12
+  switch (type)
+  {
+  case eValueCharPtr:
+    return valPtrChar;
+    break;
+  case eValueString:
+    return (char*)(*valPtrStr);
+    break;
+  default:
+    assert(0);
+  }
+  // TBD: What to do with unsigned and bit
+d1027 1
+a1027 1
+  return (char*)0;
+d1034 1
+a1034 1
+  switch (type)
+d1037 1
+a1037 1
+    fprintf(fp, "%c", valPtrStr->Getc(0));
+d1045 4
+a1048 1
+  default:
+d1053 3
+d1061 28
+@

@@ -1,0 +1,105 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2010.09.22.20.24.59;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2009.07.19.01.43.41;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@1. Added enum signal position info to InterfaceDescription.
+@
+text
+@// $RCSfile: RW_Interface.cc,v $
+// $Revision: 1.1 $
+
+#include "Interface.h"
+
+// Note: Any new interface signals need to be also added in Interfaces.h .
+const char* const cRWIntf_Clk  = "RWIntf_Clk";
+const char* const cRWIntf_Req  = "RWIntf_Req";
+const char* const cRWIntf_Addr = "RWIntf_Addr";
+const char* const cRWIntf_Data = "RWIntf_Data";
+const char* const cRWIntf_Ack  = "RWIntf_Ack";
+
+InterfaceDescription RWMaster_Interface[] = {
+  eRWIntf_Clk,  cRWIntf_Clk,   1, eSignalType_Input,   "CLK",
+  eRWIntf_Req,  cRWIntf_Req,   1, eSignalType_Output,  "MAS",
+  eRWIntf_Addr, cRWIntf_Addr, 32, eSignalType_Output,  "MAS",
+  eRWIntf_Data, cRWIntf_Data, 32, eSignalType_Output,  "MAS",
+  eRWIntf_Ack , cRWIntf_Ack ,  1, eSignalType_Input,   "MAS",
+  eRWIntf_END,  "",            0, eSignalType_Invalid, "",
+};
+
+InterfaceDescription RWSlave_Interface[] = {
+  eRWIntf_Clk,  cRWIntf_Clk,   1, eSignalType_Input,   "CLK",
+  eRWIntf_Req,  cRWIntf_Req,   1, eSignalType_Input,   "SLV",
+  eRWIntf_Addr, cRWIntf_Addr, 32, eSignalType_Input,   "SLV",
+  eRWIntf_Data, cRWIntf_Data, 32, eSignalType_Input,   "SLV",
+  eRWIntf_Ack , cRWIntf_Ack ,  1, eSignalType_Output,  "SLV",
+  eRWIntf_END,  "",            0, eSignalType_Invalid, "",
+};
+
+InterfaceDescription RWMonitor_Interface[] = {
+  eRWIntf_Clk,  cRWIntf_Clk,   1, eSignalType_Input,   "CLK",
+  eRWIntf_Req,  cRWIntf_Req,   1, eSignalType_Input,   "MON",
+  eRWIntf_Addr, cRWIntf_Addr, 32, eSignalType_Input,   "MON",
+  eRWIntf_Data, cRWIntf_Data, 32, eSignalType_Input,   "MON",
+  eRWIntf_Ack , cRWIntf_Ack ,  1, eSignalType_Input,   "MON",
+  eRWIntf_END,  "",            0, eSignalType_Invalid, "",
+};
+
+// End
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+// $RCSfile: template.txt,v $
+a12 1
+// CONT: Add eSignalType_Clock to all interfaces and make sure it is updated from clk.
+d14 6
+a19 6
+  cRWIntf_Clk,   1, eSignalType_Clock,   "CLK",
+  cRWIntf_Req,   1, eSignalType_Output,  "MAS",
+  cRWIntf_Addr, 32, eSignalType_Output,  "MAS",
+  cRWIntf_Data, 32, eSignalType_Output,  "MAS",
+  cRWIntf_Ack ,  1, eSignalType_Input,   "MAS",
+  "",            0, eSignalType_Invalid, ""
+d23 6
+a28 6
+  cRWIntf_Clk,   1, eSignalType_Clock,   "CLK",
+  cRWIntf_Req,   1, eSignalType_Input,   "SLV",
+  cRWIntf_Addr, 32, eSignalType_Input,   "SLV",
+  cRWIntf_Data, 32, eSignalType_Input,   "SLV",
+  cRWIntf_Ack ,  1, eSignalType_Output,  "SLV",
+  "",            0, eSignalType_Invalid, ""
+d32 6
+a37 6
+  cRWIntf_Clk,   1, eSignalType_Clock,   "CLK",
+  cRWIntf_Req,   1, eSignalType_Input,   "MON",
+  cRWIntf_Addr, 32, eSignalType_Input,   "MON",
+  cRWIntf_Data, 32, eSignalType_Input,   "MON",
+  cRWIntf_Ack ,  1, eSignalType_Input,   "MON",
+  "",            0, eSignalType_Invalid, "",
+@

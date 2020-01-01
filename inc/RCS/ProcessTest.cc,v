@@ -1,0 +1,65 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2009.07.19.01.38.40;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#include <stdio.h>
+
+#include "ProcessTest.h"
+
+#include "Interfaces.h"
+#include "Scheduler.h"
+
+extern Scheduler* gScheduler;
+
+ProcessTest::ProcessTest(const char* name, Interface* intf, Module* parent_module) :
+  Process             (name, intf, parent_module),
+  mProcessTestState   (0),
+  //
+  mDelay              (5)
+{
+}
+
+ProcessTest::~ProcessTest()
+{
+}
+
+void ProcessTest::Execute(bool& all_ok)
+{
+  unsigned tm = gScheduler->SimulationTimeGet();
+
+  printf("[%u] Process %s: executing\n", tm, (const char*)mProcessName);
+
+  switch (mProcessTestState) {
+    case 0: {
+      // Wait 5 clocks.
+      if ( mDelay) mDelay--;
+      if (!mDelay) mProcessTestState = 1;
+    }
+    case 1: {
+      // Drive write
+    }
+  }
+
+  all_ok = TRUE;
+}
+
+// End
+@

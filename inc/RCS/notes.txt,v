@@ -1,0 +1,3027 @@
+head	1.3;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2011.12.20.17.37.14;	author robert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.15.42.26;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.03.22.43;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@Long, overdue checkin of the notes.
+@
+text
+@Index_End (shortcut).
+Index     (shortcut).
+ideas     (shortcut).
+CurrentSynchronizationPrimitivesLackArbitration (shortcut)
+
+# Frequently accessed notes:
+# Scheduler_logic_overall_with_interfaces.
+
+Index:
+000 Format_of_this_file.
+001 Coding_conventions.
+002 Database_file_dependencies.
+003 Cpp_classes_needed.
+004 General_Structure (without Threads).
+005 Bit_class_features.
+006 Cursor_API_and_Table_Views.
+007 Using_Database_Tables_like_Mailboxes.
+008 General_Structure_with_Threads.
+009 Workaround_for_inability_to_register_member_pointer_functions_in_ClockMgr.
+010 New_Query_class.
+011 Desired_table_access_permissions.
+012 Setting_and_resolving_Record_permissions.
+013 Integrating_a_learning_mode_into_the_test_environment.
+014 Guidelines_to_make_code_look_like_pseudo_code.
+015 Qualities_of_a_good_verification_environment.
+016 Database_Triggers.
+017 Database_class.
+018 Tests_without_recompile (using an Interpreter).
+019 Figure_out_how_to_implement_random_stability.
+020 Use_TransactionList_to_manage_database_changes.
+021 Non_attribute_related_queries.
+022 Usage_model_with_vera.
+023 Verification_environment_boot_steps.
+024 Figure_out_how_view_will_delete_records.
+025 Aggregate_API.
+026 Aggregates_Triggers_and_Commit.
+027 Database_Join.
+028 Dynamic_record_add_for_views.
+029 Constraint_database.
+030 Software_Hardware_Communication.
+031 Main_environment_events_from_start_to_finish.
+032 Is_it_possible_to_use_a_macro_to_emulate_thread_blocking.
+033 Timer_API.
+034 Scheduler_logic_invoking_processes.
+035 Scheduler_logic_overall.
+036 Process_to_process_communication.
+037 Documentation_strategy.
+038 Const_correctness.
+039 Events.
+030 Example_of_Snps_Pcie_Env_with_VerifEngine.
+041 TE_Process.
+042 Re_entrancy.
+043 Mechanism_for_using_class_method_as_a_process.
+044 Scheduler_logic_overall_with_interfaces.
+045 Should_we_define_Interfaces.
+046 Interface_API.
+047 Signal_class.
+048 Incorporating_Events_and_Triggers.
+049 Scheduler_Tables_Views_and_Algorithm.
+040 How_to_query_fields_that_have_references.
+051 Sorting_Records_in_LinkList.
+052 Attach_Processes_to_Interface_Signals.
+053 SynchronizerFifos_to_connect_Processes_with_different_clocks.
+054 Modify_Scheduler_to_manage_Clocks.
+055 Interface_Usage.
+056 Using_a_Table_for_runtime_errors_and_warnings.
+057 Tests_without_recompile_implementation.
+058 Connector_class.
+059 RecordSharingInMultipleViews.
+060 Process_Add.
+061 FineTuningDbCommit.
+062 PseudoCodeForVcdDump.
+063 Mapping_class_members_to_db_table.
+064 SimulatorClass.
+065 MailboxImplementation.
+066 SortingProcessInScheduler.
+067 UsefulWebLinks.
+068 HashImplemention.
+069 JoinImplemention.
+070 HookingItAllUp.
+071 GlobalEventClass.
+072 ConfigurationClass.
+073 ConfiguationFileFormat.
+074 ClockProcessesInterfaceSubInterfaceSignalEdgeHookup.
+075 MakingProcessSensitiveToAnyInputSignal.
+076 ModuleProcessInterfaceDynamicCreation.
+077 HowToAllowSubModulesToDriveOutputsOrReceiveInputs.
+078 SignalsBehavingLikeReg.
+079 QueriesWithRegex.
+080 ConditionClassEnhanced.
+081 NeedParentChildProcessRelationshipAndInfo.
+082 CurrentSynchronizationPrimitivesLackArbitration.
+Index_End
+
+#000 Format_of_this_file:
+  Each note is added to the index and then described at the current end of the
+  file. The following abbreviations are used:
+  A Answer to question.
+  C Comment (to deliberate on a question).
+  I Implementation.
+  Q Question.
+  > Code inline.
+  - List Item.
+  + List Item.
+
+#001 Coding_conventions
+   Prefix rules:
+     Single alphabet prefix rules:
+     - used mainly for C++ identifiers.
+     - these convey C++ language specific meaning.
+     - the single alphabet must be lowercase.
+     - separate prefixes for unimportant implementation variables.
+     - the alphabet must be followed immediately by a Upper case alphabet
+       and continue with a Mixed case, each upper case letter starts a new word,
+       any abbreviations like RW (for read-write) should be followed by an
+       underscore.
+     - example: cMaxValue,  used for a C++ const identifier.
+                eRW_Master, enum where underscore follows the abbreviation RW.
+     (prefix must be lowercase)
+     c                     => constant (may or may not be global)
+     e                     => enum
+     g                     => global
+     m                     => class member
+     im                    => class implementation member
+     mp                    => class member pointer
+     mpp                   => class member pointer to a pointer
+     imp                   => implementsion member pointer
+     s                     => struct
+     z                     => misc, use when no other convention fits
+     M_                    => #define macro
+     D_                    => simple #define name val
+   Other:
+     [A-Z][A-Za-x0-9_]     => Class, Task, Function
+     AllLower              => task, function local variable
+   Postfix rules:
+     Enc                   => encoded value (eg: max_payload 010 = 256 bytes)
+     List                  => List variable, example: List<Process> mProcessList;
+   Local variables:
+     - Use all lowercase with underscore separating words.
+   Class structure:
+     - Define class contens in the following order:
+       - friends,
+       - public functions
+       - public members
+       - protected functions
+       - protected members
+       - private members
+       - private functions
+       - implementation members
+       - implementation functions
+   Memory allocation:
+     - Postfix a function name with 'Alloc' or 'New' when memory is allocated by
+       the function which must be freed by the user, use postfix 'Free' or
+       'Delete' in the fucntion name that will free the memory.
+     - Postfix a function with 'Get' when the caller function will manage the
+       memory, in that case there is no need to call any free or delete by the
+       user.
+   Layout:
+     - No double space lines in any file.
+     - Always use space after if, for, while .
+     - Always precede a space before {, }.
+
+  Guidelines:
+  - Use only line comments //, not /* ... */ allowed.
+  - indentation 2 or 3 spaces
+  - no tabs allowed anywhere
+  - indent for all conditional blocks. Automatic indent after function name.
+  - align code as much as possible. Align consecutive assignments at = col.
+  - keep member function def outside class declaration (exception ok if tiny).
+  - try to make the code look as close as possible to high-level pseudo-code.
+  - log msg's to use short macro & avoid args not pertaining to msg (save space)
+  - For comments, first explain what is being solved, then explain how.
+  - No need for space between every token as this reduces meaning of a space.
+  - Each file to have $RCSfile and $Revision but not revision history or author.
+  - Avoid typedefs to built-in types (ie always refer to known builtin types).
+  - Avoid code fragmentation caused by multitude of classes and functions.
+  - In if-else blocks try to setup conditions such that shorter block first.
+  - Extensive hyperlinking for/between code/comments/documentation.
+  - Avoid > 1 statement per line for readability and debugger line stepping.
+  - Connect related lines of code with // instead of a line space.
+  - When separation is needed between related code lines use single // not \n.
+  - End each file with // END, helps for scroll and print (no page missing).
+  - Mark code where work needs to be done in future with:
+    - TBD     to-be-done
+    - IMPR    improve
+    - CONT    continue unfinished code
+    - FIX     fix problem
+    - DEBUG   debug this code
+
+#002 Database_file_dependencies:
+    NAME      DEPENDENCY
+   String     none
+   List       none
+   Value      String
+   Attribute  Value
+   Record     Value, Table, Query
+   Query      Record, Value, BucketList
+   Table      Record, Query, Value, Attribute, List
+
+#003 Cpp_classes_needed:
+  In addition to database related classes we will need:
+  + Thread
+  + BFM
+  + Clock
+  + Interface
+
+#004 General_Structure (without Threads):
+  main() {
+     // Create Verification Infrastructure Components.
+     Control    *ctrl   = new;
+     Database   *db     = new ("Name", ctrl);
+     EnvManager *envMgr = new ("Name", db, ctrl);
+
+     ClockManager *gClkMgr = new("Name", freq, unit, db, ctrl);
+     clk->AddClock("Name", freq, unit, ctrl);
+
+     // Create Database Tables that will help 'glue' the Drivers to the SOC.
+     TablePipeInterface          *tblPipeIntf    = db.createTable("Name", ctrl);
+     TablePcieAppInterface       *tblPcieAppIntf = db.createTable("Name", ctrl);
+
+     // Create Protocol specific Drivers and BFMs
+     // (pass in any tables using constructors).
+     DriverPcie    *drvPcie    = new ("Name", ...protocol-specific);
+     DriverPcieApp *drvPcieApp = new ("Name", ...protocol-specific);
+
+     BfmPcie     *bfmPcie    = new ("Name", ...protocol-specific);
+     BfmPcieAppr *bfmPcieApp = new ("Name", ...protocol-specific);
+
+     // Connect processes to clocks
+     gClkMgr->AddProcessToClock("ClkName", ClkEdge, (P*)bfmPcie,    &bfmPcie::Ltssm);
+     gClkMgr->AddProcessToClock("ClkName", ClkEdge, (P*)bfmPcieApp, &bfmPcieApp::SendReceive);
+
+     // Invoke the Test to be run.
+     gClkMgr->AddProcess("ClockName", ClockEdge, Test);
+
+     // Start all clocks
+     gClkMgr->StartAllClocks(ctrl)
+  }
+
+#005 Bit_class_features:
+  The following functionality will be useful:
+  - Bit bit1("31:0"), bit2(128, 0); // possible constructors
+  - bit1["15:0"]  = deviceId; // part-select
+  - bit1["31:16"] = busId;
+  - bit2["7:0"]   = bit1["7:0"];
+  - bit2["127:126"] = bit1["15:14"];
+  - bit2 << 3; // shift bits
+  - bit3 = Concat(bit1["15"0], bit2["15:0"]);
+  - Why not use syntax: bit2(127,126) instead of: ["127:126"] ?
+
+#006 Cursor_API_and_Table_Views:
+  Idea: The Table class should only manage the underlying data storage,
+        it knows the physical representation of the data. Actual operations
+        (queries) are made only using Views. A View is a logical
+        representation of the data in the Table (example: sorted, filtered).
+        Records cannot be retrieved from a Table directly, only via a View.
+  Table functionality:
+    - new("TblName", new_perm); // new_perm=Rd|App|Mod|Del|Purge|Shr
+    - AddAttribute("AttribName", type, ctrl); // similiar for Delete
+    - AddRecord(Record& rec, ctrl);           // similiar for Delete
+    - GetView("ViewName");
+    - SetViewPerm(eViewPerm);
+    - Save(FILE* fp);
+  Table implementation for Views:
+    - For each record we need to know which View it is possibly part of.
+      Probably each record will have a reference to one view (to limit storing
+      multiple views per record). This master view will define the permissions
+      that other views can get on this record.
+    - Add operation selects the subset of table records to be in a view.
+      A second optional argument specifies the maximum number of records to get.
+      They return the number of records that were successfully added.
+      - ViewAddByQuery(Query&, unsigned count);
+      - ViewAddByRegex(Regex&, QueryList, unsigned count);
+      - ViewAddByIndex(short start, short end);
+      - ViewAddByProperty(eAttributeProperty, "AttrName", unsigned count);//uniq
+      - ViewPermObtain(eViewPerm perm); // returns true/false
+  View functionality:
+    - RecordFirst(Query*); // Works only after perm is set & records xferd
+    - RecordNext(Query*);  //                   "
+    - RecordIsLast(Query*);//                   "
+    - RecordGet();         //                   "
+    - RecordsSort(Attr,dir)//                   "
+    - RecordRelease();     // Removes the record from the view. If this view
+                           // is the master then all other views also loose
+                           // access to this record.
+    - RecordDelete();      // Same as above but in addition the record will be
+                           // deleted from the table (assuming the view has
+                           // permission to do so).
+    Useful scalar operations:
+    - Count(Query*), Sum("AttrN", Query*), Min("AttrN", Query*)
+    - Max("AttrName", Query*)
+    View copies:
+    - View(View&)    // copy constructor
+    - View v = view; // assignment operator
+    Permissions:
+    - ViewSetPerm(perm);
+  Cursor functionality:
+    May not need a cursor class now since View class seems to perform exactly
+    that functionality!
+
+#007 Using_Database_Tables_like_Mailboxes:
+  - Transaction info can be put into Tables as separate fields or references.
+  - Preferable to have the fields for query purposes.
+  - May store the reference as an additional field if required.
+  - To pass a transaction from the producer to the consumer requires one tick.
+  - If a bfm wants to process something on Rx and then transmit something on Tx
+    without any tick delay (Rx->combinational_circuit->Tx) it can do so by:
+    - containing the Tx and Rx logic in a single process
+    - process the Rx first
+    - process the Tx next using the Rx results (if required)
+    - update the Rx and Tx table and then also update Tx values to the ports.
+  - In rtl, the minimum turnaround time for any exchange between two communi-
+    cating components is 2 clocks:
+    - before_edge0:      component A asserts signals towards B
+    - clock_edge0:       component B samples signals from A
+    - clock_interval0-1: component B processes info using a combinatorial logic
+    - clock_interval0-1: component B asserts signals towards A
+    - clock_edge1:       component A samples signals from B
+    Therefore, if component B can solely make a decision for a reply to A it
+    can do so the very next clock. If B requires info from another component
+    then it will incur:
+    - minimum one additional clock delay if it can signal to C using
+      combinatorial logic and C is also able to use combinatorial logic to form
+      a reply to B
+    - two additional clock delays if either B alone, C alone, A and B together,
+      have combinatorial logic that has too many levels that dont leave enough
+      setup time for the next clock.
+  - Problem:
+    When software uses mailboxes to communicate there are no clock
+    ticks to handle synchronization. The solution used is using 'threads'.
+    A thread is able to 'block' and wait for a condition such as a mailbox
+    having an entry (added by another running thread).
+    Our C++ approach is not using threads!
+    Possible solutions:
+    1. Borrow the clock from the hardware domain and use it for synchronization:
+       The side-effect will be simulation time advances. This may be ok in many
+       situations but if a large number of software components communicate
+       with each other in a daisy chain fashion then the delays may become large
+       enough to cause unrealistic delays in the software-hardware exchange.
+    2. Use a trigger mechanism:
+       An update to a table can trigger the next software component and
+       execution control will pass to it. It will complete its work (after
+       possibly triggering other components, which will also need to get
+       completed) and then pass back execution control to the original
+       component that caused the trigger. The danger now, however, is 
+       execution loops' where one of the components that was triggered makes an
+       update that triggers a component that can possibly retrigger directly or
+       through a chain of triggers) the current component. To safeguard against
+       this we can enforce a rule that each component is allowed to be triggered
+       only once.  
+
+#008 General_Structure_with_Threads:
+  (This is old and kept only as a matter of record).
+
+  main()
+  {
+    Control *ctrl = new;
+
+    Database *db = new ("Name", ctrl);
+
+    Clock *clk = new("Name", freq, unit, ctrl);
+
+    InterfaceSystem *intf_system  = new("Name", clk, ctrl);
+    InterfacePipe   *intf_pipe    = new("Name", clk, ctrl);
+    InterfaceRtlApp *intf_rtl_app = new("Name", clk, ctrl);
+
+    BfmPcie   *bfm_pcie    = new BfmPcie  ("Name", intf_pipe,    db, ctrl);
+    BfmRtlApp *bfm_rtl_app = new BfmAppRtl("Name", intf_rtl_app, db, ctrl);
+    BfmSystem *bfm_system  = new BfmSystem("Name", intf_system,  db, ctrl);
+
+    EmulatorSOC *soc = new Emulator("Name", bfm_pcie, bfm_rtl_app, db, ctrl);
+
+    clk->Start(ctrl);
+    bfm_pcie->Start(ctrl);
+    bfm_rtl_app->Start(ctrl);
+
+    clk->WaitInCycles(10);
+
+    bfm_system->Reset(ctrl); // Use an EnvMgr object instead?
+
+    clk->WaitInCycles(10);
+
+    Test("Name", clk, db, ctrl);
+  }
+
+#009 Workaround_for_inability_to_register_member_pointer_functions_in_ClockMgr.
+   > class P { };
+   > class P1 : public P {
+   >   P1::P1() {...}
+   >   // Either use one static process for all clocked processes or one for each:
+   >   // All clocked processes within the static function will have the same
+   >   // clock and the same edge.
+   >   static void ClockedProcesses(P* p) {
+   >     (P1*)p->ClockedProcess1();
+   >     (P1*)p->ClockedProcess2();
+   >   }
+   >   void ClockedProcess1();
+   >   void ClockedProcess2();
+   > };
+
+   > int main() {
+   >   ClockMgr* gClkMgr = new ClockMgr(...);
+   >   BfmA*     bfmA    = new BfmA(...);
+   >
+   >   gClkMgr->ClockAdd("ClkName", freq, "time_unit");
+   >   gClkMgr->ProcessAdd("ClkName", ClkEdge, (P*)this, &BfmA::ClockedProcesses); }
+   > }
+   Also, think if we can keep the same API and use real threads? This would
+   allow us to swap real threads in and out depending on circumstances
+   (example, to integrate an external VIP that requires threads).
+
+#010 New_Query_class:
+  This will contain the resulting Conditionals arranged in a sum-of-products
+  format. The Condition is the new name for the original Query class.
+  The main reason for introducing this class was to manage the memory for the
+  Conditional objects. Because of a problem in forming a correct sum-of-products
+  structure when a conditional is repeated we needed to dynamically do a 'new'
+  and 'copy' for each conditional. As the user is unaware of this, our code will
+  need to manage the corresponding delete. Other advantages of collecting all
+  conditionals into a single object like this are obvious (less error prone as
+  previously the leftmost conditional object always contained the
+  sum-of-products, a simple typo will cause the user to use the wrong
+  conditional in any task call requiring queries or all queries would need
+  to be passed inline. Also, we can make Query more sophisticated without
+  affecting the underlying Conditional class.).
+
+  > Query *q_name = zMatch(aFirstName)=="Robert" || zMatch(aFirstName)=="Roberto";
+  > // Note: the 'zMatch' macro creates the actual Conditional.
+  > view->Find(q_name); // before, this was: view->Find(q(aFirstName)=="R..");
+  >                     // or                view->Find(q); // need leftmost q
+
+  Another opportunity we have with the new Query class is to elegantly expand
+  the query using operators: |= and &= . This will allow a layered test
+  environment to append to a query in each layer which is very extensible!
+  Yet another advantage is to easily implement queries across multiple tables,
+  we will then use one Query per table where each query holds multiple
+  conditions (as before).
+
+#011 Desired_table_access_permissions.
+  It will be useful to be able to set some kind of access rights for table
+  records and attribute values because the database is globally visible to all
+  components making it easier for its contents to be erroneously modified.
+  Overall, adding access rights might help in:
+  a) Understand how certain records or attributes will be used in the system,
+     for example, if a value is read-only we know that other parts of the
+     verification environment dont need to change this value and vice-versa
+     (using Invariants is a powerful way get stable and understandable code).
+  b) We may find ways to optimize record access by avoiding mutexes for tables
+     with read-only records and no add permission.
+  c) Easier debug, when faulty values appear in a table we can narrow down the
+     likely culprit.
+  d) Enforce discipline in the code by not allowing other layers to access
+     certain records/attributes.
+  Thus the following are some of the ideal desired features:
+  a) ability to specify record access per view
+  b) ability to specify attribute access per view
+  We may not be able to accomplish this without either:
+  a) complexity
+  b) excessive memory requirements.
+  Currently, some of the hurdles to accomplish this are:
+  a) when accessing values from a record we dont have the view handle to
+     enforce access rights.
+  b) if a record is read-only we cannot allow retrieving a record reference,
+     however, not using references is inefficient (ie write permission and
+     obtaining references are bound together, they must both be 0 or both
+     be 1).
+  Note: Current verification environments do not have access rights, they use
+  mailboxes which contain object references thus allowing all components that
+  have access to the mailbox to modify any part of the object.
+  Maybe focus on solving the producer-consumer model where there is only one
+  producer and one or more consumers. Maybe we can implement a view independent
+  access rights scheme with attribute value permissions of read-only and
+  read-write. Since they are part of Value we check the access rights each time
+  on assignment. It is a simple scheme and may work? In addition, if we
+  enforce that values can only be retrieved from records then this protection
+  scheme will be in addition to record access which can take view into
+  account.
+  To mimic the producer-consumer model we can create a permission of
+  write-once-read-many where we disallow subsequent writes even by the master
+  (this could be implemented as: allow writes while the record is not yet
+  committed. After the record is committed disallow writes. One way to achieve
+  this is to have attribute permissions as always read-only, this permission is
+  always ignored when a record is still uncommitted).
+
+#012 Setting_and_resolving_Record_permissions.
+  Need to determine which permission categories to define and how to determine
+  conflicts.
+  Simplest Record Permissions are: Master{Add,Delete,Modify,Read},
+                                   Other{Add,Delete,Modify,Read}
+  Table (Global)  Permissions are: Add, Delete, Modify, Read
+  Unix file permissions will also be present but is not visible to the database
+  Q. How to handle: Purge ?
+  A. Make view set trigger for purged records?
+  Q. How to prevent a View from changing Record attributes when it doesnt have
+     permissions, yet still providing a simple retrieve syntax?
+  A. Firstly, once a record is retrieved, its attribute values are the ones
+     that will be changed. However, attribute values do not have knowledge of
+     views, only records will have that (adding a view handle to each value
+     will increase by almost double the memory required for the table values
+     and it doesnt feel like a clean solution regardles of memory
+     considerations).
+     One solution may be to set up three permission divisions much like unix
+     files: (owner, group, other) where each division contains permissions:
+     (add, delete, read, write). Now, users can allow group views to retrieve
+     record references (ie allow write permission) and trust them not to change
+     the values. The other view's will mostly not be given write permission
+     and can only retrieve records by value (or must pass in an empty Record
+     whose values will be set to the current record, avoids constant alloc).
+     All record operations (Add, Modify, Delete, Read) will require the view to
+     be passed in (to the Table) in order to check the permissions. Also,
+     instead of retrieving the entire record by reference/value we can retrieve
+     individual attributes of the record by reference/value while applying the
+     same checks.
+  The conditions needed to allow a view to retrieve a record reference are:
+  - The table permission is Read-only (no modify, add, delete), table will
+    automatically disable updates. (However, the record contents are altered
+    and visible to other views, so this doesnt work, unless we again use the
+    concept of trusted views).
+  + The view is the 'master' view and has write permission.
+  + The 'master' has granted write permissions to group/other views.
+  Note: 'master' view is the view whose handle each Record keeps.
+  A. If we dont allow direct access to attributes but only via Record[attrPos]
+     then we can check whether the view has the required write permission in
+     the Record::operator=(Value& v) function, or the check can be deferred
+     until the commit operation.
+  Q. Can we use a successive permission scheme whereby each view requests
+     permissions it needs without specifying whether it is the master. The
+     permissions are granted if no conflict (with previous permissions grants)
+     is found?
+  A. May be possible. If permissions are sought and the view does not declare
+     itself to be the master and no master is yet present then its request
+     will be granted. Later, when the master identifies itself and supplies
+     the desired permissions a conflict check is made. If a conflict occurs
+     the operation fails and the user is alerted.
+     May not be possible, we need all records to always have a reference to a
+     master, not doing so makes it more difficult to figure out the entire
+     logic.
+  Q. In addition to Record permissions, can we define Attribute permissions
+     (only read and modify make sense as we cannot add/delete a single attribute
+     as attributes together are bound to a record as one)?
+     The View API will then need to check the Record and Attribute permissions
+     for any retrieval. Also, attribute permissions are independent of views.
+  A. This is possible and desirable. Currently each Value already needs a
+     short int to store mType, mNewCalled. To this we can add three permission
+     bits for hide, read, write.
+     One immediate application of this is for constant tables. In theory we
+     would not be able to allow write permissions for records of this table
+     and hence not be able to use efficient record references. But with
+     attribute permissions we can permit write permission while making all
+     attributes read only. This allows the record and then its values to be
+     retrieved but any attempt to modify the value can be caught by the value
+     object itself by checking the value permissions.
+
+#013 Integrating_a_learning_mode_into_the_test_environment:
+  Used for explaining the protocol and system activities to a
+  novice/intermediate user!
+  This may become a hit with the customers. The feature itself will comfort them
+  in that their life may be made easier when they use the product. Also, as a
+  by-product, the debug effort may also improve for the customer.
+  What does 'learning mode' do? It will supply the following information
+  in a neat and organised manner:
+  + All major protocol events/decisions and the reason behind them.
+  + Hyperlink all messages as much as possible to code,spec,logs,docs etc.
+  + Interpret data (with context if any), eg: config data, explain bits.
+  + Use text diagrams whenever possible for additional clarity.
+  + Highlight common mistakes and misunderstandings
+  + Other outcomes possible if the input was slightly different.
+  The enhanced debug mode will contain the following information:
+  + High level protocol statistics (number of transactions categorized
+    by agent, VC, role etc.
+  + Allow mixing in of verification environment information (what is the
+    environment waiting on, which tables are getting updated, important
+    statistics (mem size, table size, queue sizes etc.)
+
+#014 Guidelines_to_make_code_look_like_pseudo_code:
+  Although real code cannot be shortened and simplified to look like
+  pseudo code, some guidelines may be used to make the code as close as
+  possible to pseudo code and, further, at least a simple script should be
+  able to recognize the important lines and 'grep' them out. The following
+  will be used to select certain lines of a function, the result should then
+  be close to pseudo code. Code should thus be written in a style to aid the
+  script. The script will work as follows:
+  + display the function name and its description (above or below).
+  + skip all declarations (therefore need obvious variable names).
+  + display all if-else that have only one statement.
+  + display rem if-else if it has comments (dont display statements).
+  + display all function calls (even in if-else statements).
+  + display return statement.
+  + ignore all print/debug statements.
+  + ignore blank lines or lines containing only a brace.
+  Note: This is only  useful for Verification IP, not for Verif Engine.
+        because that is what the customer will need to understand.
+
+#015 Qualities_of_a_good_verification_environment:
+  + Simple (less code, less function calls, less classes).
+    Less code => less bugs, easier to understand/document.
+  + Strong on concepts (i.e. based on a few concepts).
+  + Layered (divide and conquor).
+  + Large percentage of reusable components.
+  + Good number of invariants (concepts and code that never needs to change
+    from environment to environment).
+  + Simple things should always remain simple to do.
+  + Medium complex things should also be simple to do.
+  + Can absorb design or spec. changes easily (change isolated to a specific
+    area).
+  + Full controllability.
+  + Full observability.
+  + Work with various simulators.
+  + Extensive code reuse for system modelling.
+  + Snapshot capability.
+  + Test replication (random stability).
+  + Documented. Ideally, documentation is in source, extracted with doxygen.
+  + Has been used with a variety of protocols.
+  + Coding style is uniform across all files (not too individualistic).
+  + Accurate revision history for all files and releases.
+  + Easy to obtain functional coverage.
+  + Easy to randomize.
+  + Easy to debug (for TE error, should identify file/line)
+  + High level decisions should only be made (and visible) by upper layers.
+  + Most problems and challenges should have elegant solutions.
+  + Code should have a look and feel similar to pseudo-code.
+  + Good co-ordination between verif components (ex: dont flag injected errors).
+  + Fully self checking, no need to examine error/warning messages in logs.
+  + Clean logs (no warnings/errors in passing tests except explicitly listed).
+  + Scalability. One way to measure this is to imagine duplicating or
+    increasing the number of components (it doesnt necessarily need to be
+    practical in the real world). Would the entire environment theoretically
+    still be able to function (log files, interactions, coverage etc.). Will
+    any concepts be broken? Will any layers need to be adjusted or overhauled?
+  + Minimize the environments intrusion into the natural flow and logic of the
+    application or system being verified (intrusion=non-simple callbacks,
+    bad partitioning of env., creating env. components that do not have
+    a counterpart in the real system, etc.).
+  + Ability to modify tests without recompile (ex: controllable via txt files).
+  + Should not lay down too many rules/guidelines on how verification is to be
+    implemented (like rvm and avm), it should just provide many raw facilities.
+    Too many rules destroys the comfort-matching between user and environment.
+
+#016 Database_Triggers:
+  Triggers are conditions specified by the user on a View or Table which if
+  true should invoke a user specified action. Possible conditions which may be
+  specified for a trigger are:
+  + a record query match or mismatch
+  + a record sequence (regex) match or mismatch
+  + a record update (add, modify, delete, retrieve)
+  + an aggregate condition matched
+  + a table condition matched (table or view deleted)
+  There are probably two kinds of triggers: A) combinatorial B) sequential
+  A) Combinatorial trigger is one for which the action is immediately invoked
+    once the condition is true. This is possible when the trigger applies only
+    to a single table. An example usage of this kind of trigger is to:
+    a) model the logic for an asynchronous signal
+    b) in a hierarchical environment, pass info from one layer to the next.
+  B) A Sequential trigger is one for which the action is only applied after all
+     transactions have been comitted. This is useful to avoid possible race
+     conditions or when a trigger specifies multiple views/tables which
+     obviously cannot be updated at the same time and so the trigger needs to
+     wait on its evaluation until it knows all the required components have
+     made their table/view updates.
+     Note: A Sequential trigger may only be possible for hardware processes
+           where the ClockMgr issues the final Commit for all processes.
+  The above two trigger types (combinatorial, sequential) can further be sub-
+  divided based on whether they trigger one waiting action or all waiting
+  actions. By comparison, the Vera triggers are:
+  ONE_SHOT:  triggers all already waiting actions.
+  ONE_BLAST: triggers all actions for current timestamp (action can be added
+             after the trigger but within the current timestamp).
+  HANDSHAKE: triggers only one action which can be already pending or added
+             later.
+  ON:        Continues to trigger all past and future actions until the
+             trigger is turned off with trigger(OFF, event_name).
+  Trigger uses:
+  + Provide the ability to block a thread until a specified condition occurs.
+  + Tables representing signals can use triggers to generate VCD dump.
+  + Use triggers as assertions.
+  + Use triggers for coverage.
+  + Use triggers for debug (print to log or update a log table).
+  Thread and Non-thread implementation.
+  One of the goals of our Verification Environments is to allow both a
+  threaded as well as a non-threaded version. The above explainations of how a
+  trigger works is for the non-threaded version. For the threaded version we
+  probably would like to use the trigger to wake-up another thread. Ideally
+  the trigger API can remain the same and only a global 'threaded' flag will
+  change the trigger mechanism for either threaded or non-threaded.
+  Trigger API:
+  There may not be any point for a View to require a Trigger to determine when
+  a record is added/deleted/modified because the View controls this anyway.
+  However, since views can share records we will still need this.
+  In addition to this, we will probably need triggers on the underlying Table,
+  this could be used to import new records into the View, import existing
+  records that may become available because they were released from another
+  view etc.
+    Trigger* TriggerAdd    (eTriggerType trg_type, TriggerActionFn, Query *q=0)
+    Trigger* TriggerAdd    (eTriggerType trg_type, TriggerActionFn, Query *q=0, Record *r=0)
+    eBoolean TriggerDelete (Trigger *trigger);
+    eBoolean TriggerSuspend(Trigger *trigger);
+    eBoolean TriggerResume (Trigger *trigger);
+  where:
+    eTriggerType = {eTrgRecModify, eTrgRecAdd, eTrgRecDelete, eTrgRecAttrModify};
+    class Trigger {
+      Trigger();
+     ~Trigger();
+      RecordGet(); // retrieve the record that matches the trigger criteria
+    private:
+      eTriggerType       mTriggerType;
+      eTriggerState      mTriggerState; // Active, Suspended
+      Query             *mQuery;
+      Record            *mRecord; // either supplied record, or the record
+                                  // that matches the trigger criteria.
+                                  // Note that permission issue for the record
+                                  // needs to be solved (Ans: we store the
+                                  // view that added the trigger, we use
+                                  // this to determine if it is master/group
+                                  // or other view.
+    };
+  Lastly, we need to determine the mechanism for the trigger action. Typically
+  we would specify a function to be called when the trigger asserts. One
+  complication is that with C++ we cannot easily specify a class member
+  function to be called, however, we already solved this for the ClockMgr class.
+  We will probably use a trigger function prototype of:
+    void any_trigger_function_name(Trigger *trigger);
+  Example scenario:
+  class PcieDriver {
+    PcieDriver() { 1. Open input views;
+                   2. Define triggers on input views, and
+                      supply functions to be called for triggers;
+                   3. The functions should process the input views
+                      and create data for the output views;
+                   4. Create output views; }
+   ~PcieDriver() { 1. Clean-up views;
+                   2. Clean-up triggers; }
+  };
+  Another mechanism for the trigger action could be by using 'Polling'. In this
+  case no trigger-action-function is supplied when the trigger is created. The
+  caller takes note of the Trigger pointer returned and then can poll the view
+  (whenever it wants to) to determine whether the trigger was matched. This
+  avoids the inconvenience of using a trigger callback function which is a
+  little messy to declare/define in C++ .
+  Note:
+  1. The same function can be supplied for multiple triggers if needed. The
+     function can determine which trigger caused the function call by comparing
+     the trigger pointer that is available as an input argument to the
+     trigger_function.
+  2. Whether polling or callback functions are used, the trigger will continue
+     to be evaluated until it is deleted from the view.
+  3. For 'Polling' triggers we may need to keep a count of how many times the
+     trigger matched because we dont know when the caller will poll to find out
+     if the trigger matched, in the meantime the trigger can continue to match.
+
+# Verification Summary:
+  + There is no Verification leader.
+  + Companies are struggling with Verification.
+  + The well known EDA companies mostly provide tools.
+  + Verfication IP is provided by Denali, NSYS, Avery, ExpertIO.
+  + Web-site www.design-reuse.com lists many vendors.
+  + Very few provide integration services.
+  + Many are tied into a particular flow/methodology.
+  + Most VIP is big and messy with steep learning curve.
+
+#017 Database_class:
+  Currently we dont have a Database class and all tables are independently
+  operated on without any cohesive force. Putting a collection of tables
+  within a Database class is clean and makes a lot of sense. For example, it
+  immediately becomes possible to have identical tables that belong to two
+  different databases.
+  The responibility and functionality of the Database class includes:
+  +
+
+#018 Tests_without_recompile (using an Interpreter):
+  An improvement to test writing and development would be to allow simple text
+  files to describe test cases. These text files are then parsed (interpreted)
+  at runtime and spawned as a test thread. The advantage of this would be:
+  + Faster test development (no recompiles).
+  + Easier to understand test cases (only simple syntax can be parsed).
+  + Will also allow multiple tests to be specified which will run concurrently.
+  The goal is to be able to develop a majority of the tests using only such text
+  files. Only more difficult tests should require real code.
+  The text file will contain simple directives which are parsed at runtime and
+  executed as a separate process. Directives are either:
+  + Waiting for some database event
+  + Creating stimulus
+  + Modify/Update database
+  + Checks and assertions
+  + Macros (often used code is defined as a macro)
+  + Randomization (random_range, randcase)
+  + Some limited programming language features (easy to implement) like:
+    + declare a generic variable called var that can be tested or set.
+    + for loops.
+  Note: It is ironic that inserting actual C++ code into the text files to be
+        used as is (ie not interpreted) is not possible as this code will need
+        to be re-compiled. The way to introduce such code (to some extent) is
+        via macros.
+  Note: Accomplishment of this feature provides proof of a simple,
+        well-planned and structured verification environment. For example, if
+        the number of tasks/functions defined in an environment is large then
+        the interpreted also would be complex.
+  Note: This feature would probably be very difficult to implement without a
+        database as a database makes so much detailed internal information
+        easily available for the test case and interpreter.
+  
+
+#019 Figure_out_how_to_implement_random_stability.
+ TBD
+
+#020 Use_TransactionList_to_manage_database_changes.
+  All attempted changes to the database are only made when the commit
+  operation is invoked. Until then, the details of all attempted changes are
+  simply stored in a TransactionList. In a hardware simulation we perform the
+  commit operation at the end of the time step once all processes have had a
+  chance to execute.
+  The advantage of TransactionList's are:
+  + Easy to have an oversight of all intended changes to the database.
+  + Easier to debug and trace the integrity of the database.
+  + Easy to catch conflicting updates (ex: delete and update of same record).
+  + If using a finer timescale for database updates, allows warning when updates
+    remain pending on reaching the hardware simulation timescale.
+  + Convenient location to collect/compute database event statistics.
+
+##01 Non_attribute_related_queries.
+  Although most queries will be on table attributes there is a category of
+  queries that are useful that do not involve table attributes. Examples of
+  this are:
+  + Query aggregate values (involves multiple attribute values)
+  + Database statistics (number of records/tables/triggers etc.)
+  The following are not really queries but they may be incorporated into
+  queries to facilitate the Trigger API always needing only a Query object.
+  + Changes to a table  (record added/deleted/modified)
+  + Changes to database (table added/deleted)
+  + Changes to a table  (attribute added/deleted)
+  + Changes to a table  (view added/deleted/modified)
+
+#022 Usage_model_with_vera:
+  Vera has the advantage of randomization utilities and constraint solving. To
+  take advantage of this it is desirable to allow randomization using Vera and
+  then using these values by having Vera store them into the database from
+  where they will be visible to the entire verification environment.
+  The question is: How can Vera update the database?
+  Possible answers:
+  1. If using System Verilog, then by using DirectC we can update the database.
+  2. If using Vera, the entire Table can be written out as a raw table file.
+  3. Vera documentation indicates interface with C++ is possible using a C
+     wrapper.
+
+#023 Verification_environment_boot_steps:
+  Placeholder for ideas on the Verification environment boot process:
+  x. Open/initialize history and debug logs.
+  x. Open/initialize database.
+  x. Verification components register themselves via database (no queries).
+  x. Verification components register with the ClockManager etc.
+  x. Verification components can now query database.
+
+#024 Figure_out_how_view_will_delete_records:
+  Q. How to ensure the Record reference count is always automatically
+     decremented when it is deleted by a View? Currently, a view has direct
+     access to the mRecordList and can delete an entry without letting the
+     Table know, leading to the record's reference count not being
+     decremented. Direct access to the mRecordList is needed to navigate the
+     records conveniently.
+  A. Use a specialized List class inherited from List which decrements the
+     records reference count before deleting the record pointer.
+  Q. How to differentiate whether a view wants to delete a record as compared
+     to just deleting its local reference (which should decrement the
+     reference count)? In both cases the request will be forwarded to the
+     Table class which manages the reference count for Records.
+  A. Can we use the rule that: if the view has delete permission we mark the
+     record for delete, otherwise we simply decrement the reference count?
+     This will remove the functionality of a view that has delete permission
+     but wants to delete only its local record reference. If  needed, this
+     feature can be reintroduced by adding a separate delete task called
+     DeleteLocal() which will only decrement the reference count.
+  A. Simply always decrement the reference count, when it reaches 0, delete it.
+
+#025 Aggregate_API:
+  Use a separate class called Aggregate that can be dynamically added to a View.
+  Since the Database class commits all transaction, the Aggregates should be
+  updated there. Thus we make a View provide the API for Aggregates and the
+  View will add it to the corresponding Table. Thus, API could be:
+  View::
+    aggr_ptr = AggregateAdd      (aggr_name, Attribute attr, aggr_type, aggr_ctrl)
+    eBoolean   AggregateDelete   (Aggregate *aggr_ptr)
+    Value&   = AggregateValueGet (Aggregate *aggr_ptr)
+  where:
+    aggr_type    = { ValueMin, ValueMax, RecordCount, ValueAvrg, ValueTotal,
+                     ValueUniq, ValueDuplicate }
+    aggr_ctrl    = {CurrentRecordsOnly, IncludeDeletedRecords }
+  Notes:
+  1. Cannot implement Min, Max, Uniq, Dupl for IncludeDeletedRecords, so maybe
+     dont have this feature.
+
+#026 Aggregates_Triggers_and_Commit:
+  These 3 features are all interlinked. To implement them correctly we
+  observe the following:
+  1. Aggregates are stored in each View.
+  2. Aggregates always apply only to a views existing Records (ie not deleted).
+     UPDATED: Need sticky (not updated for delete) and non-sticky aggregates:
+     - done
+     UPDATED: Need logic for a record modify that is in more than one view.
+     - simplest: if (modify && ref_count>1) {
+                   foreach (view) { if (view has modify aggr)
+                                      if (view has record)
+                                        update aggr;
+                                  }
+                 }
+     - faster: store view list for all records whose reference count > 1 if
+               it has aggregates.
+     - hybrid: start with simplest and switch to fastest if views get large.
+  3. Triggers are stored in Database (to allow multi-table queries).
+  4. The commit operation does not add records to a view (only to the table).
+  5. The commit operation does delete and modify view records.
+  6. Triggers simply invoke a function (with a predefined signature), this
+     function is responsible for the trigger-action.
+  7. The trigger API will permit any changes to the database to be observed.
+  8. Triggers can be added for Aggregates.
+
+#027 Database_Join:
+  # Some lines lost here.
+  just the attribute name. The Attribute object will keep additional
+  information to determine the exact view (first or second) the attribute
+  belongs to. In this manner any number of joins can be added.
+
+#028 Dynamic_record_add_for_views:
+  This is accomplished via a trigger on 'RecordAdd' and a subsequent import of
+  the corresponding record (i.e. it is a two step process). A side-effect is
+  that any aggregates must be updated.
+  The following are the sequence of steps:
++ 1. View adds a trigger for record-add and supplies a trigger-action function
+     along with a trigger query that must be satisfied.
++ 2. The database commit operation is eventually invoked, this invokes the
+     trigger-action function if the record matches the trigger-query.
++ 3. The trigger-action function will receive the trigger object which
+contains
+     a reference to the just added record (it is private, accesible by Table).
++ 4. The trigger-action function should import the record by invoking an
+import
+     function in the Table class and supplying the trigger object so that the
+     Table class can know the record that needs importing.
++ 5. The Table class checks the view permissions, if granted then it adds the
+     record to the view and then also:
+  6. a) update any aggregates
+     b) invoke any triggers on aggregates
+  UPDATE:
+  After implementation it turns out that the following corrections are needed:
+  1. Records can only be added via views and not to tables directly.
+  2. When a view adds a record to a table it may not need it itself.
+  3. When other views want to add an existing table record it should be called
+     import and not add, add should only be used to when a new record is added
+     to a table. We can also do both if we use function: RecordAddAndImport().
+
+#029 Constraint_database:
+  This is a concept wherein Table values need not be just a simple value but it
+  can represent a range of values specified by a constraint. When such values
+  are examined and compared the comparisons will take on a slightly different
+  meaning. For example, if one of the values is a constraint and the other is
+  a normal value (scalar), then the equality operator will not test that two
+  values are equal but just check that the normal value is contained within
+  the constraint, The same idea can be extended to !=, >, < etc. where > would
+  imply that the normal value is greater than any value in the constraint set.
+  The advantage of constraint values is saving space in a table by reducing the
+  number of records required and storing a constraint (or formula) instead.
+  Note: It would be very useful if we could embed 'if' conditions in a
+        constraint, this way table records can become templates saving even more
+        space. Maybe use Database global variables and allow simple 'if' or
+        '?' constructs. These constraints  may be useful for:
+        a) the entire record
+        b) individual value
+ 
+#030 Software_Hardware_Communication:
+  In the real systems, software communicates with hardware using:
+  a) Programmed I/O
+  b) DMA
+  Using these two mechanisms the cpu can transfer data from cpu to hardware
+  and it can program a DMA to own transfer of data from one component to
+  another without requiring direct CPU attention. However, the status of the
+  DMA transfers must be read using:
+  a) Polling
+  b) Interrupts
+
+#031 Main_environment_events_from_start_to_finish:
+  First we need to know the components of the environment, these are:
+  1 Tests
+  2 Testbench
+  3 TestbenchDriver
+  4 Database
+  5 ProtocolDriver
+  6 Configuration
+  7 Scoreboard
+  8 BusFunctionalModel
+  9 Scheduler
+  Now the control flow is as follows:
+  - Control (ie. main.cc) starts from a toplevel program called Testbench.cc .
+  - This will open the Database (say Db, name passed in via argv in main).
+  - The Scheduler is created, initially no processes will be registered.
+  - The Testbench can now be configured via a table in the Db.
+  - The TestbenchDriver is created and configured via a table in the Db.
+  - The TestbenchDriver queries the Testbench to determine the ProtocolDrivers.
+  - The ProtocolDrivers are created and configured via tables in the Db.
+  - The Scoreboard is created and configured via a table in the Db.
+  - Using 'ifdef' the tests to run are created.
+  - Scheduler is started, by now all components have had a chance to register.
+  - The Scheduler is stopped by the test using timeout or triggers on the Db.
+  - Test needs to do any other cleanup (save updated or created Db tables etc.)
+  - Control passes back to the Testbench and will probably just exit.
+  Note:
+  - Multiple tests can be simultaneously run by specifying multiple ifdefs.
+
+#032 Is_it_possible_to_use_a_macro_to_emulate_thread_blocking.
+  (Also see note in 157, there this feature can be implemented).
+  Problem: Cannot accomplish the blocking easily because there is no way to
+           preserve any local variables. May be possible if no local variables
+           are used in the blocking state.
+  Details:
+  The biggest limitation to our C++ and non-threaded approach to modelling and
+  verification is that all components and tests must use a state-machine
+  approach so that control goes back to our scheduler (currently done by
+  Scheduler class). If somehow a macro can be used to allow blocking by making
+  the macro instantiate a unique hidden state in which it will remain until
+  the blocking condition is met then we still get the convenience of blocking
+  within the current state by using a single (macro) statement!
+  The blocking macro will require:
+  - A blocking condition (will be evaluated every clock).
+  - An identifier (to obtain a unique label needed to retain control).
+  The main state machine will require:
+  - it must invoke the 'goto label' in the very beginning. For this it will need
+    to use the identifiers via a macro.
+
+#033 Timer_API:
+  One implemention could be to use Triggers on the Scheduler class if the
+  Scheduler uses a Table to store Clock count and timescale info (which we
+  should). The client can then simply add a trigger for the appropriate clock
+  in the Scheduler. If polling is desired instead of a trigger, then we can use
+  the aggregate feature: add an aggregate to the Scheduler table and poll to
+  determine if the desired value was reached.
+  Another implementation may be to make 'timer' features a part of the
+  Scheduler class itself. That way avoid defining a new class and also avoid
+  exporting the Scheduler Tables keeping the implementation of the Scheduler
+  flexible for future changes.
+
+#034 Scheduler_logic_invoking_processes.
+  Implementation of the function ClockedProcessAdd(clkname, freq, scale, edge):
+  - first, a fastest_clk supported needs to be defined using (freq, scale), the
+    half-period is stored in mHalfPeriodFastest (say T_half_fastest).
+  - for each clock edge added, keep track of the number of fastest clock units
+    that have elapsed, in a variable called: mElapsedUnits, this variable
+    increments serially from 0. Absolute elapsed time is mElapsedUnits*T_half.
+  - a for-loop is used to trigger all clocks, each loop increments mElapsedUnits
+    by T_half_fastest.
+  - add clock edges in sorted order (fastest->slowest), (may not be necessary).
+  - each clock starts with the positive edge, then level edge, negative edge.
+  - for each clock compute the half-period (fastest_clk_freq/2*clock_freq).
+    Example 1: fastest clock 10Ghz, clock is 2.5GHz => half-period is 2 (ns/10).
+    Example 2: fastest clock  1Ghz, clock is 250MHz => half-period is 2 (ns).
+  - a positive edge triggers on mElapsedUnits of: 0, half-period*(2,4,6 etc).
+  - a  level   edge triggers on mElapsedUnits of: 0, half-period*(2,4,6 etc),
+    but only after all positive edge clocks are triggered.
+  - a negative edge triggers on mElapsedUnits of: half-period*(1,3,5 etc).
+  - in each loop update each clock edge's mElapsedUnits (say E) by T_half, then
+  - in each loop update each clock edge's mElapsedUnitsMod (say E_mod) like:
+    E_mod = (E_mod+T_half)%T_half;
+  - if (E_mod < E_mod_prev) then we have a rollover, ie clock event.
+  - we expect multiple processes for the same clock so may need a bucketlist
+    to be more effficient, keep one bucket for each shared clock, then list of
+    processes to trigger.
+  - pseudo-code:
+    >           Steps                          |        Example
+    > Compute LCD of all added clocks          | 500Mhz,400Mhz,300Mhz=>6000MHz
+    > Compute each clocks modulus              | (LCD/freq) => 12, 15, 20
+    > Let this modulus represent a half-period |
+    > In scheduler, loop and increment by      |
+    >         smallest half-period             | 12
+    > Init(0)/update each clocks half-period   |500MHz,400MHz,300MHz initial
+    > fraction and toggle pos_ned_edge         |  0p  ,  0p  ,  0p   initial
+    > Note: first p occurence  => pos edge,    |  0n  , 12p  , 12p,  loop1
+    >       first n occurence  => neg edge,    |  0p  ,  9n  ,  4n,  loop2
+    >       just after first p => lev edge,    |  0n  ,  6p  , 16n,  loop3
+    >       within row, process edge from high-|  0p  ,  3n  ,  8p,  loop4
+    >       est to lowest half-period fraction.|
+    > Q. Is there a way (algo) to avoid the highest to lowest sort?
+    >    The sort may not be that expensive, only needed if more than one
+    >    clock triggers.
+    > A. There is a way if we use an approach of pre-filling a table with the
+    >    the clocks to be triggered. The table can be filled in by incrementing
+    >    by one and then using the modulus check for each clock. In this case no
+    >    sort is needed, except some wasted loops where none of the modulus
+    >    operations succeed. If the frequencies needed vary by a wide margin but
+    >    are still a multiple of other frequencies then we can avoid a large
+    >    table by keeping a count of how many times the entire table has to be
+    >    looped before triggering the clock in question.
+    >    The other advantage of this approach is that initially (or even later)
+    >    we can initialize the Scheduler with the Table itself, thus avoiding
+    >    the computations required and allowing custom clock edge triggering.
+    >    Tables:
+    >    SchedulerTable={ClockName, ClockEdge, ProcessName }
+    >    ClockTable={ClockName, ClockFrequency, ClockScale }
+    >
+    > for (each added clock i) {
+    >   clock[i].mHalfCycleUnits =   scheduler.mFastestSupportedFreq
+    >                              / clock[i].mFrequency;
+    > }
+    >
+    > scheduler.mElapsedUnits =
+    >  scheduler.mFastestSupportedFreq/clock[fastest].mFrequency;
+    >
+    > for (i=0; at_least_one_clock_active; i++) {
+    >  for (each half-cycle) { // there are 2 half-cycles in one clock cycle
+    >   for (each added clock j) {
+    >     clock[j].mElapsedUnitsModPrev = clock[j].mElapsedUnitsMod;
+    >     clock[j].mElapsedUnitsMod    += scheduler.mElapsedFastestAdded;
+    >     clock[j].mElapsedUnitsMod     =   clock[j].mElapsedUnitsMod
+    >                                     % clock[j].mHalfPeriod;
+    >
+    >     if (clock[j].mElapsedUnitsMod <
+    >   }
+    > }
+  Q Should we use Tables to implement the Scheduler?
+  C Probably should use it for Clocks in case a process performs an operation
+    on a clock (suspend, resume, delete etc.) it should go into effect only
+    after all processes have completed the current clock event. This needs the
+    'commit' functionality' of Tables.
+    The same argument may apply to the Scheduler. If it is stopped by a process
+    then the current clock events still need to be processed before the
+    Scheduler can be stopped.
+  A So answer is probably 'Yes'.
+
+#035 Scheduler_logic_overall:
+  The Scheduler needs to manage the following events:
+  - First, invoke all registered initial processes (once only).
+  - Now, repeatedly invoke all registered 'always' processes in clock-order and:
+    1. After each process, invoke any processes due to new events (events are
+       tbd), this models a combinational circuit in hardware or a conditional-
+       variable in software (Note: we may need ONE_SHOT, ONE_BLAST, HANDSHAKE
+       type of events like in Vera).
+    2. After all processes for the current tick have run, commit all tables
+       for record add/modify/delete. The current tick may be complete
+       depending on our approach for step 3.
+    3. Now, one of:
+       Any trigger actions as a result of the commits in step 2 are executed
+       at the beginning of the next tick (to avoid infinite loops and keep
+       things simpler. Also, since value changes that require table commit
+       are the same as non-blocking statements, they should behave as non-
+       blocking which means value changes should not be visible in the
+       current tick).
+                                   OR
+       should we execute at the end of the current tick so that the trigger
+       logic is at the current timestamp (instead of moving to the next). Any
+       new non-blocking statements from trigger-actions will no longer be
+       processed (since we are done in step 2), they will be executed in the
+       next tick. With this flow, the current tick will end only once all
+       triggers are processed.
+                                   OR   (probably use this option)
+       during commit, the scheduler immidiately invokes a qualified trigger
+       except when the scheduler is performing commits due to the clock tick
+       advancing. For this case, all triggers are scheduled only after all
+       commits are completed (so that all triggers have the same view of the
+       database no matter in what order they are executed).
+       The first type of trigger is usually used by a software process while
+       the second is typical for a hardware process.
+       //
+       Q. When will a hardware process  need to make use of triggers. Since it
+       always uses at least one clock it can simply check the condition at
+       each clock instead of using a trigger to check the condition (a
+       software process has no clock so it must rely on triggers to spur its
+       code into action).
+       A. Some uses are:
+          - Functional coverage
+          - Waveform dumping
+          - For any Combinational logic
+      
+  Note:
+  - Only hardware processes (which are typically clocked) are expected to
+    use the Scheduler. For these processes the database commit is issued
+    by the Scheduler. Software processes can update the database and invoke
+    the commit operation directly thus allowing another software process to
+    get triggered independent of ticks.
+    Q. Should we have an auto-commit mode for software components to avoid
+    explicit commit? This will not allow multiple updates before a commit
+    which may be needed sometimes (TBDriver wants to update all
+    ProtocolDrivers before commiting).
+  - Mechanism for Scheduler to invoke member functions of any class:
+    Ideal is:
+    > gScheduler->AddProcess(this, (void*)PtrToMemberFn);
+    where 'this' is needed for Scheduler to access a member function, however,
+    we cannot cast a member function to void* .
+    Another solution is to specify a static function instead to which we pass
+    in the object. The static function then has to figure out which member
+    function to call, example: > gScheduler
+    gScheduler->AddProcess(this, (void*)PtrToStaticFn, void* which_fn);
+    then in (*PtrToStaticFn)(void* object, void* which_fn) we use logic
+    (which is an additional manual step and artificial identifier):
+      if (which_fn == IdentifierForMemberFn1) MemberFn1();
+      if (which_fn == IdentifierForMemberFn2) MemberFn2();
+    This may be the best solution because although clumsy, it is quite simple.
+
+#036 Process_to_process_communication:
+  The mechanism used for process-to-process communication is via table/views.
+  The basic steps for Process1 to communicate with Process2 is:
+  1. Process1 creates View1 on TableA.
+  2. Process2 creates View2 on TableA.
+  3. Process2 creates a trigger (say T1='record add') on TableA (via View2).
+  4. Process1 now adds a record to View1 (which is added to TableA).
+  5. When 'add record' transaction is committed by the database, it triggers T1.
+  6. T1 either a) invokes a function in Process2 that can import the record, or
+               b) it can use 'dynamic add' to accomplish the same.
+  7. The record added by Process1 is now in View2 of Process2.
+  Note: Interface class has been created to handle this type of communication.
+
+#037 Documentation_strategy.
+  Documentation will be automatically generated from the source code.
+  To accomplish this we will first pre-process the source code using internal
+  scripts and then pass that output to documentation generation utilities
+  available in the public domain (doxygen for now). The reason for
+  pre-processing is to allow more flexibility in how source code is annotated
+  for documentation and not limiting ourselves to doxygen. The goal is to be
+  as non-intrusive as possible in annotating the source. Also doxygen has
+  several rules like leaving blank lines between the brief and detailed
+  description which are error prone. Also, writing a pre-processor should be
+  fairly easy promising a lot of bang for the buck. Lastly, moving to another
+  (or additional) documentation utility will be easily accomplished (simply
+  modify the pre-processor or use another pre-processor).
+  The complete documentation should contain the following:
+  - Firstly, indicate the goals, concepts and ideas that we are trying to
+    accomplish. Subsequent documentation should frequently allude back to
+    these goals/concepts/ideas. This will play the glue role for the
+    documentation.
+  - Overall hierarchy and structure of the c++ classes.
+  - Documentation for each class.
+  - Examples.
+  - Identify short-comings, work-in-progress, optimizing opportunities,
+    missing functionality/features etc.
+  - Option to skip implementation related comments, these are needed only for
+    internal documents.
+  - Possible future work.
+  - Documentation history.
+  Initial documentation goals:
+  - In each header file give a concise description of the class purpose, what
+    problem(s) are solved and how they are solved (data structure + algorithm),
+    and describe the top 5 important functions to know (other than constructor).
+  - In the header file mention which other classes are made use of.
+  - Avoid any other documentation in the header file to keep it small.
+  - Provide a one or two paragraph description for each function definition in
+    the .cc file. Skip this documentation for private functions.
+  - For more involved functions provide the psuedo code description.
+  - Good cross-referencing for resulting html documention output.
+
+#038 Const_correctness:
+  The following must be applied to the C++ source code to ensure const
+  correctness:
+  - use const for function arguments if the function should not alter the
+    argument, eg: my_func(const string& s) or my_func(const string* s),
+    both ensure contents at s are not changed.
+  - When passing pointers there is no sense in using const for the pointer
+    itself as pointers are passed by value. Eg: my_func(const char* const* s)
+    can be replaced by my_func(const char* s)
+  - member functions that only inspect the object and do not change its state
+    must be declared as const, eg: obj->my_func(s) const // ensure obj not
+    changed. These functions must be used if the obj handle is
+    reference-to-const or pointer-to-const.
+  - To protect the contents of a return'ed argument we can return it as const
+    so that the caller cannot change it. Eg: const char* my_func() { return s; }
+
+#039 Events:
+  Events are notifications from one process to another. Unlike triggers, they
+  are not tied to any condition in the database. They are also not tied to
+  any data although a process might prepare some data and then send the event.
+  An event is identified (and unique) by its instantiation (object handle).
+  The event handle must be made known to the listeners explicitly by passing
+  the handle to all listeners (some parent module will need to do this).
+  Event use should probably be minimized and used only when there is
+  really no data that can be associated with the event. If data can be
+  associated then Triggers on the data should be used. Since verification
+  environments mostly deal with data, Triggers should be much less frequent.
+  Example:
+  SomeProcessInSomeModule: 
+  > Event mEventConfigDone;
+  > ...
+  > mEventConfigDone.Notify();
+  > ...
+  SomeOtherProcessInSomeModule:
+  > ...
+  > mEventConfigDone.Wait(this); // this => process pointer
+  > ... // then return control to Scheduler
+
+#030 Example_of_Snps_Pcie_Env_with_VerifEngine:
+  This is to determine what changes are needed to obtain the same testbench
+  flow as in Snps Pcie verification environment. The important tasks were
+  (from the test-case):
+  Snps Pcie:
+  1. Control comes to the test case from initial statement.
+  2. Test case creates a thread.
+  3. Queue packets to the Traffic Manager (now TBDriver).
+  4. Traffic Manager looks at src & dest and queues to Driver (now ProtocolDrv).
+  5. ProtocolDrv finalizes packet for Bfm, packet placed in Scoreboard.
+  6. Bfm polls the Scoreboard for transfers to execute/expect.
+  7. Test-case can now track the transfer in the Scoreboard using handle.
+  Notes: a) everything happened in 0 time with successive task calls.
+         b) parallelism was built into the language (verilog).
+  Verif Engine:
+  1. Control comes to the test-case from the Scheduler.
+  2. The test-case queues packets using the global TBDriver.
+  3. The test-case can query the packet status from the TBDriver table views.
+  4. TBDriver looks at src & dest and queues the packets to ProtocolDrv's.
+  5. TBDriver can get transfer status from ProtocolDrv table-views.
+  6. ProtocolDrv finalizes packet and adds it to a transmit/expect table.
+  7. Bfms use triggers on ProtocolDrv's table-views to retrieve/process packets.
+  8. Test-case uses triggers on any table-view from lower layers for tracking.
+  Notes: a) hardware components (bfms, monitors etc.) dont use transaction
+            commit, this is done by the Scheduler, software components need to
+            explicitly commit in order to communicate with other components via
+            triggers
+
+#041 TE_Process:
+  In our Test Environment, a Process is modelled as a class method that
+  contains a state machine. The method is invoked periodically by the
+  Scheduler (which also has to supply the object) and it typically processes
+  some inputs whose values are available in the objects table-views, computes
+  outputs which are added to the objects table-views and lastly, it updates its
+  state (probably also stored in a table-view of the object).
+
+#042 Re_entrancy:
+  Q. How is re-entrancy handled with our current TE Process approach?
+  A. Since all TE_Processes are non-blocking, the execution will never remain
+     in the method and thus re-entrancy cannot occur.
+
+#043 Mechanism_for_using_class_method_as_a_process:
+  Define a virtual member function called Always(). Every derived class will
+  then define the functionality of this class and the Scheduler will know
+  which member function to call for every derived Process class registered with
+  it. A Testbench BFM class should then define as many processes as it needs.
+  Prev:
+  (Also see: Incorporating_Events_and_Triggers).
+  Ideally, we would like to convert the class-method to pointer-of-function so
+  that we could simply pass that pointer to the Scheduler which dereferences
+  it when it needs to execute it.
+  Since C++ does not allow us to do this, the workaround is to define a static
+  function as follows:
+  > In file MyClass.cc:
+  > static void process_wrapper1(void* ptr_to_object, short id) {
+  >   MyClass *object = (MyClass*)ptr_to_object;
+  >   // id is optional, mostly we use separate wrappers for each process
+  >   // but id is useful to launch a set off related processes so as to
+  >   // avoid too many static functions which may lead to namespace problems.
+  >   switch (id) {
+  >     id1: object->te_process1();
+  >     id2: object->te_process2();
+  >     id3: object->te_process3();
+  >   }
+  > }
+  Now we pass the pointer of these functions to the Scheduler from somewhere
+  in the class (constructor?) as follows:
+  >
+  > gScheduler->ProcessAdd(name1, process_wrapper1, (void*)this, id=1);
+  > gScheduler->ProcessAdd(name2, process_wrapper2, (void*)this, id=2);
+  >
+  The processes would then be invoked from the Scheduler as follows:
+  > // Scheduler:
+  > void* obj = this->mObjList->Get();
+  > void* id  = this->mIdList->Get();
+  > *(this->mFnPtrList->Get())(obj, id);
+  >
+  This solution would be close to the ideal if we could eliminate (or
+  automate) the usage of id1, id2 etc. As it stands now these id's have to be
+  manually created and used (in two places) for each class.
+  Note: Different classes can all use (i.e. share) this mechanism, the only
+        limitation is that they must all use a unique static function name.
+  Q. Can we automate/eliminate the usage of id's above?
+  A. May be possible using Macros. However, we can code it as shown for now
+     and if any automation is found in the future it can be added without any
+     problems.
+  Note: If many or all processes in a class all use the same clock then we
+        need to register only one process with the Scheduler, this process can
+        then separately invoke the individual processes and no 'id's are
+        needed. Drawback is that the Scheduler can no longer be used to
+        individually suspend/activate each process.
+
+#044 Scheduler_logic_overall_with_interfaces:
+  The Scheduler is made aware of all Processes and Interfaces in the simulation,
+  using the following Scheduler task:
+  > ProcessAdd(process, intf, clock, edge); // captures relationship in one line
+  (This is changed, see note Process_Add).
+  Then, for each i/f added, the owning process is scheduled based on the clock,
+  phase & modulation by adding one entry to the schedule table (time sorted),
+  after it is executed it will have its next entry added (again time sorted).
+  Below we use the following abbreviations: 
+           i/f => interface
+    sync   i/f => synchronous interface (clocked)
+    async  i/f => asynchronous interface (no clock)
+    active i/f => at least one input modified in current timestamp
+    ready  i/f => depending on 'update mode', one or all inputs modified
+    update i/f => invoke process then set the outputs of the interface
+    commit i/f => add input/output signal values to i/f table & commit
+    softproc   => software process (no clock, no interface)
+    mbox       => mailbox
+    sem        => semaphore
+  Possible processing sequence is:
+  -----
+  1. start scheduler (commit all tables and set simulation time to 0).
+  2. sync-i/f are set to default by constructor/owning process and commited.
+  3. async-i/f are set to default by constructor/owning process or strapped.
+     SchedulerMainLoop:
+  4.   find & update any ready async-i/f, propagate outputs to connected inputs.
+  5.   due to cascading of i/f redo Step4 if any ready i/f found, else step 6.
+  6.   commit the modified async i/f's.
+  7.   invoke all softproc, flush Sync objs & repeat proc invokation as needed.
+  7a.  advance sim-time & clk edge to next scheduled sync process, end if none.
+  7b.  or, wait for next clock event from SystemVerilog simulation.
+  8.   for (all sync proccesses at the current sim-time)
+  9.     invoke process (use committed inputs from Step2 or StepC).
+  A.     sync outputs were computed, now propagate outputs to connected inputs.
+  B.     if not blocked, schedule process for next sync event (clock edge).
+  ?    can also propagate outputs here (if any advantage to it).
+  C.   commit all sync i/f's modified in Step8, some triggers may get queued.
+  D.   commit all tables in the database.
+  E.   invoke all triggers that were queued during StepC.
+     Repeat SchedulerMainLoop
+  -----
+  Additional step notes:
+  - Step4:
+    - two modes for a ready-i/f: all inputs updated or any input updated.
+    - The first time Step4 is executed:
+      - for async i/f, depending on the update mode:
+        - mode_all_inputs_updated: then, ready only if all inputs are strapped.
+        - mode_any_input_updated:  then it is ready at time 0.
+      - for  sync i/f, its inputs cannot be valid yet as some of the inputs will
+        have to come from the outputs of a connected sync process (which may
+        have intervening async i/f) which cannot yet have a value because no
+        outputs could have been commited yet (first clock edge is still due).
+  - Step5:
+    Cascading happens when there are async i/f between sync/async i/f.
+  - Step7a,Step7b:
+    If connecting to a verilog simulator then the clock event may be driven
+    from there and Step7b is used, otherwise Step7a will be used.
+  -----
+
+#045 Should_we_define_Interfaces:
+  Investigate whether we should define a separate interface class to handle
+  process to process communication? (can probably be used for clocked or
+  non-clocked communication).
+  Goal: Encapsulate the communication between clocked signals of two modules.
+  - Note: this is called synchronous or clocked communication.
+  - The groups of signals is called the interface between the two modules.
+  - Each interface must have only one clock.
+  - There can be more than one interface between two clocked modules.
+  - If one Interface has both Tx and Rx signals then maybe use 2 tables.
+  - The interface consists of either a clock/table pair or clock/table/table.
+  - The signal values are in the table(s).
+  - The interface table is committed by the scheduler at the clock edge.
+  - The scheduler invokes processes at the clock edge only after the above.
+  - The interface is a strong and often used concept so it is good to have.
+  - It can provide the Interface concept to the user and hide the table details.
+  - For example, it can control the table size and track sim time, stats etc.
+  - Interfaces are commonly used in HVL so mapping to/from them is easier.
+  - To update an Interface, maybe use: intf[signal] = value.
+  - To retrieve signals from an Interface, maybe use: value = intf[signal];
+  - If an interface signal is not updated the previous value should be used.
+  - The 'signal' object has member 'attribute' to index into the correct column.
+  - A useful Interface API task may be to add input/output signals.
+  - Allow different modes for an Inteface (master, slave, monitor etc.).
+  - Notes for asynchronous or combinational communication:
+    - The transmitting module manually commits the interface.
+                                 OR
+      The interface informs the Scheduler once all its inputs are assigned.
+    - Useful for connecting combinatioral logic & software communication.
+  Q. Do we allow more than one rec to be added (or specify a repeat count)?
+  A. This is ok for clocked interfaces, the Scheduler will only commit one
+     record per interface-clock. The Interface class needs to handle (store)
+     the additional records. This feature may have limited usefulness, however,
+     repeat count may be useful for some interface state machines.
+     For non-clocked interfaces the manual Commit() operation will commit all
+     records. This will cause one trigger action for each record added in the
+     receiving process. This feature is probably often convenient, for example
+     to generate multiple packets at once.
+  Q. Do we allow per-rec-commit if mutltiple rec add is allowed?
+  A. Yes: for clocked interfaces (handled by Interface class).
+     No:  for non-clocked interfaces.
+  Q. How do we handle the fact that interface signals is used by two processes?
+  A. This refers to the fact that a signal that is Tx for one process is Rx
+     for the other process and we want to use the 'direction' of a signal with
+     reference to each process. Thus, if we have only one physical interface
+     signal variable, it will have a direction of 'Tx' for one process and
+     'Rx' for the other process. How do we handle this elegantly in the
+     Interface class?
+     The answer is to require to Interface objects. The two interfaces must then
+     be 'connected' as is done using wires in verilog module instantiations,
+     i.e. we connect the output from one interface instance to the input of the
+     other interface instance, on commit, the value at the output signal is
+     automatically transferred to the input signal (and committed), this is all
+     managed by the Interface class. 
+
+#046 Interface_API:
+  New class Signal and following tasks are probably needed:
+  - Interface(interface_name, Process).
+  - Signal* SignalAdd(name, width, dir).
+  - SignalConnect(signalA, signalB),       one signal is Output, other Input.
+  - Signal& Operator[](Signal *signal).
+  - HistoryDepth(count, direction).
+  - Commit(),                              private, for non-clocked interfaces.
+  The connection of signals should be easily recognizable in the code, so we
+  ideally prefer a format of something like:
+               Connect(intfX.signalA, intfY.signal_nameB);
+  where the order of signal arguments is immaterial.
+  Since we want to allow adding signals dynamically we cannot use the .
+  notation, however, the following is possible:
+               Connect(intfX[signalA], intfY[signalB]);
+  where Connect() is a utility function and signalA/signalB are Signal objects.
+  One problem here is that the Signal object names need to be unique whereas
+  often we connect interfaces using identical names. To permit this we also
+  provide connecting signals by name as follows:
+               Connect(intfX[signal_nameA], intfY[signal_nameB]);
+  where signal names are just char pointers.
+  Another option seems to be:
+               intfX[signal_nameA] = intfY[signal_nameB];
+  which doesnt require a utility function, this resembles verilog 'assign'.
+  We could even make `define assign /**/ so that we can prefix the connect
+  with the assign keyword to make it more visible.
+  Finally, the following may be also be a good option to connect signal A to B:
+               intfX[signal_nameA] %>> intfY[signal_nameB];
+               intfY[signal_nameB] %<< intfY[signal_nameA];
+
+#047 Signal_class:
+  - Should resemble functionality of verilog input/output/inout.
+  - Possible private members: mpInterface, mValue, mpAttribute, mDirection.
+
+#048 Incorporating_Events_and_Triggers.
+  Figure out how to add Trigger and Events functionality into the Scheduler
+  and Process interaction.
+  One idea is to define 4 virtual functions for the Process class:
+  - ProcessClocked    
+  - ProcessAsynchronous
+  - ProcessTriggered(TriggerInfo info)
+  - ProcessEvent(Event info)
+  Note: Our Process class can represent three usages:
+    - Clocked Process:      when a Clock object is passed into the constructor.
+    - Asynchronous Process: no Clock object but Interfaces added.
+    - Software Process:     no Clock and no Interfaces.
+  The ProcessClocked and ProcessAsynchronous are already invoked by the
+  Scheduler as explained in the Scheduler logic. The ProcessTriggered and
+  ProcessEvent calls are invoked as follows:
+  - ProcessTriggered(TriggerInfo info):
+    Triggers are evaluated during the Commit phase. If a trigger hits then the
+    trigger action (ProcessTriggered) is either queued or invoked immediately.
+    If invoked immediately then the target process is expected to be a
+    software process, queued triggers can target clocked or async processes.
+    If queued it will be acted on in Step5 (ie all interface outputs comitted
+    and values propagated to inputs of corresponding interfaces) so that a
+    trigger always sees the database in the same state no matter in what order
+    the Commits are invoked. A Trigger can then (for example) be used to
+    override an input value to an interface.
+    The TriggerInfo may contain vars like the trigger, view and record handles.
+    Note: We may also allow immediate Triggers as that may have some useful
+    applications but their use will in general not be recommended because of
+    the ease with which race conditions can occur if the trigger-action is not
+    careful.
+  - ProcessEvent(Event info):
+    Events are triggered during Step7 (process execution for clkX). The event
+    will immediately invoke any listening processes. The listening processes are
+    expected to be 'software' processes as events have no hardware counterpart.
+
+#049 Scheduler_Tables_Views_and_Algorithm:
+  - We will organize the information that the Scheduler needs into tables and
+    use Views as convenient. The important inputs into the Scheduler class
+    are:
+    - ProcessAdd(Process* p, eClockEdge edge);
+    - Start();
+    Note1: The Process class contains a reference to the clock object that it
+           uses to process inputs and drive outputs.
+    Note2: The clock object contains the 'half-period' and 'clock-phase'.
+    Now, the following Tables and Views are probably sufficient:
+    +--------------+-----------------------------------------------+
+    |     Table    |                     Fields                    |
+    +--------------+-----------------------------------------------+
+    |   ClockTable |  Clock,ClockEdge                              |
+    | ProcessTable |  ProcessPtr,InterfacePtr,Clock,ClockEdge      |
+    | ScheduleTable|  SimulationTime(sorted),Process               |
+    +--------------+---------+-------------------------------------+
+    |     Views    | onTable |         Description                 |
+    +--------------+---------+-------------------------------------+
+    | ProcessList1 | Process | All processes for a Clock/Edge pair1|
+    | ProcessList2 | Process | All processes for a Clock/Edge pair2|
+    | ProcessList3 | Process | All processes for a Clock/Edge pair3|
+    | etc.         |         |                                     |
+    +--------------+---------+-------------------------------------+
+    Algorithm:
+    - On gScheduler->ProcessAdd():
+      - add entry to ClockTable if unique clock/edge pair.
+      - add entry to ProcessTable.
+      - create/update view for ProcessListX (processes per clock/edge pair).
+    - On gScheduler->Start():
+      - set CurrentTime to 0.
+      - for every process in the ProcessTable invokde the Initial() function.
+      - for (each Clock/Edge pair list in ClockTable)
+          for (each ProcessList-View of ProcessTable)
+            for (each Process in ProcessList-View)
+              add {CurrentTime+fn(period/phase),Process} entry to ScheduleTable;
+              // Note: ScheduleTable is set to be sorted on SimulationTime.
+              // Note: SimulationTime depends on Clock half-period and phase.
+      - for (each entry in the ScheduleTable)
+          invoke the Process in the entry;
+          queue a new {CurrentTime+Period, Process} entry in ScheduleTable .
+      - also satisfy the main Scheduler logic as explained in:
+        Scheduler_logic_overall_with_interfaces (TBD: add more detail for that).
+
+#040 How_to_query_fields_that_have_references:
+  For hardware process the data structures will mainly be Bit centric and the
+  bit fields can be stored in seperate columns in the tables and matched.
+  However, for object references (pointers) that are frequently used by
+  software processes, how do we compose the queries so that we can compare the
+  data members within the object?
+  One idea is to use custom compare function belonging to the reference. We
+  compare the object reference (stored inside the Value object) with an
+  enumerated constant. We then call a global utility task that takes as input
+  the Value object and the enumerated constant and invokes a 'switch {}'
+  statement where we compare the enumerated constant and then cast the object
+  reference to the correct type and invoke a specific query-like function of
+  the object passing in the enumerated constant.
+  Example:
+    Value val_obj_ref = new Packet(...);
+    Condition c_pkt(attr_pkt);
+    Query q = (c_pkt == ePacket_CompareVlan); // how to supply comparison argument?
+    //
+    view->RecordSearchFirst(q);
+    //
+    bool Record::Match(Condition &c) {
+      if (c.AttributeGet().ValueType()==eValueVoidPtr && cmValue.mType!=eValueVoidPtr)
+        return (CastAndCompare((*rec)[c.mpAttribute], val, eOperatorEqual));
+    }
+    //
+    bool CastAndCompare(Value* v, int val, eOperator oper) {
+      switch (val) {
+        case ePacket_CompareVlan:
+          if (oper == eOperatorEqual) {
+            Condition c_pkt_vlan(attr_reference);
+            Query q = return (c_pkt_vlan ==->CompareVlan(eOperatorEqual, arg? );
+          }
+          break;
+      }
+    }
+  Problem: Since the enumerated constant is used to select the compare function
+  how do we also supply a comparison argument?
+  Maybe use something like:
+    Query q =     val_obj_ref.mCompareFunction=ePacket_CompareVlan // allowed?
+               && val_obj_ref < vlan_value1
+               && val_obj_ref > vlan_value2);
+  Problem: This will work only if the mCompareFunction only uses one argument.
+           Probably we can implement multiple comparisons by invoking
+           mCompareFunction multiple times, one for each comparison (2 shown)
+           and we can replace the first line with:
+    Query q =     val_obj_ref == FnPtrWithBoolReturnAndVoidPtrArg;
+           This also requires a unique function per class per comparison as in
+           the previous option.
+  OR
+  Introduce a Column value type of RecordReference that references a record in
+  a view (instead of a pure object reference), then, when a query is made on
+  this column (ie compare a value with the value in the column) we use the value
+  from the referenced Record instead.
+  We can enhance the Attribute class to store multiple table column names where
+  the last column name is a non-record reference (ie an actual value that can
+  be compared). Maybe we can use an API like:
+  > attr = some_tbl->AttributeAdd("RecReference", eValueType_RecordReference);
+  > ref_attr = GetReference(Attribute* attr, Record* rec, Attribute* import_attr);
+  Now we should be able to import and query any number of attributes from
+  other views by repeated call to create multiple ref_attr's. Query can be like:
+  > Query q("qqq") = ref_attr1==4 && ref_attr3!=0;
+  Care needs to be taken to ensure the referenced records remain valid while
+  the queries continue to be used (need some sort of method to invalidate the
+  query if the referenced record is no more).
+  OR
+  Like above, we use a value type of RecordReference. Later, for query
+  composition, the AttributeFind() task will need to specify two arguments for
+  the attribute to be found and set correctly, the extra argument specifies
+  the attribute name in the referenced record, example:
+  - AttributeFind(cAttr_PciePhyReference, cAttr_PciePhyLtssmState /*extra*/ );
+  The attribute object will then internally store an ordered list of two
+  attribute names which is all we need to later retrieve the attribute value
+  from the referenced record (needed for query comparison).
+  This can be extended when there is a longer chain of references by
+  correspondingly increasing the number of arguments to the AttributeFind()
+  task.
+  The query match function will now take longer to process since each time this
+  kind of attribute is used we have to follow along the whole chain of
+  references (as the RecordReference may have been changed to point to another
+  reference) unless the chain of records has not changed since the last match.
+  Maybe we can use two kinds of references, one which is not allowed to change
+  and one which is.
+
+#051 Sorting_Records_in_LinkList:
+  Algorithm to sort a linked list of Records on one of its attributes.
+  - Enhance List class to iterate from a 'saved' position.
+  - Now we split the list into two: Start-to-Saved & SavedNext-to-Last.
+  - We make Start-to-Saved the sorted list and SavedNext-to-Last the unsorted list.
+  - Initially: Saved=Start; SavedNext=Start->next;
+  - Diagram:
+                 +---+ Ascending sort algorithm:
+   S    First--->| A | for (every recordU in the unsorted list)
+   O             +---+   for (every recordS in the sorted list)
+   R               |       if (recordU[attr] < recordSM[attr]) //recordSM = max
+   T             +-"-+       sorted_list.LinkTransfer(unsorted_list, InsBefore);
+   E    Saved--->| B |       found=1;
+   D             +---+       break;
+   --SPLIT HERE--  |     if (!found)
+                 +-"-+     sorted_list.LinkTransfer(unsorted_list, InsAfter);
+   U  SavedNext->| C |
+   N             +---+
+   S               |
+   O             +-"-+
+   R             | D |
+   T             +---+
+   E               |
+   D             +-"-+
+         Last--->| E |
+                 +---+
+
+#052 Attach_Processes_to_Interface_Signals:
+  Instead of using gScheduler->ProcessAdd(...) maybe we can attach a process
+  to an Interface.clock signal. This would be similar to @@(posedge clk) {...}.
+  Example:
+    class PipeModel {
+      Pipe(Interface intf, Mailbox m);
+      Process* pipe_tx_process;
+      Process* pipe_rx_process;
+    }
+    PipeModel::PipeModel(intf, m) {
+      pipe_tx_process = new ProcessPipeTx("name"); // ProcessPipeTx : Process()
+      pipe_rx_process = new ProcessPipeRx("name"); // ProcessPipeRx : Process()
+      // ProcessAdd() will make Scheduler invoke Process::Always() on clk/edge.
+      ProcessAdd(intf.clk, edge, pipe_tx_process); // connect clk with process
+      ProcessAdd(intf.clk, edge, pipe_rx_process); //            "
+    }
+  Note that this is nice because it clearly connects a process with an event
+  (clock in this case) but is extensible to other interface signals like reset.
+  The AddProcess could simply be a utility function that invokes the Scheduler
+  (as we intended before) with the ProcessAdd() function.
+  Lastly, a similar ProcessAdd() signature could be used for Events or Triggers.
+
+#053 SynchronizerFifos_to_connect_Processes_with_different_clocks:
+  Two processes will not be able to communicate using regular Interfaces if
+  the Processes owning the Interfaces are running at different clocks. In that
+  case we need SynchronizerFifos.
+  The SynchronizerFifos are simple Fifo's and can be created with variable
+  width and depth. The API for the Fifo will include:
+  - bool  IsEmpty()
+  - bool  IsFull()
+  - bool  Push(Bit& b);
+  - Bit*  Pop();
+  - short Size();
+  Example: Convert a serial bit stream in process P1 to 16 bits in process P2.
+                                Assumption
+    P2 clock is derived from P1 clock (by simple division), ie the clocks are
+    aligned and the bit ratios are the inverse of the clock ratios, ie, P2
+    clock is 16 times slower than P1 clock.
+                                  Answer
+    Instantiate a SynchronizerFifo that is at least 16 entries deep and has a
+    width of one bit. Process P1 will Push() one bit each cycle (if the fifo is
+    not full) and Process P2 will Pop() 16 bits each cycle (if the fifo is not
+    empty). The assumption is that P1 clock is 16 times faster than P2 clock
+    to prevent underflow and that P1 will add one bit for every clock and that
+    P2 will begin to Pop() bits only after 16 bits are available in the fifo.
+                                 Variation1
+    If either or both clocks are modulated then a depth of greater than 16
+    should be used to avoid overflow/underflow. The increase in depth depends
+    on the amount of modulation, typically a few extra bits should be enough
+    in the present case.
+                                   Note 
+    If the Scheduler can guarantee that all the Processes are always called
+    in the same order then when the next clock comes for P2 we expect the fifo
+    to again have 16 bits available. This handles the case where P2 process is
+    invoked before the 16th P1 process call in which case bit 16 is not yet
+    available in the fifo, this can happen because the 16th P1 process
+    simulation time is the same as each P2 process time and the Scheduler does
+    not guarantee their order except that the order will remain the same
+    throughout the simulation, ie always P2 after every 16th P1 or always 16th
+    P1 after every P2.
+                                 Variation2
+    In those cases where P1 does not add one bit every clock, the Fifo depth
+    has to be increased and enough bits should first be stored before P2 starts
+    to Pop() bits so that P2 never sees 'empty' unless there is a real problem
+    in the system or 'empty' is allowed to occur for P2 (not the case for PCIE
+    Pipe protocol).
+                                 Variation3
+    If the two clocks are not aligned then again we simply increase the fifo
+    depth (this time we need about 2x or 32 bits for the worst case when P2
+    occurs on the 15th or 16th P1 edge). Process P2 will Pop() the bits every
+    clock as soon as it sees more than 16 bits available.
+                                 Variation3
+    Same as above but the clocks are modulated as well, in this case we need
+    2x plus a couple of extra bits depending on the modulation rate, say 34 or
+    35 bits for the present example.
+  Q. Should we specify the Push size and Pop size in the constructor?
+     > new Fifo(width=1,depth=(16+extra=2),push=1,pop=16);
+  A. Push size may not be needed (always same as width). In that case the API
+     might look simpler. We can now modify the Pop() operation to suceed only
+     if sufficient bits are available (16 in the above example) otherwise the
+     Bit* returned will be 0.
+     > bit = fifo.Pop(); // Pop() size from constructor
+     otherwise, P2 would always need to first check the fifo size:
+     > if (fifo.Size() >= 16) bit = fifo.Pop(entries=16); // no Pop() size
+     The Push() operation is identical in both cases.
+
+#054 Modify_Scheduler_to_manage_Clocks:
+  Q. Currently the Scheduler manages the processes to run based on what clock
+  they are running on. The Clock object itself is static and stores only clock
+  parameters like half_period, clock_name, phase, timescale etc. The question
+  is 'Do we need a non static clock that keeps track of simulation time and
+  what edge it is currently on?'.
+  Ans:
+  Currently the Processes do have this info indirectly because they are only
+  invoked on the clock edge they have requested (by the Scheduler).
+  Also, in future, when we want to connect to SystemVerilog using DirectC
+  where the clocks may not be driven from our testbench we can just replace the
+  current Scheduler with another that simply monitors the external clock and
+  then invokes the corresponding process.
+  So we may not need this feature in the clock object for now.
+
+#055 Interface_Usage.
+           ## Idea 1 ## Interfaces instantiated within a process.
+  Let a Process instantiate as many Interfaces as it needs. The question is how
+  the Scheduler finds the reference to the Interfaces to commit the interface
+  signal values. One way is to have the Interface constructor require the owning
+  process. The constructor invokes a proc->InterfaceAdd() function which adds
+  the interface to a list of interfaces for the process.
+  The Scheduler (which is a friend class of Process) then iterates over the
+  interface list and commits the signal values in them:
+  > MyProcess::MyProcess()  { MyInterface intf("name", intf_details, this); ...}
+  > Interface::Interface()  { ..; proc->InterfaceAdd(this); }
+  > Process::InterfaceAdd() { mInterfaceList.Add(intf); }
+  > Scheduler::Start()      { ..; MacroListIterateAll(mIntfList);intf.Commit();}
+  However, this does not elegantly solve how interfaces are connected. The top-
+  level would need to get query every process for its interfaces and connect
+  them, it could easily misconnect some interfaces or leave some out.
+           ## Idea 2 ## Interfaces instantiated in toplevel.
+  Use the concept of sub-interfaces. The toplevel will create all interfaces and
+  add them to the Scheduler as well. The toplevel will next create all the
+  processes and pass in either the entire interface or a sub-interface into the
+  Process constructor. The sub-interface is better than passing in the entire
+  interface into each process because many times a process will operate only on
+  one part of the interface. Also, specifying the interface or sub-interface in
+  the Process constructor makes the Process-Interface relationship explicit in
+  the code.
+  > Toplevel:: { i = new Interface(name, intf_details);
+  >              gScheduler-InterfaceAdd(i);
+  >              sub_i = i->SubInterfaceGet("group_name"); }
+  > Process::Process(name, sub_i, clock, edge) { ...; }
+  The Connect() can now also be enhanced to connect sub-interfaces rather than
+  specifying the interface name/group.
+  There also may be more reuse of Processes since many interfaces may have
+  common functionality in some of their signals (example: interrupt).
+  One small issue is that Interfaces will need to be explicitly added to the
+  Scheduler until we enhance this mechanism by allowing an Interface to
+  specify a clock and the toplevel then connects each interface to a clock.
+           ## Idea 3 ## Derived from idea 2
+  The Interface class will itself be able to represent a sub-interface (no
+  need for a separate class for this). This is accomplished by an additional
+  constructor argument specifying the sub-interface group name. The Connect()
+  functions will remain as before. All interfaces are created at the toplevel
+  and connected there. The interface handles are also passed into the process
+  constructor which can optionally check if the interface has the right signals.
+  We will also allow the interface to specify a signal of type clock. The
+  toplevel will need to connect this signal to a clock object. The clock
+  object will maintain a list of all interfaces that are added to it and the
+  Scheduler will update (commit) these interfaces by:
+  a) first determine when a clock edge will be updated
+  b) invoke all processes belonging to that clock prior to updating it
+  c) commit interfaces that use the clock
+  Processes now need not be added to the Scheduler directly, instead a process
+  will inform the Scheduler which interface it is using so that it gets invoked
+  at the correct time. There is only one clock per interface and any sub-
+  interfaces will have a reference to this clock. Also, there is only one clock
+  per process.
+           ## Idea 4 ## Refined from idea 3
+  1. Interface class will be modified to also act as a sub-interface.
+  2. Each sub-interface will refer the same Interface clock (if synchronous).
+  3. Interfaces are created by processes that exports them to a Connector class.
+  4. Connector class is a global singleton class.
+  5. Connector will connect based on interface type, version, direction etc.
+  6. Connector is also provided with clock objects that interfaces can use.
+  7. Derived Process class will inform Scheduler of itself and clock edge.
+           ## Idea 5 ## Refined from idea 4
+  1. Interface class modified to select subset of signals (sub-interface).
+  2. Sub-interface will refer to the same interface clock (if synchronous).
+  3. All clocks     are created in the toplevel class.
+  4. All interfaces are created in the toplevel class.
+  5. All processes  are created in the toplevel class.
+  6. Processes can act on multiple interfaces, scheduler provides intf handle.
+  7. Create a singleton Connector class to assist in making all connections.
+  8. Schedule all processes from toplevel (specify only clock edge & interface).
+  9. Introduce interface signal type 'none' (see note).
+  Note: This allows us to store any amount of user data for an interface. For
+        example 'process state' or 'pcie lane number' which in turn allows us
+        to share a single process object for multiple interfaces (the process
+        does not hold any data and is a pure algorithm, all data comes from
+        the interface itself).
+
+#056 Using_a_Table_for_runtime_errors_and_warnings.
+  Explore the idea of using a database table to store errors and warnings.
+  - database is global, makes it easy for any class/object to store/retieve.
+  - we get all database advantages (queries, persistence, observability etc.)
+  - reuse of existing database code.
+  - allows us to specify when to exit sim. by using a trigger
+
+#057 Tests_without_recompile_implementation:
+  - Create a class called something like TestInterpreter.
+  - Read in the entire test file into an array, one entry per line.
+  - Interpret each line creating/retrieving any objects declared in the line.
+    (example: Values, Tables, Queries, BfmDrivers etc.).
+  - All objects supported need to be stored in a list or hash table.
+  - Execute any statements like: if, while, case etc.
+  Advantages:
+  - Ability to have 'blocking' behavior in the test.
+    (since we process line by line we can implement blocking behavior (ie
+    stop process execution) by simply having the interpreter stop parsing at a
+    given line!! We can even allow fork etc., all the Interpreter need do is to
+    be able to remember more than one line per process).
+
+#058 Connector_class:
+  - Develop a Connector class that will be used to conveniently connect
+    interfaces (or sub-interfaces) that have been registered by processes.
+  - Possible Connector API is:
+    - InterfaceAdd("IntfName", IntfObj, IntfVersion, IntfDirection, IntfHint);
+    - Connect("IntfName1", "IntfName2");
+    - Connect(IntfObj1, IntfObj2);
+    - Connect(ConnectHint);
+
+059 RecordSharingInMultipleViews:
+   Multiple views with varying permissions are permitted on a table. The records
+   in a view are actually references to the actual table records, thus processes
+   that own views need to realize that record values can change from outside
+   their control (if the same record is in more than one view). To prevent this
+   a process can use the 'snapshots' feature (tbd) instead.
+   A process can manage (ie track and act on changes to a record) by means of
+   triggers on the view and then decide whether to still keep that record in
+   the view.
+   The cases to consider are probably:
+   - 1_Process_1_View
+       The process can read and modify (assuming write perm.) records at will.
+   - 1_Process_N_Views
+       The process can again read and modify records from all view at will with
+       the knowledge that the process itself must manage any conflicts that may
+       arise which may be handled by directly managing all the views or setting
+       up triggers for the changes to the views.
+       If more than one view has write permission then then some co-operation
+       between the write operations is necessary so that one write does
+       not 'accidentally' overwrite the other.
+   - N_Process_1_View
+       In this case multiple processes are sharing a single view handle. If the
+       view has 'write' permission then the processes will need to setup
+       triggers to be notified of changes to the records by other processes,
+       however, there is no meaningful action that can be taken on the view
+       itself (eg. removing the record from the view) as that can likely cause
+       infinite recursion if multiple processes have set triggers for the view).
+   - N_Process_N_Views
+       This case is (probably) a combination of the above two cases except
+       that no single process can manage all the views and triggers must be
+       used to notify all processes of changes to their views.
+   Note: It is probably safest to just have one view that has 'write'
+         permission and the other views on the table have only read permission
+         (unless, by design, the views contain mutually exclusive records).
+
+060 Process_Add:
+   Idea was to use a Scheduler member function like:
+   > ProcessAdd(process, intf, clock, edge); // capture relationship in 1 line
+   > ProcessAdd(process, intf,        edge); // clock assumed available via intf
+   > Scheduler then invokes process->Execute(all_ok, intf);
+   Advantages are:
+   - One process can be used to handle several identical interfaces.
+   Disadvantages are:
+   - Wrong 'intf' provided to Scheduler (results in runtime error).
+   - 'clock' may be passed in for an asynchronous process (easily checked).
+  Other option was to just simply use:
+  > ProcessAdd(process);
+  where 'intf', 'clock' and 'edge' are members of 'process'.
+  Advantages are:
+  - More intuitive (each process is associated with intf/clock/edge).
+  Disadvantages are:
+  - One process per 'intf'.
+  We can achieve the ideal by having the Scheduler allow both types of member
+  functions. Therefore, if only process' is passed via ProcessAdd(...) then
+  intf/clock/edge are presumed to be stored in 'process' otherwise this info
+  is stored in the Scheduler.
+
+061 FineTuningDbCommit:
+   More care is needing during the database commit operation as regards the
+   trigger scheduling. The following operations are needed during commit:
+   - record changes             must be executed.
+   - aggregates                 must be updated.
+   - triggers on record changes must be evaluated.
+   - triggers on record changes must be executed (in trigger callback function).
+   - triggers on aggregates     must be evaluated
+   - triggers on aggregates     must be executed (in trigger callback function).
+   All of the above needs to happen in a stable manner, meaning that the final
+   outcome (ie state of the database) be the same no matter in what order the
+   changes are committed or triggers are evaluated/executed. Thus we cannot for
+   example commit a record change and immidiately evaluate a trigger because:
+   - if commit is followed by trigger then trigger sees db in a different state
+     than an earlier trigger.
+   - if trigger is followed by commit then subsequent trigger sees db in a
+     different state.
+   Thus we need to either:
+   - first pass only commit all changes, second pass evaluate all triggers, or
+   - first pass only evaluate all triggers, second pass commit all changes.
+   UPDATE:
+   - first pass, update db with transaction, second pass schedule trigger match.
+   The first option seems to be more likely correct as all trigger functions
+   (ie trigger execution) will see the latest database state as compared to the
+   previous state.
+   There are 3 possible changes to a record: add, modify and delete.
+   Possible commit pseudo code for them all are:
+     Pass1: A commit record change
+            B update all aggregates (for all views with this record)
+            C evaluate record change trigger (for all views with this record)
+            D schedule trigger execution for all positive evaluations
+            E evaluate all attribute change triggers,
+            F schedule attribute change trigger execution.
+     Pass2: execute scheduled triggers (record changes as well as attribute),
+            (all trigger will see the same database state made in pass1).
+   Notes:
+   - If a view has a trigger on record add it will be implemented in pass1
+     in stepB, that trigger should import the record which will update the
+     aggregate.
+   Questions:
+   - Q1: Can trigger actions add database transactions?
+     A1: Yes, but they will be committed during the next cycle.
+   - Q2: How will Joins be handled as their queries examine more than one table?
+     A2: Join triggers need to be evaluated after all record change commits.
+   - Q3: What is the procedure when the commit is invoked for a specific view?
+     A3: Perform pass1 steps but not step2.
+   UPDATE:
+   General procedure will be to perform the db transaction in the first pass
+   and if a trigger matches then schedule the action for the second pass.
+   If the trigger actions add more transactions then again follow the two pass
+   commit procedure.
+   Procedure for record {add, import, delete, remove, modify}:
+   RecordAdd:
+   - add the record to the table
+   - process import-triggers, if trigger matches then schedule RecordImport
+   - note: aggregates (& their triggers) will be processed during record import
+   RecordImport:
+   - add the record to the view
+   - update any view aggregates
+   - process aggregate-triggers for view (query has at least one aggregate),
+     if there is a match then schedule the trigger-action-function
+   RecordDelete:
+   - remove the view-record from the view (decrements reference count)
+   - if reference count is 0 then schedule a RecordRemove (rec remains avail.)
+   - update any non-sticky view aggregates
+   - process aggregate-triggers for view (query has at least one aggregate),
+     if trigger matches then schedule it
+   - for now no delete triggers (cannot think of any use cases)
+   RecordRemove:
+   - simply remove the record from the table
+   RecordModify:
+   - modify the record
+   - process modify-triggers for view, if trigger matches then schedule it
+   - process modify-triggers for all other views that contain the same record,
+     if trigger matches then schedule it
+   - update aggregates for view
+   - update aggregates for all other views that contain the same record
+   - process aggregate-triggers for view (query has at least one aggregate),
+     if there is a match then schedule the trigger-action-function
+   - process aggregate-triggers for all other views (query has at least one
+     aggregate), if trigger matches then schedule it
+
+062 PseudoCodeForVcdDump:
+  From the Specification, the format for dumped variables is:
+    The value change dumper generates character identifier codes to represent
+    variables. The identifier code is a code composed of the printable
+    characters which are in the ASCII character set from ! to ~ (decimal 33 to
+    126).
+
+
+063 Mapping_class_members_to_db_table:
+   In accordance with making all (verification) class member data observable
+   we would like to explore a simple mechanism to automatically add a table and
+   a view for the class members instead of manually doing so. Maybe a macro
+   can do the trick.
+   The steps we normally follow are:
+   - Table* tbl = gDB->TableOpen(TblName, flags);
+   - tbl->AttributeAdd(attr_name, attr_type, null_val, bit_width);
+   And the client wishing to observe the class members would use:
+   - View* view = tbl->ViewCreate(view_name, perm);
+   - Attribute* attr = tbl->AttributeFind(attr_name);
+   - ViewIterator* iter = view->ViewIteratorNew();
+   A possible macro could be:
+     #define M_Reflect2MembersInDB(proc_name, mMember1, mMember2, max_entries)
+       Table* tbl = gDB->TableOpen(proc_name, some_flags); \
+       tbl->AttributeAdd(#mMember1#, mMember1); \
+       tbl->AttributeAdd(#mMember2#, mMember2);
+   where we use a new AttributeAdd signature which will figure out attr_type.
+   Problems with this are:
+   - who will manage (delete) the Table pointer (tbl)?
+   - is there a mechanism to convert mMember1 etc. to string for AttributeAdd()?
+   - how will clients get the table handle (should they use only the db handle)?
+     Maybe 'flags' should indicate that clients are allowed to query for the
+     database handle (from the name).
+
+064 SimulatorClass.
+   Logic to generate vcd waveform dump files require to know the scope of the
+   signals (scope=module|task|function|fork-join). This requires us to add the
+   'module' concept to our simulation framework which in turn also seems to
+   suggest the need for a Simulator class to integrate Modules and Scheduler.
+   Ideally the Simulator class is instantiated once in Main.cc and takes care
+   of as many things as are necessary. A possible framework that would result
+   in Main.cc is:
+     int main() {
+       gDB = new Database("name", flags);
+       sim = new Simulator(version); // creates gScheduler
+       top = new ModuleTop(); // wrapper around all modules created in Build()
+       cfg = new Configuration(gDB, ...); // Configuration class is tbd.
+       //
+       top->Build(cfg);
+       //
+       // then, delete all new'ed objects and finish.
+     }
+   Or:
+     ModuleTop (inherits from Module) has a pointer to all child modules and
+     they in turn have pointers to their child modules. Also, all processes
+     in a module are stored in a list and can be accessed by the Simulator.
+     //
+     gDB  = new Database("name", flags);
+     gTop = new ModuleTop();
+     gSim = new Simulator();
+     gCfg = new Configuration(dba, ...); // Configuration class is tbd.
+     //
+     gTop->Build(gCfg);
+     gSim->Simulate(gTop, terminate_conditions);
+     //
+     // Now free all objects.
+     // Note the following other important methods not shown above:
+     // - modx = new ModuleX("name", parent_module);         // within ModuleTop
+     // - proc = new Process(owning_module, ...);            // within ModuleX
+     // - intf = new Interface(name, parent_module);         // within ModuleX
+     // - gSimulator->ProcessAddSync(proc, clk, edge, modx); // within ModuleX
+     // - gSimulator->Dump(on_off);
+     // - gSimulator->Start() {/* for all modules, for all processes */
+     //                        /* add process interface to Scheduler */
+     // For dump, the Simulator can retrieve all interface signals as follows:
+     // gVcd->vcd_definitions(module_top);
+     // gVcd->vcd_definitions(module_top, fp);
+     //
+     // Vcd::vcd_definitions(Module module) {
+     //   if (!module_top) {
+     //     print "$scope module Name() $end";
+     //     for (each process in module) {
+     //       get process.interface;
+     //       for (each interface.signal_list) {
+     //         vcd_id = VcdUniqId(); print "%vcd_id intf.signal.Name()";
+     //         intf.signal.VcdIdSet(vcd_id);
+     //       }
+     //     }
+     //   }
+     //   for (each sub-module in module) {
+     //     vcd_definitions(sub-module);
+     //   }
+     //   if (!module_top) print "$upscope $end"
+     // }
+     //
+     // VcdUniqId(char* vcd_code) {
+     //   // Vcd Spec(1364-2005_D3), identifiers are ascii char codes 33 to 126.
+     //   short i,j,k;
+     //   i=33; j=k=32;
+     //   vcd_code={'\0', '\0', '\0', '\0'};
+     //   if      (j==32) vcd_code[0]=i++;                               break;
+     //   else if (k==32) vcd_code[0]=i++; vcd_code[1]=j;                break;
+     //   else            vcd_code[0]=i++; vcd_code[1]=j; vcd_code[2]=k; break;
+     //   if (i==127) { i=33; j++; }
+     //   if (j==127) { j=32; k++; }
+     //   if (k==127) { assert(0); } // out of codes
+     // }
+    
+065 MailboxImplementation:
+   Mailbox is implemented as a fifo of a fixed (compile time) size containing
+   entries of object references (may use void*).
+   Useful Mailbox features are:
+   - blocking behavior for get() when no entries
+   - blocking behavior for put() when fifo is full
+   - polling  behavior for get()
+   - polling  behavior for put()
+   - flush all entries
+   - support synchronous and software processes, no support for asynchronous.
+   To support synchronous processes, a mailbox put() by one process should not
+   be visible to the receiving process using get() in the same timestamp as
+   that would lead to behavior that is dependent on the order in which the
+   processes are called by the Scheduler. Thus the Mailbox will need to work
+   with the Scheduler to make a put() entry visible for get() (and vice-versa)
+   only after the simulation time advances.
+   To support blocking, the Mailbox will need to update the Scheduler so that
+   the process with get() is next invoked only once entries are available and
+   the process with put() is next invoked only once the mailbox is not full.
+   //
+   The total combinations that need to be supported by the Mailbox are:
+   From-Sync/Soft x To-Sync/Soft x Put/Get X Full/Empty x Block/Poll= 32.
+   //                                                       // side notes
+   Soft-To-Soft-Put-Empty--Polling: bool mb.Put();          // true
+   Soft-To-Soft-Put-Empty-Blocking: bool mb.Put(obj, this); // true, soft not blocked
+   Soft-To-Soft-Put-Full---Polling: bool mb.Put(obj);       // false, obj ignored
+   Soft-To-Soft-Put-Full--Blocking: bool mb.Put(obj, this); // false, obj ignored, soft restarts on !full
+   Soft-To-Soft-Get-Empty--Polling: bool mb.Get();          // false
+   Soft-To-Soft-Get-Empty-Blocking: obj* mb.Get(this);      // obj=0 and soft is blocked until !empty
+   Soft-To-Soft-Get-Full---Polling: bool mb.Get();          // true
+   Soft-To-Soft-Get-Full--Blocking: obj* mb.Get(this);      // obj, soft is not blocked
+   //
+   Other side-notes:
+   //
+   Probably, other modes (sync to soft, soft-to-sync etc.) are all similar.
+   Lets check this with an Sync-To-Soft example.
+   Sync-To-Soft-Put-Empty--Polling: bool mb.Put();           // true (assuming mbox cap > 0)
+   Sync-To-Soft-Put-Empty-Blocking: bool mb.Put(obj, this);  // true, sync is not blocked
+   Sync-To-Soft-Put-Full---Polling: bool mb.Put();           // false, sync decides what next
+   Sync-To-Soft-Put-Full--Blocking: bool mb.Put(obj, this);  // false, sync is blocked
+   Sync-To-Soft-Get-Empty--Polling: bool mb.Get();           // false
+   Sync-To-Soft-Get-Empty-Blocking: obj* mb.Get(this);       // obj=0, sync is blocked
+   Sync-To-Soft-Get-Full---Polling: bool mb.Get();           // true
+   Sync-To-Soft-Get-Full--Blocking: obj* mb.Get(this);       // obj!=0, sync is not blocked
+   //
+   Other side-notes:
+   Since the scheduler first completes all soft processes in a timestamp
+   before examining synchronous processes, all entries put() by soft processes
+   can be made visible to the synchronous process get(). Similarly, the
+   synchronous process put() will see the correct number of entries in the
+   mailbox (depending on how many entries were retrieved with get() by soft
+   processes before scheduler started on synchronous processes).
+   //
+   Lets check this with an Sync-To-Sync example.
+   Sync-To-Sync-Put-Empty--Polling: bool mb.Put();           // true
+   Sync-To-Sync-Put-Empty-Blocking: bool mb.Put(obj, this);  // true, sync is not blocked
+   Sync-To-Sync-Put-Full---Polling: bool mb.Put();           // false, sync decides what next
+   Sync-To-Sync-Put-Full--Blocking: bool mb.Put(obj, this);  // false, sync is blocked
+   Sync-To-Sync-Get-Empty--Polling: bool mb.Get();           // false
+   Sync-To-Sync-Get-Empty-Blocking: obj* mb.Get(this);       // obj=0, sync is blocked
+   Sync-To-Sync-Get-Full---Polling: bool mb.Get();           // true
+   Sync-To-Sync-Get-Full--Blocking: obj* mb.Get(this);       // obj!=0, sync is not blocked
+   //
+   Other side-notes:
+   The value of mailbox entries in the sync-to-sync case needs to adjust for
+   uncommited entries, example:
+   Scenario:
+     Two processes are accessing the mbox at the same timestamp (effect should
+     be the same regardless which process runs first):
+     // mb.capacity=1,        mb.entries=0:
+          process-p1           process-p2            analysis
+           mb.Put()            mb.Get()        Put()=true, Get()=false
+           mb.Put()            o=mb.Get(this)  Put()=true, Get()=false, p2 blocks
+           mb.Put(obj, this)   mb.Get()        Put()=true, Get()=false
+           mb.Put(obj, this)   o=mb.Get(this)  Put()=true, Get()=false, p2 blocks
+     // mb.capacity=1, mb.entries=1:
+           mb.Put()            mb.Get()        Put()=false,            Get()=true
+           mb.Put()            o=mb.Get(this)  Put()=false, p1 blocks, Get()=true
+           mb.Put(obj, this)   mb.Get()        Put()=false,            Get()=true
+           mb.Put(obj, this)   o=mb.Get(this)  Put()=false, p1 blocks, Get()=true
+
+066 SortingProcessInScheduler:
+   For all entries at time 't' the processes should be in the following order:
+   - clocks
+   - timers
+   - edge triggered processes
+   - level triggered processes
+   Assuming the iterator is at the current time,
+   the steps to insert clocks for time 't' (> current_time) is:
+   > found = iter->FindNext(time>t)
+   > found = iter->FindPrev(time<t)
+   > if (found) insert_after;
+   > else       insert_before;
+   the steps to insert level-triggered-processes for time 't' is:
+   > found = iter->FindNext(time>t)
+   > if (found) insert_before;
+   > else       insert_after;
+   the steps to insert edge-triggered-processes for time 't' is:
+   > found = iter->FindNext(time>t);
+   > while (rec=iter->Prev()) {
+   >   if (rec[edge]==Level && time==t) continue;
+   >   else { insert_after; break; }
+   > }
+   > if (rec==0) insert_before;
+   the steps to insert timer-processes for time 't' is:
+                   *** OR ***
+   Explicitly mark the Scheduler regions 'clock, timer, sync-edge, sync-level'
+   using an additional attribute called 'region' in all rows.
+   Then the steps to insert is the same for all regions:
+   > Region  r = RegionGet(process);
+   > Simtime t = SchedSimTime(clk, process->clkedge);
+   > // Note: quoted items are record attributes.
+   > found = iter->FindNext("time">=t);
+   > if (!found)
+   >   insert_after;
+   > else {
+   >   if ("time"==t && "region">=region)
+   >     insert_none; // this doesnt work
+   >   else if ("time" > t)
+   >     insert_before;
+   >   else {
+   >     iter->Previous();
+   >     found = iter->Find("time">t || "region"<r);
+   >     if (found) insert_before;
+   >     else       insert_after;
+   >   }
+   > }
+                   *** OR ***
+   Dont use queries at all but scan each record as follows:
+   > Region  r = RegionGet(process);
+   > Simtime t = SchedSimTime(clk, process->clkedge);
+   > // Note: quoted items are record attributes.
+   > found=FALSE;
+   > for (i=0; rec.next() && !found; i++) {
+   >   if      ("time">t)                { found=TRUE; }
+   >   else if ("time"==t && "region">r) { found=TRUE; }
+   > }
+   > if      (i==0)  insert=none;
+   > else if (found) insert=before;
+   > else            insert=last;
+
+067 UsefulWebLinks:
+  - http://www.gamespp.com/algorithms/balancedBinaryTreeAlgorithm.html
+    Binary tree code needed to implement hashing.
+
+068 HashImplemention:
+  - Useful hashes to have are string(key)->ptr and int(key)->ptr.
+  - Maybe just define a Hash() member function in the Value class.
+  - HashTable API: Add(Value*), Exists(Value*), First(), Next(), Value* Get().
+
+069 JoinImplemention:
+    To help determine the implementation lets first:
+    + understand 'joins'
+    + determine the requirements
+    + examples to help identify user interface
+    + design the user interface
+    + specify the join algorithm
+    Understanding Joins (using 2 views example):
+    - Inner:       Combine those records from view1 & view2 that match
+    - Left-Outer:  Keep all view1 records using null for unmatched view2 records
+    - Right-Outer: Keep all view2 records using null for unmatched view1 records
+    - Full-Outer:  Keep all view1 & view2 records using null for any unmatched recs
+    - Self:        Same as inner but view2 will actually be view1 again
+    Requirements:
+    - Need Inner, Left-Outer, Full-Outer and Self Joins.
+    Implementation:
+    - Use a Join class that stores the views to be joined.
+    - Modify: Query, Condition & Attribute classes to handle joins.
+      - Query:
+      - Condition:
+      - Attribute:
+    UI_Example1: (ignore, use UI_Example3)
+      Query q = view1 && (attrA1==val1 && attrA2==val2) && view2 && (attrA1==attrB1);
+      Join  join(viewA, viewB);
+    UI_Example2:
+      Pick a View overloaded operator from below: Attribute& View::operator%(Attribute& attr):
+        Query q = (view1%attrA1==val1 && view1%attrA2==val2) && (view1%attrA1==view2%attrB1);
+        Query q = (view1-attrA1==val1 && view1-attrA2==val2) && (view1-attrA1==view2-attrB1);
+        Query q = (view1+attrA1==val1 && view1+attrA2==val2) && (view1+attrA1==view2+attrB1);
+        Query q = (view1^attrA1==val1 && view1^attrA2==val2) && (view1^attrA1==view2^attrB1);
+        Query q = (view1|attrA1==val1 && view1|attrA2==val2) && (view1|attrA1==view2|attrB1);
+        Query q = (view1>attrA1==val1 && view1>attrA2==val2) && (view1>attrA1==view2>attrB1);
+        Query q = (view1*attrA1==val1 && view1*attrA2==val2) && (view1*attrA1==view2*attrB1);
+        Query q = (view1[attrA1]==val1 && view1[attrA2]==val2) && (view1[attrA1]==view2[attrB1]);
+      Or select an Attribute overloaded operator: Attribute& Attribute::operator%(View& view):
+        Query q = (attrA1%view1==val1 && attrA2%view2==val2)) && (attrA1%view1== attrB1%view2);
+      +-Query q = (attrA1[view1]==val1 && attrA2[view2]==val2)) && (attrA1[view1]==attrB1[view2]);
+      +---> pick this
+      Note: Attributes are per Table, not per View, that is why View needs to be specified.
+      Note: We can embed the view pointer in the condition obj created from the comparison,
+            This will be needed by the Join class to determine the views involved.
+    UI_Example3 & API:
+      Query q = (attrA1[view1]==val1 && attrA2[view2]==val2) && (attrA1[view1]==attrB1[view2]);
+      Join       join(q, view1==inner);
+      JoinRecord* recj;
+      recj = join.RecordJoinSearchFirst();
+      recj = join.RecordJoinSearchNext();
+      rec1 = recj[view1]; // use recj[0] and recj[1] in case of self-join
+      rec2 = recj[view2];
+      val1 = rec1[attr1]; // or
+      val1 = recj[view1][attr1];
+             OR
+      for (join.RecordJoinSearchFirst();!join.RecordJoinSearchIsDone(); join.RecordJoinSearchNext()) {
+        Record* r1 = join.RecordGet(view1);
+        Record* r2 = join.RecordGet(view2);
+      }
+
+    Join-Algorithm(Inner):
+      - Join join(query), this should parse the query as follows:
+        - assign cond.mpViewIterator (VI.lhs, VI.rhs) if type is AttributePtr:
+          - foreach  uniq cond.attr.lhs,rhs.mpView allocate, assign, store a VI
+          - else non-uniq cond.attr.lhs,rhs.mpView assign an allocated VI
+      - Modify the Condition.Match() as follows:
+        - use Match(rec=0) and use ViewIterator (set above) to get the Records.
+      - JoinRecord* join_rec = join.First();
+          view1_iter->RecordSearchFirst(); view2_iter->RecordSearchFirst().
+          query->Match(view1_iter->Get(), view2_iter->Get());
+      - JoinRecord* recj = join.RecordSearchNext() {
+          if (! view2_iter->RecordSearchNext()) {
+            if (! view2_iter->RecordSearchFirst())
+              return (RecordJoin*)0;
+            if (! view1_iter->RecordSearchNext())
+              return (RecordJoin*)0;
+          }
+          rec1 = view1_iter->Get();
+          rec2 = view2_iter->Get();
+          if (query.Match(rec1, rec2)) {
+            mJoinRecord->SetRecs(rec1, rec2);
+            return mJoinRecord;
+          }
+        }
+    Implementation for: bool Query::Match(rec1, rec2):
+    - Note: each attribute has its view handle stored from attr[view] = val
+    - Note: each record has its view handle always stored
+    - For each attribute in a condition, determine the record to compare with:
+        if (! self_join) {
+          rec1->view = view1; rec1->view->join_rec = rec1;
+          rec2->view = view2; rec2->view->join_rec = rec2;
+          for (all conditions in query) {
+            // Ignore and/or logic for simplicity.
+            if (attr1->view) val1 = *(attr1->view->join_rec)[attr1];
+            if (attr2->view) val2 = *(attr2->view->join_rec)[attr2]; // self-join needs its own view
+            // else: get val1, val2 as usual
+            c.Evaluate(val1, val2);
+          }
+        } else {
+          for (all conditions in query) {
+            // Ignore and/or logic for simplicity.
+            if (attr1->view_iter) val1 = *(attr1->view_iter-)Get()[attr1];
+            if (attr2->view_iter) val2 = *(attr2->view_iter-)Get()[attr2]; // self-join needs its own view
+            // else: get val1, val2 as usual
+            c.Evaluate(val1, val2);
+          }
+        }
+
+070 HookingItAllUp:
+  - The main objects that need to be hooked up are:
+    - Clocks.
+    - Interfaces (connections).
+    - Processes (may have interface w/out clock, mailboxes and fifos).
+    - Modules (will contain sub-modules).
+    - Mailboxes.
+  - Try to use the Simulator class to achieve as much as possible.
+  - Try to shield user from Scheduler, put it into the Simulator object.
+  - Dont create mailboxes in the process, do it in the parent module.
+  Idea1:      (Using Module class as the 'connecting' agent).
+  - Create processes (incl. clocks) in modules within which they are consumed.
+  - Connect single interfaces using: Connect("process1", "process2").
+  - Connect clocks using: Connect("process", "clock_process").
+  - Connect mailboxes using:  Connect("process", mbox, dir, index), or
+                              Connect("process", mbox, dir, index), or
+    or make the owning module a friend class of the process class and directly
+    set the mailbox.
+  - Create all Processes individually within a module. Dont pass in any required
+    interfaces, clock-edge, mailbox, events etc. using the constructor. These
+    should be initialized by the parent module.
+  - Add all the 'top' modules to be simulated to the Simulator.
+    (Simulator should be able to access interfaces & clocks from the module).
+  - Start the Simulator.
+
+071 GlobalEventClass:
+  The goal of this class is to allow processes to use a single global handle to
+  receive 'global' events of interest and maybe even add new project/process
+  specific events. Without the global handle we would need:
+  - events would have to be passed in to processes via constructors/tasks
+  - events created locally will somehow have to be advertised to other processes
+  Needed methods of this class would be:
+  - Event* EventFind(const char* event_name);
+  - bool   EventAdd(Event* event);
+  - bool   EventRemove(const char* name);
+  Now any processes can access events using a global and a process can receive
+  local events based on the name of the event. Maybe we need to add some more
+  info to the event object list event owner/creator so that another process can
+  find the event based on owner or attributes of the owner.
+
+072 ConfigurationClass:
+
+073 ConfiguationFileFormat:
+
+074 ClockProcessesInterfaceSubInterfaceSignalEdgeHookup.
+  Q. How to hook up Clock, Processes, Interface, Sub-Interface & SignalEdge.
+  A. Use a clk_info = {signal_name, clock, edge} list in Process & Interface.
+  Sequence of 'hookup' steps are:
+  1. module::ConnectClock(interface, signal_name, clock):
+     - connects interface.signal_name to clock.clk_signal .
+     - updates intf.clk_info.{signal_name, clock, edge=?}
+     - updates 'interface' as a clocked-interface.
+     - Q. how to schedule a process that uses a clocked sub-interface?
+       A. make it override parent interface clock, gives max flexibility as
+          the sub-interface can still add the parent interface clock if needed.
+  2. process.ProcessIsSensitiveTo(signal_name, edge):
+     - update clk_info{signal_name, clock=?, edge}
+     - task signature is the same when connecting to a signal instead of clock.
+  3. process.InterfaceSet(intf) or via Process constructors:
+     - process sets its 'this' handle to the interface (not sub) it receives.
+  4. scheduler.ModuleAdd(top_module):
+     - fetch all processes in the module, if its a sync process & interface is:
+       - normal: fetch all clk_info's (usually 1) and schedule the process.
+       - sub:    fetch all clk_info's (usually 1) for sub and parent interface.
+       Note: must reconcile process.clk_info with process.interface.clk_info .
+  Note:
+  - Implementation of ProcessType():
+     - will be Synchronous if its interface is:
+       normal && mpInterface->IsClocked() is true,
+       sub:   && mpInterface->IsClocked() or mpParentInterface->IsClocked() true
+     - the return value will only be accurate after all interfaces are connected
+     - check for connection error (sensitive signal not connected to a clock)
+  Note:
+  - Should Sub-interface be its own class or inherit from Interface?
+    - Own class: as multiple sub-interfaces refer to a single parent interface.
+    - Derived:   use the same arg in functions for Interfaces & Sub-interfaces.
+    - Derived:   as the classes are similar and we can share code.
+    - Solution: Use same class with a flag indicating whether it is sub or not
+                and an additional member: mpParentInterface for sub-interfaces.
+
+075 MakingProcessSensitiveToAnyInputSignal:
+  Currently a synchronous process can be sensitive to one or more clocks and an
+  asynchronous process is sensitive to any input change. We need to also model a
+  process that is both synchronous and asynchronous (example: process is
+  sensitive to: (posedge clk or negedge reset). To accomplish this we can add
+  the following steps:
+  - mark process as sensitive using ProcessIsSensitiveTo(signal_name, edge).
+  - store signal.mIsSensitiveTo = edge
+  - during Connect(signal1, signal2), if signal_connected_to mIsSensitiveTo an
+    edge then add a Scheduler entry: <intf, signal_from, signal_to, edge>
+  - there are 2 choices when to schedule a process sensitive to a non-clock inp:
+    a) during PropagateOutputs(), results in a  depth  first process scheduling
+    b) during intf->Commit(),     results in a breadth first process scheduling
+    Q. Are both options valid? Which one is better?
+    A. ?
+  - whichever approach is used, the Scheduler schedules the process as a new
+    entry for the current timestamp and the current 'region'.
+    Q. What to do with this entry after it executes?
+    A. ?
+                                      OR
+  - mark process as sensitive using ProcessIsSensitiveTo(signal_name, edge)
+  - add sensitive edge info to Signal object: signal.sens_list.add(edge,process)
+  - if a signal is updated to a sensitive edge, schedule all sensitive processes
+  - now there are four cases in the Scheduler:
+    a) Scheduler is processing async and an async interface signal is sensitive:
+    b) Scheduler is processing async and an  sync interface signal is sensitive:
+    c) Scheduler is processing  sync and an async interface signal is sensitive:
+    d) Scheduler is processing  sync and an  sync interface signal is sensitive:
+  - for a), c) and d) simply add the sensitive process to the async process list
+  - for b) reschedule sync process to current timestamp if not already scheduled
+
+076 ModuleProcessInterfaceDynamicCreation:
+  - the Module object is a container for: sub-modules, process & interfaces
+  - the Module constructor creates sub-modules, processes(clocks) & interfaces
+  - the Module constructor should connect the interfaces (and clock interface)
+  - the Module constructor should mark any sensitive interface input signals
+  - during connect it can be known if an interface is connected to a clock
+  - for each sync & async process the interface should be added explicitly
+  - the top module is contructed in main(), this inter-connects all interfaces
+  - the top module is added to the simulator, this will:
+  - schedule all processes based on whether they are clock, sync or async
+  - the Scheduler is started and can run for any length of time
+
+077 HowToAllowSubModulesToDriveOutputsOrReceiveInputs.
+  Currently, when we connect interfaces we check that outputs connect to inputs
+  and vice-versa. However, sometimes an instantiated module (which will have
+  its own processes and interfaces) will drive an output or receive an input
+  belonging to the parent interface which will mean that the output (or input)
+  of the sub-module will connect to an output (or input) of the parent module.
+  Q. How do we then modify our connection check (ie output connecting to output
+     is legal in this case) ?
+  A. Provide a separate task to connect these signals: ExtendInterfaceGroup(),
+     this will connect inputs to inputs and outputs to outputs but otherwise
+     work the same as ConnectInterfaceGroup(). An output from a sub-module
+     interface signal will get 'extended' to the parent interface, and, an
+     input from the parent module will get extended to the input of the sub-
+     module. To implement this we may need to modify the Signal class to help
+     indicate that the signal is extended to other signals and the value needs
+     to be updated there as well, or, we somehow make the other signals refer to
+     the extended signal.
+                                  OR
+  A. Simply allow input to connect to an input with the additional check
+     being that one of the inputs must belong to a module that is a parent
+     of the other signals module. Then we connect as follows:
+     PseudoCode:
+       module_relation = find_signal_module_relation(signal1, signal2);
+       short Connect(sig1, sig2, module_relation) {
+         case (module_relation) {
+           inter_module:
+             if (sig1.CanDrive()   && sig2.CanReceive()) sig1.propagate=1;
+             if (sig2.CanDrive()   && sig1.CanReceive()) sig2.propagate=1;
+           sig1_type_is_parent:
+             if (sig2.CanDrive()   && sig1.CanDrive())   sig2.propagate=1;
+             if (sig1.CanReceive() && sig2.CanReceive()) sig1.propagate=1;
+           sig2_type_is_parent:
+             if (sig1.CanDrive()   && sig2.CanDrive()    sig1.propagate=1;
+             if (sig2.CanReceive() && sig1.CanReceive()) sig2.propagate=1;
+         }
+
+         // return which signal should have 'propagate' set.
+         if      (sig1.propagate==1) return 1;
+         else if (sig2.propagate==1) return 2;
+         else                        return 0;
+       }
+     We also need to modify the signal propagate algorithm to:
+     Idea1: Call PropagateOutputs() twice, once to propagate sub-module
+            connections and then once for inter-module connections.
+     Idea2: Call PropagateOutputs() once, the function should propagate an
+            output until it meets a signal at an inter-module boundary. This
+            works because for now we only allow one driver per input, so signals
+            in propagate mode will not drive (overwrite) the final input.
+     Idea3: Call PropagateOutputs() as before but modify it to also propagate
+            inputs that are connected to sub-module inputs (identified by a
+            member variable called 'propagate').
+
+078 SignalsBehavingLikeReg.
+  Currently we use Signal objects only in Interfaces but they will be useful
+  if they could behave like Verilog's 'reg' type because:
+  a) Signal's non-blocking behavior is needed outside interfaces (eg: state)
+  b) HDL designers are used to using 'reg' type in designs/testbenches
+  c) Signals can be dumped to a waveform
+  d) Allows the possibility to convert Verilog to C++
+  To implement the non-blocking behavior of Signal objects we need to separately
+  store the old value (from previous delta cycle) and the new value (current
+  delta cycle) of the Signal. All operations that require the value of the
+  Signal will use the previous value, all operations that wish to update the
+  value will update the new value.
+  Operations to support:
+  a) All logical operations: && || !
+  b) All mathematical operations: - + * / ! %
+  c) All comparison operations: < > == => =<
+  d) All bit operations: ! ^ &
+  e) Concatenate operations.
+  Q. What is the difference between Bit and Signal, can we merge them?
+  A. TBD.
+
+079 QueriesWithRegex:
+  Ability to search a view with a regex of queries. Example:
+  > QueryRegex qr("q1q2+q3*", q1, q2, q3);
+  Q1. How to iterate through the records if the regex matches?
+
+080 ConditionClassEnhanced:
+  Currently the Condition class supports comparing a value from a table
+  attribute with another value. The value from the attribute represents the LHS
+  of the comparison and the other value the RHS. Now, more LHS and RHS
+  combinations are needed. On the LHS & RHS we can have Value, Value*, Attribute.
+    +--------------------------------------------------------------------+-----+
+    | | LHS     | RHS     |                  Comment                     |Impl.|
+    +-+---------+---------+----------------------------------------------+-----+
+    |1| mpAttr  | mValue  | default, (currently have this)               |done |
+    |2| mpAttr  | mpValue | RHS from Aggregate or directly using mpValue |Attr.|
+    |3| mpAttr  | mpAttr  | RHS from a Join                              |Attr.|
+    |4| mpValue | mValue  | LHS from Aggr or Condition(mpValue)          |Cond.|
+    |5| mpValue | mpValue | LHS from Aggr or Condition(mpValue), RHS==2  |Cond.|
+    |6| mpValue | mpAttr  | LHS from Aggr or Condition(mpValue), RHS==rec|Cond.|
+    |6| mValue  | mValue  | TBD                                          |     |
+    |6| mValue  | mpAttr  | TBD                                          |     |
+    |6| mValue  | mpValue | TBD                                          |     |
+    +--------------------------------------------------------------------+-----+
+  Note: For 4 and 5 we do not need a record for comparisons.
+  Note: Maybe switch from rec->Match(q) to q->Match(rec).
+  Note: For join use: rec1=iter1->Get(), rec2=iter2->Get(), q->Match(rec1,rec2).
+
+081 NeedParentChildProcessRelationshipAndInfo:
+  In order to group processes together and track them we need the parent-process
+  to child-process relationship. In this way a parent process can be used to
+  query the progress of its children.
+
+082 CurrentSynchronizationPrimitivesLackArbitration:
+  Currently there is no logic present to select a winning process from those
+  waiting on a synchronization primitive and we do not even wait until the end
+  of the timestamp to determine all processes waiting for synchronization. This
+  can lead to unfairness and probably also to deadlocks.
+  Example:
+    // Note: semX is setup to have one key only.
+    // Note: Scheduler always schedules processes in the same order.
+    ProcessA: while(1) { semX.put(); ...; }// executes 1st
+    ProcessB: while(1) { semX.get(); ...; }// executes 2nd
+    ProcessC: while(1) { semX.get(); ...; }// executes 3rd
+    Q. If Scheduler always invokes processes A->B->C, can C ever get the key?
+    A. No!
+    Solution(s):
+    a) randomize the process that should run next within the current timestamp
+    b) user must return control to the Scheduler before checking for the key,
+       this allows the Scheduler to examine all processes requesting the
+       synchronization primitive at the end of the current timestamp cycle.
+       The Scheduler can simply queue the requests and they will be served in
+       that order. Hence, for the above scenario, when B invokes get() for the
+       second time it will be queued behind C's first get().
+    Note: Without 'Waiting' after calling get() calls like semX.tryget() cannot
+          guarantee fairness as that will preempt any other processes that are
+          waiting in a queue for semX if key is currently available. So we will
+          probably remove these kind of functions.
+  Implementation:
+    The implementation is a little tricky for Mailboxes because Mailbox is a
+    template and therefore we cannot pre-declare the desired Mailbox template at
+    compile time in the Scheduler making it tricky to co-ordinate between a
+    mailbox and the Scheduler. We can have each Mailbox instance to have a
+    unique mailboxId (mboxId) and in the Scheduler keep a list of Processes and
+    the corresponding mboxId they are waiting on.
+                                     OR
+    Maybe we can use a MailboxBase class and use handles to that?
+                                   AND/OR
+  ->Maybe we can cast the template-type to a void pointer?
+    > // Get:
+    > ProcA::Execute()     ... void mbox.ScheduleGet(this); mExecuteState=WaitOnGet;
+    > Mbox::ScheduleGet(proc){ mProcessWaitingOnGetList.Add(proc);
+    >                          gScheduler->ScheduleMailboxGet((MboxBase*)this);}
+    > Schd::ScheduleMailboxGet(mbox_base) { // Do we need this? ScheduleMailboxPut()
+    >                                       // should be enough.
+    >                      if (!mMboxGetRequestList.Find(mbox_base))
+    >                        mMboxGetRequestList.Add(mbox_base); }
+    > // Put:
+    > ProcB::Execute       mbox.SchedulePut(T* t, this); mExecuteState=WaitOnPut;
+    > Mbox::SchedulePut(t,proc) { mProcessWaitingOnPutList.Add(proc);
+    >                             mElemWaitingOnPutList.Add((void*)t);
+    >                             gScheduler->ScheduleMailboxPut(mbox_base); }
+    > Schd::ScheduleMailboxPut(mbox_base) {
+    >                      if (!mMboxPutRequestList.Find(mbox_base);
+    >                        mMboxPutRequestList.Add(mbox_base); }
+    > Schd::SatisfyMboxGets// Loop:
+    >                      // for (each process in the Put-list)
+    >                      //   for (each process in the Get-list)
+    >                      //     init reason to mbox_put and obj to mbox ptr
+    >                      //     unblock & schedule the put process
+    >                      //     remove the put entry
+    >                      //
+    >                      //     init reason to mbox_get and obj to elm ptr
+    >                      //     unblock & schedule the get process
+    >                      //     remove the get entry
+    >                      //     found=TRUE
+    >                      // allow any scheduled processes to run
+    >                      // repeat Loop if (found==TRUE)
+    > ProcA::Execute()     if (reason.type==MboxGet) {
+    >                        T* t = (T*)reason.obj;
+
+Index_End
+
+$RCSfile: notes.txt,v $
+$Revision: 1.1 $
+
+# End
+@
+
+
+1.2
+log
+@Changes for release: C1_80
+@
+text
+@d1 4
+a4 2
+$RCSfile: notes.txt,v $
+$Revision: 1.1 $
+d6 2
+a7 1
+Also see: ideas
+d10 110
+a119 34
+# Coding_conventions.
+# Database_file_dependencies.
+# Cpp_classes_needed.
+# General_Structure (without Threads).
+# Bit_class_features.
+# Cursor_API_and_Table_Views.
+# Using_Database_Tables_like_Mailboxes.
+# Workaround_for_not_being_able_to_register_member_pointer_functions_in_ClockMgr.
+# New_Query_class.
+# Desired_table_access_permissions.
+# Setting_and_resolving_Record_permissions.
+# Integrating_a_learning_mode_into_the_test_environment.
+# Guidelines_to_make_code_look_like_pseudo_code.
+# Qualities_of_a_good_verification_environment.
+# Database_Triggers.
+# VerificationIndustry.
+# Database_class.
+# Tests_without_recompile (using an Interpreter).
+# Figure_out_how_to_implement_random_stability.
+# Use_TransactionList_to_manage_database_changes.
+# Non_attribute_related_queries.
+# Usage_model_with_vera.
+# Verification_environment_boot_steps.
+# Figure_out_how_view_will_delete_records.
+# Aggregate_API.
+# Aggregates_Triggers_and_Commit.
+# Database_Join.
+# Constraint_database.
+# Dynamic_record_add_for_views.
+# Software_Hardware_Communication.
+# OLD_notes.
+
+# Coding_conventions
+  Single alphabet prefix rules:
+d124 5
+a128 1
+     p                     => private function
+d130 2
+d135 27
+a161 1
+     AllUpper              => #define macro
+d169 1
+a169 1
+  - keep members functions outside class declaration (exception ok if tiny).
+d172 2
+a173 2
+  - For comments, first explain what is being solved, then explaining how.
+  - No need for space between every token as this reduces impact of a space.
+d179 10
+d190 1
+a190 1
+# Database_file_dependencies:
+d200 1
+a200 1
+# Cpp_classes_needed:
+d207 1
+a207 1
+# General_Structure (without Threads):
+d240 1
+a240 1
+# Bit_class_features:
+d251 1
+a251 1
+# Cursor_API_and_Table_Views:
+d301 1
+a301 1
+# Using_Database_Tables_like_Mailboxes:
+d352 35
+a386 1
+# Workaround_for_not_being_able_to_register_member_pointer_functions_in_ClockMgr.
+d412 1
+a412 1
+# New_Query_class:
+d414 1
+a414 1
+  format. The Conditionals is the new name for the original Query class.
+d423 1
+a423 1
+  conditional in any task call requiring queiries or all queries would need
+d434 1
+a434 1
+  environment to append to a query layer by layer which is very extensible!
+d439 1
+a439 1
+# Desired_table_access_permissions.
+d481 1
+a481 1
+  commited. After the record is committed disallow writes. One way to achieve
+d485 5
+a489 3
+# Setting_and_resolving_Record_permissions.
+  Need to determine which permission categories to define and how to determine conflicts.
+  Simplest Record Permissions are: Master{Add,Delete,Modify,Read}, Other{Add,Delete,Modify,Read}
+d495 1
+a495 1
+     permissions, yet still providing a simple syntax in either case?
+d500 2
+a501 1
+     and it doesnt feel like a clean solution regardles of memory considerations).
+d554 1
+a554 1
+# Integrating_a_learning_mode_into_the_test_environment:
+d575 1
+a575 1
+# Guidelines_to_make_code_look_like_pseudo_code:
+d594 1
+a594 1
+# Qualities_of_a_good_verification_environment:
+d639 1
+a639 1
+# Database_Triggers:
+d654 1
+a654 1
+  B) A Sequential trigger is one for which the action is applied after all
+d733 6
+d741 8
+a748 2
+  function can determine which trigger caused the function call by comparing
+  the trigger pointer that is available as an input argument to the function.
+d760 1
+a760 1
+# Database_class:
+d769 1
+a769 1
+# Tests_without_recompile (using an Interpreter):
+d802 1
+a802 1
+# Figure_out_how_to_implement_random_stability.
+d805 1
+a805 1
+# Use_TransactionList_to_manage_database_changes.
+d819 1
+a819 1
+# Non_attribute_related_queries.
+d832 1
+a832 1
+# Usage_model_with_vera:
+d844 1
+a844 1
+# Verification_environment_boot_steps:
+d852 1
+a852 1
+# Figure_out_how_view_will_delete_records:
+d873 1
+a873 1
+# Aggregate_API:
+d890 2
+a891 2
+# Aggregates_Triggers_and_Commit:
+  These 3 features are all interlinked. To implement them correctly we make
+d895 12
+d915 1
+a915 1
+# Database_Join:
+a919 12
+ 
+
+# Software_Hardware_Communication:
+  In the real systems, software communicates with harware using:
+  a) Programmed I/O
+  b) DMA
+  Using these two mechanisms the cpu can transfer data from cpu to hardware
+  and it can program a DMA to own transfer of data from one component to
+  another without requiring direct CPU attention. However, the status of the
+  DMA transfers must be read using:
+  a) Polling
+  b) Interrupts
+d921 1
+a921 1
+# Dynamic_record_add_for_views:
+d924 1
+a924 1
+  that any Aggregate must be updated.
+d941 7
+d949 1
+a949 1
+# Constraint_database:
+d966 11
+d978 27
+a1004 1
+# End
+d1006 1711
+d2718 1
+a2718 2
+# OLD_notes:
+  General Structure (with Threads):
+d2720 2
+a2721 30
+   main()
+   {
+     Control *ctrl = new;
+
+     Database *db = new ("Name", ctrl);
+
+     Clock *clk = new("Name", freq, unit, ctrl);
+
+     InterfaceSystem *intf_system  = new("Name", clk, ctrl);
+     InterfacePipe   *intf_pipe    = new("Name", clk, ctrl);
+     InterfaceRtlApp *intf_rtl_app = new("Name", clk, ctrl);
+
+     BfmPcie   *bfm_pcie    = new BfmPcie  ("Name", intf_pipe,    db, ctrl);
+     BfmRtlApp *bfm_rtl_app = new BfmAppRtl("Name", intf_rtl_app, db, ctrl);
+     BfmSystem *bfm_system  = new BfmSystem("Name", intf_system,  db, ctrl);
+
+     EmulatorSOC *soc = new Emulator("Name", bfm_pcie, bfm_rtl_app, db, ctrl);
+
+     clk->Start(ctrl);
+     bfm_pcie->Start(ctrl);
+     bfm_rtl_app->Start(ctrl);
+
+     clk->WaitInCycles(10);
+
+     bfm_system->Reset(ctrl); // Use an EnvMgr object instead?
+
+     clk->WaitInCycles(10);
+
+     Test("Name", clk, db, ctrl);
+   }
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d21 1
+a21 1
+# Triggers.
+d31 6
+d67 1
+d481 1
+a481 1
+# Triggers:
+d490 15
+a504 11
+  There are probably two kinds of triggers: a) combinatorial b) sequential
+  A combinatorial trigger is one for which the action is immediately invoked
+  once the condition is true. This is possible when the trigger applies only
+  to a single table.
+  A sequential trigger is one for which the action is applied at the very end of
+  the time interval (or at the very start of the next time interval, to be
+  decided). This is useful to avoid possible race conditions or when a trigger
+  specifies multiple views/tables which obviously cannot be updated at the
+  same time and so the trigger needs to wait on its evaluation until it knows
+  all the required components have made their table/view updates.
+  The above two triiger type (combinatorial, sequential) can further be sub-
+d506 1
+a506 1
+  actions. By coparison, the Vera triggers are:
+d520 59
+d701 91
+@

@@ -1,0 +1,1342 @@
+head	1.10;
+access;
+symbols
+	C1_80:1.2
+	C1_70:1.1;
+locks
+	robert:1.10; strict;
+comment	@// @;
+
+
+1.10
+date	2011.12.20.17.28.58;	author robert;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.12.04.05.51.28;	author robert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.08.16.02.51.27;	author robert;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.25.13.35.42;	author ranji;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.05.22.00.25.23;	author ranji;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.01.30.18.22.30;	author ranji;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2010.09.24.23.58.29;	author ranji;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2010.09.22.01.53.36;	author ranji;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2007.07.14.15.00.17;	author ranji;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2007.06.18.01.47.55;	author Roberto;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.10
+log
+@Added debug print in RecordCurrentGet().
+@
+text
+@// $RCSfile: View.cc,v $
+// $Revision: 1.9 $
+
+#include <assert.h>
+
+#include "View.h"
+//
+#include "Aggregate.h"
+#include "Global.h"
+#include "List.h"
+#include "Query.h"
+#include "Record.h"
+#include "Table.h"
+#include "Trigger.h"
+
+M_ExternConstructDestructCountInt;
+
+View::View(const char* name, Table* table, eRecordPermissionBits perm) :
+  mpName         (name),
+  mpTable        (table),
+  mRecPermission (perm)
+{
+  mpRecordPtrList = new List<Record>;
+
+  assert(mpTable);
+  assert(mpName);
+  assert(mpRecordPtrList);
+
+  M_UpdConstructCount(eType_View);
+}
+
+View::~View()
+{
+  // The view deletes all the records. The Record destructor currently
+  // does not delete the mpTableRecord in Record class.
+  mpRecordPtrList = mpRecordPtrList;
+  MacroListDeleteAll((*mpRecordPtrList), Record);
+
+  delete mpRecordPtrList; mpRecordPtrList = 0;
+
+  // Clean up new records that were allocated but not added to the table.
+  if (mRecordNewPtrList.Size()) {
+    MacroListDeleteAll(mRecordNewPtrList, Record);
+  }
+
+  MacroListDeleteAll(mAggregatePtrList, Aggregate);
+
+  MacroListDeleteAll(mViewIteratorList, ViewIterator);
+
+  mpTable    = 0;
+  mpName     = "";
+
+  M_UpdDestructCount(eType_View);
+}
+
+unsigned View::TableRecordsSelect(unsigned start, unsigned end)
+{
+  return mpTable->RecordsSelect(this, start, end);
+}
+
+unsigned View::TableRecordsSelect(Query* q)
+{
+  return mpTable->RecordsSelect(this, q);
+}
+
+bool View::ViewRecordUnselect(Record *rec)
+{
+  // Removing a record from the view is done immediately, not as a transaction
+  // because the original record is not removed from the table and thus this
+  // action cannot be triggered upon.
+  return mpTable->RecordsUnselect(this, rec);
+}
+
+bool View::TableRecordsImportSelected()
+{
+  return mpTable->RecordsImportSelected(this);
+}
+
+Record* View::RecordNew(bool allow_val_update_before_commit)
+{
+  // Create a new Record but dont set the view yet, that will be done
+  // once the record is added to the view/table using RecordAdd() or
+  // TranRecordAdd().
+  short total_attr = AttributesTotal();
+
+  Record* rec = new Record(total_attr, allow_val_update_before_commit);
+
+  if (rec) {
+    // Update the eValueType of all values in the record.
+    for (short i=0; i<total_attr; i++) {
+      rec->mpTableRecord->ValueTypeSet(i, mpTable->AttributeType(i));
+    }
+
+    mRecordNewPtrList.Add(rec);
+  }
+
+  return rec;
+}
+
+Record* View::RecordCurrentGet(ViewIterator* iter)
+{
+  Record* rec;
+
+  if (iter) rec = iter->mpRecordListIter->Get();
+  else      rec =       mpRecordPtrList->Get();
+
+//if (rec) rec->Print();
+//else     printf("NULL rec\n");
+
+  return rec;
+}
+
+Record* View::RecordSearchFirst(Query* q, ViewIterator* iter)
+{
+  if (iter==0) {
+    for (MacroListIterateAll((*mpRecordPtrList)))
+    {
+      Record* rec = mpRecordPtrList->Get();
+      assert(rec);
+
+      if (q) { if (q->Match(rec)) return rec; }
+      else   {                    return rec; }
+    }
+  }
+  else {
+    for (MacroListIterateAll((*iter->mpRecordListIter)))
+    {
+      Record* rec = iter->mpRecordListIter->Get();
+      assert(rec);
+
+      if (q) { if (q->Match(rec)) return rec; }
+      else   {                    return rec; }
+    }
+  }
+
+  return (Record*)0;
+}
+
+Record* View::RecordSearchLast(Query* q, ViewIterator* iter)
+{
+  if (iter==0) {
+    for (MacroListIterateAllReverse((*mpRecordPtrList)))
+    {
+      Record* rec = mpRecordPtrList->Get();
+      assert(rec);
+
+      if (q) { if (q->Match(rec)) return rec; }
+      else   {                    return rec; }
+    }
+  }
+  else {
+    for (MacroListIterateAllReverse((*iter->mpRecordListIter)))
+    {
+      Record* rec = iter->mpRecordListIter->Get();
+      assert(rec);
+
+      if (q) { if (q->Match(rec)) return rec; }
+      else   {                    return rec; }
+    }
+  }
+
+  return 0;
+}
+
+Record* View::RecordSearchNext(Query* q, ViewIterator* iter)
+{
+  if (iter) {
+    while (!iter->mpRecordListIter->IsDone())
+    {
+      if (iter->mpRecordListIter->Next()) {
+        Record* rec = iter->mpRecordListIter->Get();
+
+        if (q) { if (q->Match(rec)) return rec; }
+        else   {                    return rec; }
+      }
+    }
+  }
+  else {
+    while (!mpRecordPtrList->IsDone())
+    {
+      if (mpRecordPtrList->Next()) {
+        Record* rec = mpRecordPtrList->Get();
+
+        if (q) { if (q->Match(rec)) return rec; }
+        else   {                    return rec; }
+      }
+    }
+  }
+
+  return 0;
+}
+
+Record* View::RecordSearchPrev(Query* q, ViewIterator* iter)
+{
+  if (iter) {
+    while (!iter->mpRecordListIter->IsDone())
+    {
+      if (iter->mpRecordListIter->Prev()) {
+        Record* rec = iter->mpRecordListIter->Get();
+
+        if (q) { if (q->Match(rec)) return rec; }
+        else   {                    return rec; }
+      }
+    }
+  }
+  else {
+    while (!mpRecordPtrList->IsDone())
+    {
+      if (mpRecordPtrList->Prev()) {
+        Record* rec = mpRecordPtrList->Get();
+
+        if (q) { if (q->Match(rec)) return rec; }
+        else   {                    return rec; }
+      }
+    }
+  }
+
+  return 0;
+}
+
+bool View::RecordSearchIsLast(Query* q, ViewIterator* iter)
+{
+  bool is_last;
+
+  if (q == 0) {
+    if (iter) is_last = iter->mpRecordListIter->IsLast();
+    else      is_last =       mpRecordPtrList->IsLast();
+  }
+  else {
+    Record* rec;
+    if (iter) iter->mpRecordListIter->Get();
+    else            mpRecordPtrList->Get();
+
+    // Precondition is that the current record must match the query.
+    if (q->Match(rec)) {
+      is_last = FALSE;
+    }
+    else {
+      if (iter) iter->mpRecordListIter->PositionSave();
+      else            mpRecordPtrList->PositionSave();
+
+      is_last = TRUE;
+      if (iter) {
+        while (! iter->mpRecordListIter->IsDone() && is_last) {
+          iter->mpRecordListIter->Next();
+
+          rec = iter->mpRecordListIter->Get();
+          if (q->Match(rec)) is_last = FALSE;
+        }
+      }
+      else {
+        while (! mpRecordPtrList->IsDone() && is_last) {
+          mpRecordPtrList->Next();
+
+          rec = mpRecordPtrList->Get();
+          if (q->Match(rec)) is_last = FALSE;
+        }
+      }
+
+      if (iter) iter->mpRecordListIter->PositionRestore();
+      else            mpRecordPtrList->PositionRestore();
+    }
+  }
+
+  return is_last;
+}
+
+bool View::RecordSearchIsDone(Query* q, ViewIterator* iter)
+{
+  bool is_done;
+  bool q_match;
+
+  if (q == 0) {
+    if (iter) is_done = iter->mpRecordListIter->IsDone();
+    else      is_done =       mpRecordPtrList->IsDone();
+  }
+  else {
+    Record* rec;
+
+    if (iter) rec = iter->mpRecordListIter->Get();
+    else      rec =       mpRecordPtrList->Get();
+
+    if (!rec) return TRUE; // return TRUE if list is empty
+
+    // If the current record matches then we are not done.
+    if (q->Match(rec)) {
+      is_done = FALSE;
+    }
+    else {
+      if (iter) iter->mpRecordListIter->PositionSave();
+      else            mpRecordPtrList->PositionSave();
+
+      q_match = FALSE;
+      if (iter) {
+        while (! iter->mpRecordListIter->IsDone() && !q_match) {
+          mpRecordPtrList->Next();
+
+          rec = iter->mpRecordListIter->Get();
+
+          if (q->Match(rec)) q_match = TRUE;
+        }
+      }
+      else {
+        while (! mpRecordPtrList->IsDone() && !q_match) {
+          mpRecordPtrList->Next();
+
+          rec = mpRecordPtrList->Get();
+
+          if (q->Match(rec)) q_match = TRUE;
+        }
+      }
+      is_done = !q_match;
+
+      if (iter) iter->mpRecordListIter->PositionRestore();
+      else            mpRecordPtrList->PositionRestore();
+    }
+  }
+
+  return is_done;
+}
+
+Record* View::RecordFind(Query* q, ViewIterator* iter)
+{
+  return RecordSearchFirst(q, iter);
+}
+
+bool View::RecordMoveCurrToIter(ViewIterator* iter, eListAddPosition pos_add, eListCurrentLinkAfterUnlink pos_for_cur)
+{
+  return mpRecordPtrList->RelinkTo(iter->mpRecordListIter, pos_add, pos_for_cur);
+}
+
+bool View::RecordMoveIterToCurr(ViewIterator* iter, eListAddPosition pos_add, eListCurrentLinkAfterUnlink pos_for_unlink)
+{
+  return mpRecordPtrList->RelinkFrom(iter->mpRecordListIter, pos_add, pos_for_unlink);
+}
+
+bool View::RecordMoveIterToIter(ViewIterator* itr1, ViewIterator* itr2, eListAddPosition pos_add, eListCurrentLinkAfterUnlink pos_for_unlink)
+{
+  return mpRecordPtrList->RelinkFromTo(itr1->mpRecordListIter, itr2->mpRecordListIter, pos_add, pos_for_unlink);
+}
+
+// Non-transactional record add. We can allow this when a Table has only 1 view.
+// The record is also immediately added to the view.
+// Currently, to add a record only to the table and not to the view
+// TranRecordAdd() must be used accompanied by a Trigger that selects
+// the records that should be added to the view.
+bool View::RecordAdd(Record* rec, eListAddPosition pos, ViewIterator* iter)
+{
+  bool ret;
+
+  // First we find and remove the link containing the record.
+  MacroListDeleteLink(mRecordNewPtrList, rec, ret);
+
+  if (ret) {
+    Record* rec_add = new Record(rec->mpTableRecord);
+
+    delete rec; rec = 0;
+
+    // Now add it to the table and if successful then to the view as well.
+    // Note that there is no 'pos' for a table record add.
+    if (mpTable->RecordAdd(this, rec_add)) {
+      rec_add->mpView = this;
+
+      if (iter) return mpRecordPtrList->Add(rec_add, pos, iter->mpRecordListIter);
+      else      return mpRecordPtrList->Add(rec_add, pos);
+    }
+  }
+  else {
+    assert(0);
+  }
+
+  return FALSE;
+}
+
+// Transactional record add.
+bool View::TranRecordAdd(Record* rec)
+{
+  bool    ret;
+
+  // First we remove the allocated record from the 'new' list.
+  MacroListDeleteLink(mRecordNewPtrList, rec, ret);
+
+  if (ret) {
+    Record* rec_add = new Record(rec->mpTableRecord);
+
+    delete rec; rec = 0;
+
+    // Now we add it as a transaction for the table.
+    return mpTable->TranRecordAdd(this, rec_add);
+  }
+  else {
+    assert(0);
+  }
+
+  return FALSE;
+}
+
+bool View::TranRecordDelete(Record *rec)
+{
+  return mpTable->TranRecordDelete(this, rec);
+}
+
+bool View::TranRecordModify(Record* rec, const Attribute* attr, const Value& val)
+{
+  return mpTable->TranRecordModify(this, rec, attr, val);
+}
+
+bool View::TableRecordsImportFromTrigger(Trigger *trigger)
+{
+  mpTable->RecordImportFromTrigger(trigger);
+}
+
+void TriggerActionFN_ForRecAdd(Trigger *trigger)
+{
+  (trigger->ViewGet())->TableRecordsImportFromTrigger(trigger);
+}
+
+bool View::RecordAddDynamic(Query *q)
+{
+  // 1. View adds a trigger for record-add and supplies a trigger-action function
+  //    along with a trigger query that must be satisfied.
+  // 2. The trigger-action function will receive the trigger object which contains
+  //    a reference to the just added record (it is private, accesible by Table).
+  // 3. The trigger-action function should import the record by invoking an import
+  //    function in the Table class and supplying the trigger object so that the
+  //    Table class can know the record that needs importing.
+  Record  *rec            = 0;
+  void    *trg_owner_obj  = 0;
+  Trigger *trg;
+
+  trg = mpTable->TriggerNew("RecordAddDynamic", eTrgRecAdd, trg_owner_obj, TriggerActionFN_ForRecAdd, this, q, rec);
+
+  return TRUE;
+}
+
+bool View::RecordsKeepMax(unsigned max)
+{
+  Aggregate* aggr = new Aggregate(this, eAggr_RecordsCount, 0);
+  assert(aggr);
+
+  Record  *rec            = 0;
+  void    *trg_owner_obj  = 0;
+  Trigger *trg;
+  Query   *q; // c = new Condition(aggr); q = (c == max);
+
+  mAggregatePtrList.Add(aggr);
+  // TBD Sep 23 2008: Add TriggerActionFN_RecordsKeepMax, allow query comparison with aggr.
+  //trg = mpTable->TriggerNew(eTrgRecAdd, TriggerActionFN_RecordsKeepMax, trg_owner_obj, this, aggr, q);
+}
+
+const Attribute* View::AttributeFind(const char* attr_name)
+{
+  return mpTable->AttributeFind(attr_name);
+}
+
+const Attribute* View::AttributeFind(short index)
+{
+  return mpTable->AttributeFind(index);
+}
+
+short View::AttributesTotal() const
+{
+  return mpTable->AttributesTotal();
+}
+
+Aggregate* View::AggregateAdd(Attribute *const attr, eAggregateType type)
+{
+  Aggregate *aggr = new Aggregate(this, type, attr);
+
+  assert(aggr);
+
+  mAggregatePtrList.Add(aggr);
+}
+
+bool View::AggregateDelete(Aggregate* aggr)
+{
+  bool ret;
+
+  if (aggr) {
+    MacroListDeleteElm(mAggregatePtrList, aggr, ret);
+  }
+  else
+    assert(0);
+
+  assert(ret);
+
+  return ret;
+}
+
+bool View::AggregatesUpdate(eAggregateUpdateReasonType rsn_type, Record *rec, const Attribute* attr_mdfy, Value *old_val)
+{
+  Aggregate        *aggr;
+  Value             changed_val; M_Constructed(Value);
+
+  if (mAggregatePtrList.Size()) {
+    for (MacroListIterateAll(mAggregatePtrList)) {
+      aggr      = mAggregatePtrList.Get();
+      assert(aggr);
+
+      const Attribute*  attr_aggr = aggr->AttributeGet();
+      assert(attr_aggr);
+
+      // Modify affects a single attribute specified by 'attr_mdfy' passed in
+      // and will affect only the corresponding aggregates, whereas 'Add' and
+      // 'Delete' will affect all attributes and hence all aggregates.
+      if (rsn_type == eAggrUpdType_RecordModify
+      ||  rsn_type == eAggrUpdType_RecordModifyPropagate)
+      {
+        if (attr_aggr == attr_mdfy) rec->ValueCopyGet(attr_mdfy, changed_val);
+        else                        continue;
+      }
+      else {
+        rec->ValueCopyGet(attr_aggr, changed_val);
+      }
+
+      aggr->ValueUpdate(rsn_type, &changed_val, old_val);
+
+      // If rsn_type is 'modify' and the records reference count is more than 1
+      // then aggregates in other views may need to be updated, this needs to be
+      // done by the views table, reference count is private & checked by table.
+      if (rsn_type == eAggrUpdType_RecordModify) {
+        mpTable->AggregatesUpdate(this, rsn_type, rec, attr_mdfy, old_val);
+      }
+    }
+  }
+
+  return TRUE;
+}
+
+Trigger* View::TriggerNew(const char* trg_name, eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, Query *q, Record *rec)
+{
+  Trigger *trg = mpTable->TriggerNew(trg_name, type, trg_owner_obj, fn_ptr, this, q, rec);
+
+  return trg;
+}
+
+bool View::TriggerDelete(Trigger *trg)
+{
+  return mpTable->TriggerDelete(trg);
+}
+
+void View::ValueMin(const Attribute* attr, Value *min_val)
+{
+  assert(min_val);
+
+  min_val->SetToMax();
+
+  for (MacroListIterateAll((*mpRecordPtrList))) {
+    Record *rec = mpRecordPtrList->Get();
+
+    if ((*rec)[attr] < *min_val) {
+      rec->ValueCopyGet(attr, *min_val);
+    }
+  }
+}
+
+void View::ValueMax(const Attribute* attr, Value *max_val)
+{
+  assert(max_val);
+
+  max_val->SetToMin();
+
+  for (MacroListIterateAll((*mpRecordPtrList))) {
+    Record *rec = mpRecordPtrList->Get();
+
+    if ((*rec)[attr] > *max_val) {
+      rec->ValueCopyGet(attr, *max_val);
+    }
+  }
+}
+
+void View::Sort(Attribute const* attr, eSortOrder sort_order)
+{
+  List<Record>*  list_sorted = mpRecordPtrList;
+  List<Record>   list_unsorted;
+  Record*        rec_unsorted;
+  Record*        rec_sorted;
+  bool           found;
+
+  if (mpRecordPtrList->First() == FALSE) return; // no records to sort
+  if (mpRecordPtrList->IsLast())         return; // only 1 record, no sort needed.
+
+  list_sorted->First();
+
+  // Splits after the first record, now list_sorted will have
+  // one record while list_unsorted will have the remaining.
+  //
+  list_sorted->Split(list_unsorted, eList_SplitAfterIterator);
+
+  // The following does an inline sort, i.e. only the link positions
+  // are altered, no new links are created or deleted in the process.
+  // The sort order is 'stable' (shouldnt matter as the list contains pointers).
+
+  if (sort_order == eSortOrder_Ascending) {
+    for (MacroListIterateAll(list_unsorted)) {
+      rec_unsorted = list_unsorted.Get();
+
+      found = FALSE;
+      for (MacroListIterateAll(*list_sorted)) {
+        rec_sorted = list_sorted->Get();
+
+        if ((*rec_unsorted)[attr] < (*rec_sorted)[attr]) {
+          list_sorted->RelinkFrom(&list_unsorted, eListAddPosition_BeforeCurrent, eListCurrentLinkAfterUnlink_Next);
+          found = TRUE;
+          break;
+        }
+      }
+      if (!found)
+        list_sorted->RelinkFrom(&list_unsorted, eListAddPosition_AfterCurrent, eListCurrentLinkAfterUnlink_Next);
+    }
+  }
+
+  if (sort_order == eSortOrder_Descending) {
+    for (MacroListIterateAll(list_unsorted)) {
+      rec_unsorted = list_unsorted.Get();
+
+      found = FALSE;
+      for (MacroListIterateAll(*list_sorted)) {
+        rec_sorted = list_sorted->Get();
+
+        if ((*rec_unsorted)[attr] > (*rec_sorted)[attr]) {
+          list_sorted->RelinkFrom(&list_unsorted, eListAddPosition_BeforeCurrent, eListCurrentLinkAfterUnlink_Next);
+          found = TRUE;
+          break;
+        }
+      }
+      if (!found)
+        list_sorted->RelinkFrom(&list_unsorted, eListAddPosition_AfterCurrent, eListCurrentLinkAfterUnlink_Next);
+    }
+  }
+}
+
+ViewIterator* View::ViewIteratorNew()
+{
+  ListIterator<Record>* rec_iter = mpRecordPtrList->ListIteratorNew();
+  assert(rec_iter);
+
+  ViewIterator* iter = new ViewIterator(rec_iter, this);
+
+  mViewIteratorList.Add(iter);
+
+  return iter;
+}
+
+bool View::ViewIteratorFree(ViewIterator* iter)
+{
+  bool success;
+
+  mpRecordPtrList->ListIteratorDelete(iter->mpRecordListIter);
+
+  MacroListDeleteElm(mViewIteratorList, iter, success);
+
+  return success;
+}
+
+bool View::PositionSet(ViewIterator* view_iter)
+{
+  return mpRecordPtrList->PositionSet(view_iter->mpRecordListIter);
+}
+
+void View::PositionSetSame(ViewIterator* view_iter)
+{
+  view_iter->mpRecordListIter->PositionSet(mpRecordPtrList);
+}
+
+void View::Print(int num_of_recs)
+{
+  Record* rec_current;
+  Record* rec;
+
+  if (num_of_recs == -1) {
+    // Print all records.
+    rec_current = mpRecordPtrList->Get();
+
+    mpRecordPtrList->PositionSave();
+
+    for (MacroListIterateAll((*mpRecordPtrList))) {
+      Record *rec = mpRecordPtrList->Get();
+
+      if (rec) {
+        if (rec == rec_current) printf("+");
+        else                    printf("-");
+
+        rec->Print();
+      }
+      else     assert(0);
+    }
+
+    mpRecordPtrList->PositionRestore();
+  }
+
+  if (num_of_recs==0) {
+    Record *rec = mpRecordPtrList->Get();
+    if (rec) rec->Print();
+  }
+}
+
+void View::PrintHeader()
+{
+  mpTable->PrintAttributeNames();
+}
+
+void ViewIterator::Print()
+{
+  Record* rec_current;
+  Record* rec;
+
+  rec_current = RecordCurrentGet();
+
+  if (!rec_current) return; // no records in the iterator
+
+  mpRecordListIter->PositionSave();
+
+  for (MacroListIterateAll((*mpRecordListIter))) {
+    rec = mpRecordListIter->Get();
+
+    if (rec) {
+      if (rec == rec_current) printf("->");
+      else                    printf("  ");
+
+      rec->Print();
+    }
+    else     assert(0);
+  }
+
+  mpRecordListIter->PositionRestore();
+}
+
+// End
+@
+
+
+1.9
+log
+@1. The Record search functions were not first checking if query is non-null.
+2. Added PrintHeader() to print table attribute names and types.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.8 $
+d102 9
+a110 2
+  if (iter) return iter->mpRecordListIter->Get();
+  else      return       mpRecordPtrList->Get();
+@
+
+
+1.8
+log
+@1. Switched from rec->Match(query) to query->Match(rec).
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.7 $
+d114 2
+a115 1
+      if (q->Match(rec)) return rec;
+d124 2
+a125 1
+      if (q->Match(rec)) return rec;
+d140 2
+a141 1
+      if (q->Match(rec)) return rec;
+d150 2
+a151 1
+      if (q->Match(rec)) return rec;
+d166 2
+a167 1
+        if (q->Match(rec)) return rec;
+d177 2
+a178 1
+        if (q->Match(rec)) return rec;
+d194 2
+a195 1
+        if (q->Match(rec)) return rec;
+d205 2
+a206 1
+        if (q->Match(rec)) return rec;
+d691 5
+d711 2
+a712 2
+      if (rec == rec_current) printf("+");
+      else                    printf("-");
+@
+
+
+1.7
+log
+@Added trigger name arg to TriggerNew(...).
+[2010Sep28: Implement Event's based on Trigger's in a new class: EventFromTrigger.]
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.6 $
+d11 1
+d114 1
+a114 1
+      if (rec->Match(q)) return rec;
+d123 1
+a123 1
+      if (rec->Match(q)) return rec;
+d138 1
+a138 1
+      if (rec->Match(q)) return rec;
+d147 1
+a147 1
+      if (rec->Match(q)) return rec;
+d162 1
+a162 1
+        if (rec->Match(q)) return rec;
+d172 1
+a172 1
+        if (rec->Match(q)) return rec;
+d188 1
+a188 1
+        if (rec->Match(q)) return rec;
+d198 1
+a198 1
+        if (rec->Match(q)) return rec;
+d220 1
+a220 1
+    if (rec->Match(q)) {
+d233 1
+a233 1
+          if (rec->Match(q)) is_last = FALSE;
+d241 1
+a241 1
+          if (rec->Match(q)) is_last = FALSE;
+d271 1
+a271 1
+    if (rec->Match(q)) {
+d285 1
+a285 1
+          if (rec->Match(q)) q_match = TRUE;
+d294 1
+a294 1
+          if (rec->Match(q)) q_match = TRUE;
+@
+
+
+1.6
+log
+@In AggregatesUpdate() need to take care of updating aggregates in other views
+that share the same record being modified. This is implemented by calling the
+new similar function in the Table class.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.5 $
+d415 1
+a415 1
+  trg = mpTable->TriggerNew(eTrgRecAdd, trg_owner_obj, TriggerActionFN_ForRecAdd, this, q, rec);
+d514 1
+a514 1
+Trigger* View::TriggerNew(eTriggerType type, void *trg_owner_obj, TriggerActionFnPtr fn_ptr, Query *q, Record *rec)
+d516 1
+a516 1
+  Trigger *trg = mpTable->TriggerNew(type, trg_owner_obj, fn_ptr, this, q, rec);
+@
+
+
+1.5
+log
+@1. Removed call TriggerActivate() as TriggerNew() now does all.
+2. Removed TriggerActivate(), logic is now in TriggerNew().
+3. Removed TriigerNew() for Aggregate, aggregate can soon be in Query.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.4 $
+d474 1
+a474 1
+bool View::AggregatesUpdate(eAggregateUpdateReasonType rsn_type, Record *rec, const Attribute* mdfy_attr, Value *old_val)
+d484 2
+a485 2
+      const Attribute*  aggr_attr = aggr->AttributeGet();
+      assert(aggr_attr);
+d487 1
+a487 1
+      // Modify affects a single attribute specified by 'mdfy_attr' passed in
+d490 4
+a493 2
+      if (rsn_type == eAggrUpdType_RecordModify) {
+        if (aggr_attr == mdfy_attr) rec->ValueCopyGet(mdfy_attr, changed_val);
+d497 1
+a497 1
+        rec->ValueCopyGet(aggr_attr, changed_val);
+d501 7
+@
+
+
+1.4
+log
+@1. No need to protect mpTableRecord when Record is deleted, this is now
+   handled correctly via the mpTableRecord reference counting mechanism.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.3 $
+d415 1
+a415 2
+  trg = mpTable->TriggerNew(eTrgRecAdd, trg_owner_obj, this, q, rec);
+  mpTable->TriggerActivate(trg, TriggerActionFN_ForRecAdd);
+d428 1
+a428 1
+  Query   *q;
+d430 3
+a432 2
+  // CONT: Add TriggerActionFN_RecordsKeepMax, allow query comparison with aggr.
+//trg = mpTable->TriggerNew(eTrgRecAdd, TriggerActionFN_RecordsKeepMax, trg_owner_obj, this, aggr, q);
+a478 1
+
+d505 1
+a505 8
+Trigger* View::TriggerNew(eTriggerType type, void *trg_owner_obj, Query *q, Record *rec)
+{
+  Trigger *trg = mpTable->TriggerNew(type, trg_owner_obj, this, q, rec);
+
+  return trg;
+}
+
+Trigger* View::TriggerNew(eTriggerType type, void *trg_owner_obj, Aggregate *aggr, Query *q)
+d507 1
+a507 2
+  Trigger *trg = mpTable->TriggerNew(type, trg_owner_obj, this, aggr, q);
+  assert(trg);
+a511 10
+bool View::TriggerActivate(Trigger* trg, TriggerActionFnPtr fn)
+{
+  return mpTable->TriggerActivate(trg, fn);
+}
+
+bool View::TriggerActivate(Trigger* trg, Process* process)
+{
+  return mpTable->TriggerActivate(trg, process);
+}
+
+@
+
+
+1.3
+log
+@1.  Added memory tracking using macro M_UpdConstructCount, M_UpdDestructCount.
+2.  Removed function ValueSeparatorGet().
+3.  Removed ValueSeparatorGet().
+4.  Made RecordSearchXXX() functions return the record pointer.
+5.  Renamed mTable, mName to mpTable, mpName.
+6.  Allocate the mpRecordList in constructor.
+7.  In constructor, delete mRecordNewPtrList and mViewIteratorList.
+8.  Replace eBoolean with bool.
+9.  Added ViewRecordsUnselect() function.
+10. Added RecordNew() function.
+11. TriggerAdd() replaced with TriggerNew() and TriggerActivate pair.
+12. Added ViewSort(attr, sort_order) function.
+13. Added Print() for View and ViewIterator.
+14. Added ViewIteratorNew() and ViewIteratorFree().
+15. Added partial implementation of RecordsKeepMax.
+16. Added functions to modify the ViewIterator position from View|ViewIterator.
+17. Added RecordSearchLast(Query, ViewIterator).
+18. Overloaded record search functions to also work for ViewIterators.
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.2 $
+a340 4
+    // rec->mpTableRecord pointer is now transferred and stored in rec_add,
+    // set rec->mpTableRecord to 0 to protect the pointer from rec's destructor.
+    rec->mpTableRecord = 0;
+
+a369 4
+    // rec->mpTableRecord pointer is now transferred and stored in rec_add,
+    // set rec->mpTableRecord to 0 to protect the pointer from rec's destructor.
+    rec->mpTableRecord = 0;
+
+d432 1
+a432 1
+//trg = mpTable->TriggerAdd(eTrgRecAdd, TriggerActionFN_RecordsKeepMax, trg_owner_obj, this, aggr, q);
+@
+
+
+1.2
+log
+@Implemented all the changes related to Table.h 1.2 .
+@
+text
+@d2 1
+a2 1
+// $Revision: 1.1 $
+d9 2
+d15 2
+d18 2
+a19 2
+  mName          (name),
+  mTable         (table),
+d22 7
+a28 2
+  assert(mTable);
+  assert(mName);
+d33 13
+a45 2
+  // Remove references to this view in the Table.
+  if (!mTable->ViewDelete(this)) assert(0);
+d47 1
+a47 3
+  // Records are owned by the view's Table and deleted there.
+  // Here we need to delete only the link list.
+  mRecordPtrList.DeleteLinkAll();
+d49 2
+a50 1
+  MacroListDeleteAll(mAggregatePtrList, Aggregate);
+d52 1
+a52 2
+  mTable    = 0;
+  mName     = "";
+d57 1
+a57 1
+  return mTable->RecordsSelect(this, start, end);
+d62 41
+a102 1
+  return mTable->RecordsSelect(this, q);
+d105 1
+a105 1
+eBoolean View::TableRecordsImportSelected()
+d107 20
+a126 1
+  return mTable->RecordsImportSelected(this);
+d129 1
+a129 1
+eBoolean View::RecordSearchFirst(Query* q)
+d131 5
+a135 3
+  for (mRecordPtrList.First(); !mRecordPtrList.IsDone(); mRecordPtrList.Next())
+  {
+    if (q == 0) return TRUE;
+d137 8
+a144 1
+    Record* rec = mRecordPtrList.Get();
+d146 2
+a147 1
+    if (rec->Match(q)) return TRUE;
+d150 1
+a150 1
+  return FALSE;
+d153 1
+a153 1
+eBoolean View::RecordSearchNext(Query* q)
+d155 20
+a174 3
+  while (!mRecordPtrList.IsDone())
+  {
+    mRecordPtrList.Next();
+d176 2
+a177 1
+    if (q == 0) return TRUE;
+d179 7
+a185 1
+    Record* rec = mRecordPtrList.Get();
+d187 13
+a199 1
+    if (rec->Match(q)) return TRUE;
+d202 1
+a202 1
+  return FALSE;
+d205 1
+a205 1
+eBoolean View::RecordSearchIsLast(Query* q)
+d207 1
+a207 1
+  eBoolean is_last;
+d210 2
+a211 1
+    is_last = mRecordPtrList.IsLast();
+d214 3
+a216 1
+    Record* rec = mRecordPtrList.Get();
+d223 2
+a224 1
+      mRecordPtrList.PositionSave();
+d227 11
+a237 2
+      while (! mRecordPtrList.IsDone() && is_last) {
+        mRecordPtrList.Next();
+d239 3
+a241 2
+        rec = mRecordPtrList.Get();
+        if (rec->Match(q)) is_last = FALSE;
+d244 2
+a245 1
+      mRecordPtrList.PositionRestore();
+d252 1
+a252 1
+eBoolean View::RecordSearchIsDone(Query* q)
+d254 2
+a255 1
+  eBoolean is_done;
+d258 2
+a259 1
+    is_done = mRecordPtrList.IsDone();
+d262 6
+a267 1
+    Record* rec = mRecordPtrList.Get();
+d274 16
+a289 1
+      mRecordPtrList.PositionSave();
+d291 1
+a291 3
+      is_done = TRUE;
+      while (! mRecordPtrList.IsDone() && is_done) {
+        mRecordPtrList.Next();
+d293 2
+a294 2
+        rec = mRecordPtrList.Get();
+        if (rec->Match(q)) is_done = FALSE;
+d296 1
+d298 2
+a299 1
+      mRecordPtrList.PositionRestore();
+d306 59
+a364 1
+eBoolean View::RecordAdd(Record *rec)
+d366 22
+a387 1
+  return mTable->TranRecordAdd(this, rec);
+d390 1
+a390 1
+eBoolean View::RecordDelete(Record *rec)
+d392 1
+a392 1
+  return mTable->TranRecordDelete(this, rec);
+d395 1
+a395 1
+eBoolean View::RecordModify(Record *rec, Attribute *const attr, Value& val)
+d397 1
+a397 1
+  return mTable->TranRecordModify(this, rec, attr, val);
+d400 1
+a400 1
+eBoolean View::TableRecordsImportFromTrigger(Trigger *trigger)
+d402 1
+a402 1
+  mTable->RecordsImportFromTrigger(trigger);
+d405 1
+a405 1
+void TriggerActionForRecAdd(Trigger *trigger, View* view, void* trg_owner_obj)
+d407 1
+a407 1
+  view->TableRecordsImportFromTrigger(trigger);
+d410 1
+a410 1
+eBoolean View::RecordAddDynamic(Query *q)
+d419 17
+d437 1
+a437 2
+  Record  *rec;
+  void    *trg_owner_obj;
+d439 3
+a441 2
+  trg_owner_obj = 0;
+  rec           = 0;
+d443 3
+a445 2
+  trg = TriggerAdd(eTrgRecAdd, TriggerActionForRecAdd, trg_owner_obj, q, rec);
+  
+d448 1
+a448 1
+short View::AttributesTotal()
+d450 6
+a455 1
+  return mTable->AttributesTotal();
+d460 1
+a460 1
+  Aggregate *aggr = new Aggregate(this, attr, type);
+d467 1
+a467 1
+eBoolean View::AggregateDelete(Aggregate* aggr)
+d469 1
+a469 1
+  eBoolean ret;
+d482 1
+a482 1
+eBoolean View::AggregatesUpdate(eAggregateUpdateReasonType rsn_type, Record *rec, Attribute *const mdfy_attr, Value *old_val)
+d485 1
+a485 1
+  Value             changed_val;
+d493 1
+a493 1
+      Attribute *const  aggr_attr = aggr->AttributeGet();
+d514 1
+a514 1
+Trigger* View::TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, Query *q, Record *rec)
+d516 1
+a516 1
+  Trigger *trg = mTable->TriggerAdd(type, fn, trg_owner_obj, this, q, rec);
+d521 1
+a521 1
+Trigger* View::TriggerAdd(eTriggerType type, TriggerActionFnPtr fn, void *trg_owner_obj, Aggregate *aggr, Query *q)
+d523 1
+a523 1
+  Trigger *trg = mTable->TriggerAdd(type, fn, trg_owner_obj, this, aggr, q);
+d529 11
+a539 1
+eBoolean View::TriggerDelete(Trigger *trg)
+d541 1
+a541 1
+  return mTable->TriggerDelete(trg);
+d544 1
+a544 1
+void View::ValueMin(Attribute *const attr, Value *min_val)
+d550 2
+a551 2
+  for (MacroListIterateAll(mRecordPtrList)) {
+    Record *rec = mRecordPtrList.Get();
+d559 1
+a559 1
+void View::ValueMax(Attribute *const attr, Value *max_val)
+d565 2
+a566 2
+  for (MacroListIterateAll(mRecordPtrList)) {
+    Record *rec = mRecordPtrList.Get();
+d574 127
+a700 1
+const char* View::ValueSeparatorGet()
+d702 22
+a723 1
+  return mTable->ValueSeparatorGet();
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+// $RCSfile$
+// $Revision$
+d8 1
+d11 1
+d13 4
+a16 3
+View::View(const char* name, Table* table) :
+  mName     (name),
+  mTable    (table)
+d27 2
+d31 2
+d47 1
+a47 1
+eBoolean View::TableRecordsImportSelected(eRecordPermissionBits perm)
+d49 1
+a49 1
+  return mTable->RecordsImportSelected(this, perm);
+d156 16
+a171 1
+eBoolean View::RecordModify(Record *rec, short attr_pos, Value& val)
+d173 16
+a188 1
+  return mTable->TranRecordModify(this, rec, attr_pos, val);
+d196 107
+a302 1
+short View::AttributesPosition(const char *attr_name)
+d304 1
+a304 1
+  return mTable->AttributesPosition(attr_name);
+@

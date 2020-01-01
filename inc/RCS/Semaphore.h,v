@@ -1,0 +1,119 @@
+head	1.2;
+access;
+symbols;
+locks
+	robert:1.2; strict;
+comment	@ * @;
+
+
+1.2
+date	2011.12.20.17.27.04;	author robert;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2010.09.02.22.44.30;	author ranji;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@1. Reworked as Semaphore Get() needs to be scheduled.
+2. Added FlushGet() to match-up Puts and Gets.
+3. Added randomness using a PRNG random numner generator.
+4. Added Semaphore name as it is needed to help seed the PRNG random generator.
+5. Added several Get() policies: Round-robin, Round-robin-block, random.
+@
+text
+@// $RCSfile: Semaphore.h,v $
+// $Revision: 1.1 $
+
+#ifndef SemaphoreClass
+#define SemaphoreClass
+
+#include "List.h"
+#include "PRNG.h"
+#include "String.h"
+
+class Process;
+
+struct SemaphoreInfo {
+  SemaphoreInfo() { M_UpdConstructCount(eType_SemaphoreInfo); }
+ ~SemaphoreInfo() { M_UpdDestructCount (eType_SemaphoreInfo); }
+
+  Process* mpProcess;
+  unsigned mNumKeys;
+};
+
+enum eSemaphorePolicy {
+  eSemaphorePolicy_RoundRobinWithBlock,
+  eSemaphorePolicy_RoundRobinWithNoBlock,
+  eSemaphorePolicy_Random
+};
+
+class Semaphore
+{
+friend class Scheduler;
+
+public:
+  Semaphore(const char* name, unsigned total_keys, eSemaphorePolicy policy=eSemaphorePolicy_RoundRobinWithBlock);
+ ~Semaphore();
+
+  bool SemaphoreScheduleGet(unsigned num_keys, Process* process);
+  bool SemaphorePut        (unsigned num_keys, Process* process);
+
+private:
+  String           mName;
+  unsigned         mKeysTotal;
+  unsigned         mKeysRemaining;
+  eSemaphorePolicy mPolicy;
+  PRNG*            mpPRNG;
+
+  List<SemaphoreInfo> mSemInfoGetPending;
+  List<SemaphoreInfo> mSemInfoGetAllocated;
+
+  // Private member functions.
+  Process* FlushGets();
+};
+
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d8 2
+d13 3
+a15 3
+struct ProcessBlockedOnSemaphoreInfo {
+  ProcessBlockedOnSemaphoreInfo() { M_UpdConstructCount(eType_ProcessBlockedOnSemaphoreInfo); }
+ ~ProcessBlockedOnSemaphoreInfo() { M_UpdDestructCount (eType_ProcessBlockedOnSemaphoreInfo); }
+d17 1
+a17 1
+  Process* mProcess;
+d21 5
+d29 2
+d32 1
+a32 1
+  Semaphore(unsigned total_keys);
+d35 2
+a36 3
+  bool SemGetElseBlock  (unsigned num_keys, Process* process);
+  bool SemGetButNoBlock (unsigned num_keys);
+  void SemPut           (unsigned num_keys);
+d39 8
+a46 2
+  unsigned mNumberOfKeysTotal;
+  unsigned mNumberOfKeysLoanedOut;
+d48 2
+a49 1
+  List<ProcessBlockedOnSemaphoreInfo> mProcessBlockedOnSemaphoreList;
+@

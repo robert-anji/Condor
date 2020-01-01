@@ -1,0 +1,140 @@
+head	1.1;
+access;
+symbols;
+locks
+	robert:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2011.12.20.17.33.25;	author robert;	state Exp;
+branches;
+next	;
+
+
+desc
+@Test for events, semaphores and mailboxes.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@// $RCSfile: Stack.cc,v $
+// $Revision: 1.1 $
+
+#include <stdio.h>
+
+#include "Global.h"
+#include "Database.h"
+#include "Enum.h"
+#include "List.h"
+#include "Mailbox.h"
+#include "Semaphore.h"
+#include "Simulator.h"
+#include "Vcd.h"
+//
+#include "Process.h"
+extern Module* gModuleTop;
+//
+int            gConstructCount[eType_Max];
+int            gDestructCount[eType_Max];
+Database*      gDB;
+Simulator*     gSimulator;
+SimulationTime gSimTime;
+Vcd*           gVcd;
+bool           gDbg;
+//
+void show_memory_usage();
+void sem_process(ProcessExecuteReason& rsn, Process* proc);
+
+void test_semaphore();
+void top_module_constr(Module* m);
+
+int main(int argc, char* argv[])
+{
+  for (unsigned u=0; u<eType_Max; u++) { gConstructCount[u]=gDestructCount[0]=0; }
+
+  test_semaphore();
+
+  show_memory_usage();
+
+  return 1;
+}
+
+class Trans { public: unsigned id; };
+
+Mailbox<Trans>* gMboxPtr  = 0;
+Event*          gEventPtr = 0;
+Semaphore*      gSemPtr   = 0;
+unsigned        gCount    = 0;
+
+void test_semaphore()
+{
+  gDB = new Database("./", "FirstVerifyRightDB");
+
+  gSimulator = new Simulator();
+
+  Module* mod_top = new Module("Module_TestMailbox", 0, top_module_constr);
+  gVcd            = new Vcd(); // keep Vcd handle handy in case dumping is turned on.
+
+//gVcd->DumpStart(my_top, "dump.vcd");
+  gSimulator->SimulationTimeMax(400*1);
+  gSimulator->Start(mod_top);
+
+  if (gMboxPtr)    delete gMboxPtr;
+  if (gEventPtr)   delete gEventPtr;
+  if (gSemPtr)     delete gSemPtr;
+
+  delete mod_top;
+  delete gVcd;
+  delete gSimulator;
+  delete gDB;
+}
+
+Trans tr;
+
+void top_module_constr(Module* m)
+{
+  printf("top_module_constr\n");
+
+  gMboxPtr = new Mailbox<Trans>;
+  //
+  gSemPtr = new Semaphore("SemTest", 64, eSemaphorePolicy_Random);
+
+  char proc_name[256];
+
+  for (int i=0; i<64; i++) {
+    sprintf(proc_name, "SemProcess%d", i);
+    Process* p = new Process(proc_name, m, sem_process);
+    // p->SkipInititalReason();
+  }
+}
+
+void sem_process(ProcessExecuteReason& rsn, Process* proc)
+{
+  if (rsn.ReasonGet() == eExecuteReason_Initial) {
+    printf("Semaphore Initial\n");
+    gSemPtr->SemaphoreScheduleGet(1, proc);
+  }
+
+  if (rsn.ReasonGet() == eExecuteReason_SemaphoreGet) {
+    printf("Semaphore Get\n");
+    gSemPtr->SemaphorePut(1, proc);
+    if (gCount < 100) {
+      gSemPtr->SemaphoreScheduleGet(1, proc);
+      gCount++;
+    }
+    else {
+      printf("Reached programmed count of Semaphore gets\n");
+    }
+  }
+}
+
+
+#include "MemoryUsage.cc"
+
+// End
+@
